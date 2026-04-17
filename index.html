@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://www.google-analytics.com https://www.googletagmanager.com; font-src 'self' data:; connect-src 'self' https: https://www.googletagmanager.com https://www.google-analytics.com https://region1.google-analytics.com https://stats.g.doubleclick.net; media-src 'self' data: blob:; worker-src 'self' blob:; frame-src 'self'; manifest-src 'self'"
+      content="default-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://www.googletagmanager.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://www.google-analytics.com https://www.googletagmanager.com; font-src 'self' data:; connect-src 'self' https: https://www.googletagmanager.com https://www.google-analytics.com https://region1.google-analytics.com https://stats.g.doubleclick.net; media-src 'self' data: blob:; worker-src 'self' blob:; frame-src 'self'; manifest-src 'self'"
     />
     <title>Flock XR - Creative coding in 3D</title>
     <meta
@@ -982,10 +982,8 @@
             <canvas
               id="renderCanvas"
               touch-action="none"
-              tabindex="0"
-              aria-label="3D scene canvas"
+              tabindex="-1"
               role="application"
-              aria-describedby="canvas-desc canvas-controls-desc"
             ></canvas>
             <div id="canvas-desc" class="sr-only">
               Interactive 3D scene where your project runs. Use keyboard
@@ -1372,7 +1370,7 @@
               role="application"
               aria-label="Visual programming workspace"
               aria-describedby="blockly-desc"
-              tabindex="0"
+              tabindex="-1"
             ></div>
             <div id="blockly-desc" class="sr-only">
               Drag and drop code blocks to create your program. Use arrow keys

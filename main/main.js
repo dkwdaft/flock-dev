@@ -143,6 +143,18 @@ function registerBlocklyPlayShortcut() {
     keyCodes: [keyCode],
     preconditionFn: (ws) => !ws.isDragging(),
     callback: (_ws, event) => {
+      const targetElement = event?.target instanceof Element ? event.target : null;
+      const activeElement = document.activeElement;
+      const inToolboxContext =
+        !!targetElement?.closest?.(
+          ".blocklyToolboxDiv, .blocklyToolbox, .blocklyFlyout",
+        ) ||
+        !!activeElement?.closest?.(
+          ".blocklyToolboxDiv, .blocklyToolbox, .blocklyFlyout",
+        );
+      if (inToolboxContext) {
+        return false;
+      }
       event.preventDefault();
       void executeCode({ focusCanvas: false });
       return true;
@@ -265,11 +277,11 @@ function initializeApp() {
           break;
         }
 
-          case "m": {
-            // Ctrl+M - Move focus to main menu button 
-            e.preventDefault();
-            menuButton.focus();
-            break;
+        case "m": {
+          // Ctrl+M - Move focus to main menu button
+          e.preventDefault();
+          menuButton.focus();
+          break;
         }
 
         case "g": {
@@ -397,6 +409,7 @@ window.onload = async function () {
   initializeBlockHandling();
 
   console.log("Welcome to Flock XR 🐦🐦🐦");
+  console.log("Release 1");
 
   // Autosave every 30 seconds: to localStorage and (if a file was saved) to that file
   setInterval(() => {
