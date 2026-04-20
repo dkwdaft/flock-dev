@@ -1,3 +1,6 @@
+import * as Blockly from "blockly";
+import { toolbox as toolboxDefinition } from "../toolbox.js";
+
 function buildSvgDataUri(svgContent) {
   return "data:image/svg+xml," + encodeURIComponent(svgContent);
 }
@@ -117,6 +120,107 @@ export const eventIcon = makeOnEventIcon("white");
 
 export const BLOCK_ICON_FIELD_NAME = "BLOCK_ICON";
 export const TOGGLE_BUTTON_FIELD_NAME = "TOGGLE_BUTTON";
+const LOW_VISION_ICON_FIELD_NAME = "LOW_VISION_CATEGORY_ICON";
+const LOW_VISION_BAR_FIELD_NAME = "LOW_VISION_CATEGORY_BAR";
+
+const CATEGORY_ICON_PATH_BY_STYLE = {
+  events_blocks: "../images/events.svg",
+  scene_blocks: "../images/scene.svg",
+  scene_meshes_blocks: "../images/meshes.svg",
+  scene_xr_blocks: "../images/xr.svg",
+  scene_lights_blocks: "../images/lights.svg",
+  scene_camera_blocks: "../images/camera.svg",
+  transform_blocks: "../images/motion.svg",
+  transform_physics_blocks: "../images/physics.svg",
+  transform_connect_blocks: "../images/connect.svg",
+  transform_combine_blocks: "../images/combine.svg",
+  animate_blocks: "../images/animate.svg",
+  animate_keyframe_blocks: "../images/keyframe.svg",
+  materials_blocks: "../images/looks.svg",
+  sound_blocks: "../images/sound.svg",
+  sensing_blocks: "../images/sensing.svg",
+  snippets_blocks: "../images/snippets.svg",
+  snippets_physics_blocks: "../images/physics.svg",
+  snippets_arrows_blocks: "../images/arrows.svg",
+  control_blocks: "../images/control.svg",
+  logic_blocks: "../images/conditions.svg",
+  variable_blocks: "../images/variables.svg",
+  variables_blocks: "../images/variables.svg",
+  text_blocks: "../images/text.svg",
+  list_blocks: "../images/lists.svg",
+  lists_blocks: "../images/lists.svg",
+  math_blocks: "../images/math.svg",
+  procedure_blocks: "../images/functions.svg",
+};
+
+const CATEGORY_ACCENT_BY_STYLE = {
+  events_blocks: "#d99d98",
+  scene_blocks: "#bed998",
+  scene_meshes_blocks: "#bed998",
+  scene_xr_blocks: "#bed998",
+  scene_lights_blocks: "#bed998",
+  scene_camera_blocks: "#bed998",
+  transform_blocks: "#d3d998",
+  transform_physics_blocks: "#d3d998",
+  transform_connect_blocks: "#d3d998",
+  transform_combine_blocks: "#d3d998",
+  animate_blocks: "#d9c898",
+  animate_keyframe_blocks: "#d9c898",
+  materials_blocks: "#c398d9",
+  sound_blocks: "#d9b398",
+  sensing_blocks: "#98d9d9",
+  snippets_blocks: "#98c3d9",
+  snippets_physics_blocks: "#98c3d9",
+  snippets_arrows_blocks: "#98c3d9",
+  control_blocks: "#98d998",
+  logic_blocks: "#98b8d9",
+  variable_blocks: "#d998b8",
+  variables_blocks: "#d998b8",
+  text_blocks: "#98d9c3",
+  list_blocks: "#ad98d9",
+  lists_blocks: "#ad98d9",
+  math_blocks: "#98a3d9",
+  procedure_blocks: "#ce98d9",
+};
+const LOW_VISION_ICON_DATA_URL_BY_STYLE = new Map();
+const LOW_VISION_ICON_SVG_BY_STYLE = new Map();
+const LOW_VISION_ICON_LOAD_PROMISE_BY_STYLE = new Map();
+const LOW_VISION_REFRESH_PENDING_BY_WORKSPACE = new WeakMap();
+
+const LOW_VISION_STYLE_BY_ICON_FILE = {
+  "events.svg": "events_blocks",
+  "scene.svg": "scene_blocks",
+  "meshes.svg": "scene_meshes_blocks",
+  "xr.svg": "scene_xr_blocks",
+  "lights.svg": "scene_lights_blocks",
+  "camera.svg": "scene_camera_blocks",
+  "motion.svg": "transform_blocks",
+  "physics.svg": "transform_physics_blocks",
+  "connect.svg": "transform_connect_blocks",
+  "combine.svg": "transform_combine_blocks",
+  "animate.svg": "animate_blocks",
+  "keyframe.svg": "animate_keyframe_blocks",
+  "looks.svg": "materials_blocks",
+  "sound.svg": "sound_blocks",
+  "sensing.svg": "sensing_blocks",
+  "snippets.svg": "snippets_blocks",
+  "arrows.svg": "snippets_arrows_blocks",
+  "control.svg": "control_blocks",
+  "conditions.svg": "logic_blocks",
+  "variables.svg": "variable_blocks",
+  "data.svg": "variable_blocks",
+  "text.svg": "text_blocks",
+  "lists.svg": "list_blocks",
+  "math.svg": "math_blocks",
+  "functions.svg": "procedure_blocks",
+};
+const LOW_VISION_STYLE_BY_BLOCK_TYPE = buildLowVisionStyleByBlockType();
+const LOW_VISION_SUBCATEGORY_STYLE_OVERRIDES = new Set([
+  "scene_blocks",
+  "transform_blocks",
+  "animate_blocks",
+  "snippets_blocks",
+]);
 
 export function makeInlineIcon(color) {
   const svg = `<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="122.88px" height="80.593px" viewBox="0 0 122.88 80.593" xml:space="preserve"><g><polygon fill="${color}" points="122.88,80.593 122.88,49.772 61.44,0 0,49.772 0,80.593 61.44,30.82 122.88,80.593"/></g></svg>`;
@@ -135,8 +239,9 @@ const BLOCK_ICON_MAKERS = {
 
 export function updateBlockIcons(workspace, iconColor) {
   if (!workspace) return;
-  const blocks = workspace.getAllBlocks(false);
+  const blocks = getWorkspaceAndFlyoutBlocks(workspace);
   for (const block of blocks) {
+    if (!block || typeof block.getField !== "function") continue;
     const iconField = block.getField(BLOCK_ICON_FIELD_NAME);
     if (iconField) {
       const maker = BLOCK_ICON_MAKERS[block.type];
@@ -149,4 +254,209 @@ export function updateBlockIcons(workspace, iconColor) {
 
 export function updateAllBlockIcons(workspace, iconColor) {
   updateBlockIcons(workspace, iconColor);
+}
+
+function getBlockStyleName(block) {
+  if (!block) return "";
+  if (typeof block.getStyleName === "function") {
+    return block.getStyleName() || "";
+  }
+  return block.styleName_ || "";
+}
+
+function scheduleLowVisionIconRefresh(workspace, styleName) {
+  if (!workspace || !styleName) return;
+  const pendingLoad = LOW_VISION_ICON_LOAD_PROMISE_BY_STYLE.get(styleName);
+  if (!pendingLoad) return;
+
+  let pendingStyles = LOW_VISION_REFRESH_PENDING_BY_WORKSPACE.get(workspace);
+  if (!pendingStyles) {
+    pendingStyles = new Set();
+    LOW_VISION_REFRESH_PENDING_BY_WORKSPACE.set(workspace, pendingStyles);
+  }
+  if (pendingStyles.has(styleName)) return;
+  pendingStyles.add(styleName);
+
+  pendingLoad
+    .then(() => {
+      pendingStyles.delete(styleName);
+      applyLowVisionCategoryIcons(workspace);
+    })
+    .catch(() => {
+      pendingStyles.delete(styleName);
+    });
+}
+
+function getLowVisionStyleNameForBlock(block) {
+  const styleName = getBlockStyleName(block);
+  if (styleName && !LOW_VISION_SUBCATEGORY_STYLE_OVERRIDES.has(styleName)) {
+    return styleName;
+  }
+
+  const explicitSubcategoryStyle = LOW_VISION_STYLE_BY_BLOCK_TYPE[block?.type];
+  if (explicitSubcategoryStyle) return explicitSubcategoryStyle;
+  if (styleName) return styleName;
+
+  const blockType = block?.type || "";
+  if (blockType.startsWith("lists_")) return "list_blocks";
+  if (blockType.startsWith("variables_")) return "variable_blocks";
+  return styleName;
+}
+
+function withSvgFill(svg, fillColor) {
+  if (!svg || !fillColor || !svg.includes("<svg")) return svg;
+  const fillStyle = `<style>*{fill:${fillColor} !important;}</style>`;
+  if (svg.includes("</svg>")) {
+    return svg.replace(/<svg([^>]*)>/, `<svg$1>${fillStyle}`);
+  }
+  return svg;
+}
+
+function getStyleNameFromIconPath(iconPath) {
+  const iconName = (iconPath || "").toLowerCase().split("/").pop();
+  return LOW_VISION_STYLE_BY_ICON_FILE[iconName] || "";
+}
+
+function buildLowVisionStyleByBlockType() {
+  const byType = {};
+
+  const walkToolbox = (items, inheritedStyle = "") => {
+    if (!Array.isArray(items)) return;
+    for (const item of items) {
+      if (!item || typeof item !== "object") continue;
+
+      if (item.kind === "category") {
+        const categoryStyle =
+          getStyleNameFromIconPath(item.icon) || inheritedStyle;
+        walkToolbox(item.contents, categoryStyle);
+        continue;
+      }
+
+      if (item.kind === "block" && item.type && inheritedStyle) {
+        byType[item.type] = inheritedStyle;
+      }
+    }
+  };
+
+  walkToolbox(toolboxDefinition?.contents || []);
+  return byType;
+}
+
+export function makeLowVisionCategoryIconDataUrl(styleName) {
+  if (LOW_VISION_ICON_DATA_URL_BY_STYLE.has(styleName)) {
+    return LOW_VISION_ICON_DATA_URL_BY_STYLE.get(styleName);
+  }
+  const iconSvg = LOW_VISION_ICON_SVG_BY_STYLE.get(styleName);
+  if (!iconSvg) {
+    loadLowVisionCategoryIconSvg(styleName);
+    return "";
+  }
+  const accent = CATEGORY_ACCENT_BY_STYLE[styleName];
+  if (!iconSvg || !accent) return "";
+  const dataUrl = buildSvgDataUri(withSvgFill(iconSvg, accent));
+  LOW_VISION_ICON_DATA_URL_BY_STYLE.set(styleName, dataUrl);
+  return dataUrl;
+}
+
+function loadLowVisionCategoryIconSvg(styleName) {
+  if (LOW_VISION_ICON_SVG_BY_STYLE.has(styleName)) {
+    return Promise.resolve(LOW_VISION_ICON_SVG_BY_STYLE.get(styleName));
+  }
+  if (LOW_VISION_ICON_LOAD_PROMISE_BY_STYLE.has(styleName)) {
+    return LOW_VISION_ICON_LOAD_PROMISE_BY_STYLE.get(styleName);
+  }
+  const iconPath = CATEGORY_ICON_PATH_BY_STYLE[styleName];
+  if (!iconPath) return Promise.resolve("");
+
+  const iconUrl = new URL(iconPath, import.meta.url).href;
+  const loadPromise = fetch(iconUrl)
+    .then((response) => (response.ok ? response.text() : ""))
+    .then((svgText) => {
+      LOW_VISION_ICON_SVG_BY_STYLE.set(styleName, svgText || "");
+      LOW_VISION_ICON_LOAD_PROMISE_BY_STYLE.delete(styleName);
+      return svgText || "";
+    })
+    .catch(() => {
+      LOW_VISION_ICON_LOAD_PROMISE_BY_STYLE.delete(styleName);
+      return "";
+    });
+  LOW_VISION_ICON_LOAD_PROMISE_BY_STYLE.set(styleName, loadPromise);
+  return loadPromise;
+}
+
+export function preloadLowVisionCategoryIcons() {
+  if (typeof Image === "undefined" || typeof fetch !== "function") {
+    return Promise.resolve();
+  }
+  const pendingDecodes = [];
+  for (const styleName of Object.keys(CATEGORY_ICON_PATH_BY_STYLE)) {
+    pendingDecodes.push(
+      loadLowVisionCategoryIconSvg(styleName).then(() => {
+        const dataUrl = makeLowVisionCategoryIconDataUrl(styleName);
+        if (!dataUrl) return;
+        const img = new Image();
+        img.decoding = "sync";
+        img.src = dataUrl;
+        if (typeof img.decode === "function") {
+          return img.decode().catch(() => {});
+        }
+      }),
+    );
+  }
+  return Promise.allSettled(pendingDecodes);
+}
+
+export function applyLowVisionCategoryIcons(workspace) {
+  if (!workspace) return;
+  const blocks = getWorkspaceAndFlyoutBlocks(workspace);
+  for (const block of blocks) {
+    if (
+      !block ||
+      typeof block.getField !== "function" ||
+      !Array.isArray(block.inputList)
+    ) {
+      continue;
+    }
+    const styleName = getLowVisionStyleNameForBlock(block);
+    const iconPath = makeLowVisionCategoryIconDataUrl(styleName);
+    if (!iconPath) {
+      scheduleLowVisionIconRefresh(workspace, styleName);
+      continue;
+    }
+
+    const firstInput = block.inputList?.[0];
+    if (!firstInput) continue;
+    if (!block.getField(LOW_VISION_ICON_FIELD_NAME)) {
+      firstInput.insertFieldAt(
+        0,
+        new Blockly.FieldImage(iconPath, 18, 18, "*", null),
+        LOW_VISION_ICON_FIELD_NAME,
+      );
+    }
+  }
+}
+
+export function clearLowVisionCategoryIcons(workspace) {
+  if (!workspace) return;
+  const blocks = getWorkspaceAndFlyoutBlocks(workspace);
+  for (const block of blocks) {
+    if (!block || typeof block.getField !== "function") {
+      continue;
+    }
+    const firstInput = block.inputList?.[0];
+    if (!firstInput || typeof firstInput.removeField !== "function") continue;
+    if (block.getField(LOW_VISION_BAR_FIELD_NAME))
+      firstInput.removeField(LOW_VISION_BAR_FIELD_NAME, true);
+    if (block.getField(LOW_VISION_ICON_FIELD_NAME))
+      firstInput.removeField(LOW_VISION_ICON_FIELD_NAME, true);
+  }
+}
+
+function getWorkspaceAndFlyoutBlocks(workspace) {
+  const blocks = workspace.getAllBlocks(false) || [];
+  const flyoutWorkspace = workspace.getFlyout?.()?.getWorkspace?.();
+  if (flyoutWorkspace) {
+    blocks.push(...(flyoutWorkspace.getAllBlocks(false) || []));
+  }
+  return blocks;
 }
