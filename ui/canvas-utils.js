@@ -4,6 +4,7 @@ import { flock } from "../flock.js";
 // One circle selector can be active on the canvas at once
 let canvasCircle = null;
 let canvasCirclePosition = { x: 0, y: 0 };
+let canvasCirclePositionSet = false;
 let keyboardCursorActive = false;
 let keyboardCursorCallback = null;
 let hitChecker = null;
@@ -34,11 +35,14 @@ export function createCanvasCircle() {
   canvasCircle.tabIndex = -1;
   document.body.appendChild(canvasCircle);
 
-  // Initialize position to canvas center
-  const canvas = flock.scene.getEngine().getRenderingCanvas();
-  const canvasBounds = canvas.getBoundingClientRect();
-  canvasCirclePosition.x = canvasBounds.width / 2;
-  canvasCirclePosition.y = canvasBounds.height / 2;
+  if (!canvasCirclePositionSet) {
+    // Initialize position to canvas center
+    const canvas = flock.scene.getEngine().getRenderingCanvas();
+    const canvasBounds = canvas.getBoundingClientRect();
+    canvasCirclePosition.x = canvasBounds.width / 2;
+    canvasCirclePosition.y = canvasBounds.height / 2;
+    canvasCirclePositionSet = true;
+  }
 
   updateCanvasCirclePosition();
 }
@@ -126,9 +130,16 @@ export function stopCanvasKeyboardMode() {
   const canvas = flock.scene?.getEngine?.()?.getRenderingCanvas?.();
   if (canvas) canvas.style.cursor = "";
   document.body.style.cursor = "default";
-  // Reinstate focus to element in focus prior to entering
-  // canvas cursor mode (otherwise this is annoying for kb users)
-  previouslyFocusedElement?.focus({ preventScroll: true });
+  // Reinstate focus to prior element but only if focus
+  // is currently on the body or nothing (i.e. not on another element)
+  const currentActive = document.activeElement;
+  const focusIsOnNothing =
+    !currentActive ||
+    currentActive === document.body ||
+    currentActive.tagName?.toLowerCase() === "canvas";
+  if (focusIsOnNothing) {
+    previouslyFocusedElement?.focus({ preventScroll: true });
+  }
   previouslyFocusedElement = null;
 }
 
@@ -228,4 +239,22 @@ function handleKeydown(event) {
 // Remove from heldKeys when key is released
 function handleKeyup(event) {
   heldKeys.delete(event.key);
+}
+
+// Set cursor to crosshair
+export function setCrosshairCursor() {
+  const canvas =
+    flock.canvas || flock.scene?.getEngine()?.getRenderingCanvas?.();
+  document.body.style.cursor = "crosshair";
+  canvas.style.cursor = "crosshair";
+  flock.scene.defaultCursor = "crosshair";
+}
+
+// Restore default cursor
+export function setDefaultCursor() {
+  document.body.style.cursor = "default";
+ if (flock.scene) {
+    flock.scene.hoverCursor = "pointer"; // Babylon.js default
+    flock.scene.defaultCursor = ""; // Babylon.js default (inherits from body)
+  }
 }

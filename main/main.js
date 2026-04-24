@@ -605,7 +605,6 @@ function initializeApp() {
           e.preventDefault();
           Blockly.keyboardNavigationController?.setIsActive?.(true);
           Blockly.getFocusManager()?.focusTree?.(workspace);
-          workspace.getCursor?.()?.setCurNode?.(workspace);
           break;
       }
     },
