@@ -3,7 +3,6 @@ import { workspace } from "./blocklyinit.js";
 import { translate } from "./translation.js";
 import { getMetadata } from "meta-png";
 import { AUTOSAVE_KEY } from "../config.js";
-import { blockHandlerRegistry } from "../blocks/blocks.js";
 
 // Function to save the current workspace state
 export function saveWorkspace(workspace) {
@@ -319,13 +318,6 @@ export function loadWorkspaceAndExecute(json, workspace, executeCallback) {
     // Validate JSON before loading into workspace
     const validatedJson = validateBlocklyJson(json);
 
-    // Clear workspace and handlers
-    const eventsWereEnabled = Blockly.Events.isEnabled();
-    if (eventsWereEnabled) Blockly.Events.disable();
-    workspace.clear();
-    blockHandlerRegistry.clear();
-    if (eventsWereEnabled) Blockly.Events.enable();
-
      // Load the validated JSON
     Blockly.serialization.workspaces.load(validatedJson, workspace);
 
@@ -507,9 +499,16 @@ function getSafeImportedFileBaseName(fileName) {
 // Holds the FileSystemFileHandle from the last explicit save (File System Access API)
 let currentFileHandle = null;
 
+export function updateSaveButtonState() {
+  document
+    .getElementById("exportCodeButton")
+    ?.classList.toggle("no-autosave", !currentFileHandle);
+}
+
 // Clears the stored file handle (call whenever a new project is loaded)
 export function clearFileHandle() {
   currentFileHandle = null;
+  updateSaveButtonState();
 }
 
 // Function to export project code
@@ -560,6 +559,9 @@ export async function exportCode(workspace) {
       await writable.write(jsonString);
       await writable.close();
       currentFileHandle = fileHandle;
+      updateSaveButtonState();
+      document.getElementById("projectName").value =
+        getSafeImportedFileBaseName(fileHandle.name);
     } else {
       const blob = new Blob([jsonString], { type: FLOCK_MIME });
       const link = document.createElement("a");
@@ -724,6 +726,23 @@ function appendSnippetBlocksAtViewport(workspace, blocksJson) {
   });
 }
 
+function isValidProjectFileJson(json) {
+  if (!json || typeof json !== "object") {
+    return false;
+  }
+
+  if (Object.keys(json).length === 0) {
+    return true;
+  }
+
+  return (
+    !!json.blocks &&
+    typeof json.blocks === "object" &&
+    !!json.blocks.blocks &&
+    Array.isArray(json.blocks.blocks)
+  );
+}
+
 // Private helper: process a project file (used by file input and drag-and-drop)
 function processProjectFileDrop(file, workspace, executeCallback) {
   const maxSize = 5 * 1024 * 1024;
@@ -750,13 +769,7 @@ function processProjectFileDrop(file, workspace, executeCallback) {
         throw new Error("File content is too large");
       }
       const json = JSON.parse(text);
-      if (
-        !json ||
-        typeof json !== "object" ||
-        !json.blocks ||
-        typeof json.blocks !== "object" ||
-        !json.blocks.blocks
-      ) {
+      if (!isValidProjectFileJson(json)) {
         throw new Error("Invalid Blockly project file structure");
       }
 
@@ -900,13 +913,7 @@ export function setupFileInput(workspace, executeCallback) {
           throw new Error("File content is too large");
         }
         const json = JSON.parse(text);
-        if (
-          !json ||
-          typeof json !== "object" ||
-          !json.blocks ||
-          typeof json.blocks !== "object" ||
-          !json.blocks.blocks
-        ) {
+        if (!isValidProjectFileJson(json)) {
           throw new Error("Invalid Blockly project file structure");
         }
 
@@ -931,6 +938,56 @@ export function setupFileInput(workspace, executeCallback) {
     };
     reader.readAsText(file);
   });
+}
+
+// Open a file using showOpenFilePicker (Chrome/Edge/Safari) with <input> fallback
+export async function openFile(workspace, executeCallback) {
+  if ("showOpenFilePicker" in window) {
+    try {
+      const [fileHandle] = await window.showOpenFilePicker({
+        mode: "readwrite",
+        types: [
+          {
+            description: translate("project_file_description"),
+            accept: {
+              "application/vnd.flock+json": [".flock"],
+              "application/json": [".json"],
+            },
+          },
+        ],
+      });
+      const file = await fileHandle.getFile();
+      if (file.size > 5 * 1024 * 1024) {
+        alert(translate("file_too_large_alert"));
+        return;
+      }
+      const text = await file.text();
+      if (text.length > 4 * 1024 * 1024) {
+        throw new Error("File content is too large");
+      }
+      const json = JSON.parse(text);
+      if (!isValidProjectFileJson(json)) {
+        throw new Error("Invalid Blockly project file structure");
+      }
+      window.loadingCode = true;
+      document.getElementById("projectName").value =
+        getSafeImportedFileBaseName(file.name);
+      currentFileHandle = fileHandle;
+      updateSaveButtonState();
+      loadWorkspaceAndExecute(json, workspace, executeCallback);
+    } catch (e) {
+      if (e.name === "AbortError") return;
+      console.error("Error opening file:", e);
+      if (e.message === "File content is too large") {
+        alert(translate("file_too_large_alert"));
+      } else {
+        alert(translate("invalid_project_alert"));
+      }
+      window.loadingCode = false;
+    }
+  } else {
+    document.getElementById("fileInput").click();
+  }
 }
 
 // Function to load example projects
