@@ -251,6 +251,195 @@ const GizmoMenuManager = {
   },
 };
 
+// Modal showing all keyboard shortcuts, accessed with Ctrl + /
+
+// Check their platform (Mac or not Mac) to show the correct modifier key
+function isMac() {
+  return navigator.platform.toUpperCase().includes("MAC");
+}
+
+// List of shortcuts to show in the panel, with categories for grouping
+function getShortcuts() {
+  const mod = isMac() ? "⌘" : "Ctrl";
+  return [
+    { label: "Show/hide shortcut help", keys: `${mod} + /`, category: "Main" },
+    {
+      label: "Move between menus, canvas and editor",
+      keys: `Tab`,
+      category: "Main",
+    },
+    { label: "Confirm", keys: `Enter`, category: "Main" },
+    { label: "Exit", keys: `Esc`, category: "Main" },
+    { label: "Play", keys: `${mod} + P`, category: "Main" },
+    { label: "Undo", keys: `${mod} + Z`, category: "Main" },
+    { label: "Redo", keys: `${mod} + Shift + Z`, category: "Main" },
+    {
+      label: "Browser navigation bar (overriden shortcuts work from here)",
+      keys: `${mod} + L`,
+      category: "Main",
+    },
+
+    { label: "Main menu", keys: `${mod} + M`, category: "Menu" },
+    { label: "Open file", keys: `${mod} + O`, category: "Menu" },
+    { label: "Save / export", keys: `${mod} + S`, category: "Menu" },
+
+    {
+      label: "Open/close area menu",
+      keys: `${mod} + B`,
+      category: "Area menu",
+    },
+    { label: "Toggle area", keys: `Tab`, category: "Area menu" },
+    { label: "Select area", keys: `1-9 / Enter`, category: "Area menu" },
+
+    { label: "Code editor", keys: `${mod} + E`, category: "Editor" },
+    {
+      label: "Add block by name",
+      keys: `${mod} + ]`,
+      category: "Editor",
+    },
+    { label: "Search for a block", keys: `${mod} + F`, category: "Editor" },
+    { label: "Move through blocks", keys: `↑ ↓ ← →`, category: "Editor" },
+
+    { label: "Gizmos", keys: `${mod} + G`, category: "Gizmos" },
+    {
+      label: "Select gizmo",
+      keys: `1-9`,
+      category: "Gizmos",
+    },
+
+    {
+      label: "Keyboard cursor for gizmos",
+      keys: `↑ ↓ ← →`,
+      category: "Gizmos",
+    },
+    {
+      label: "Lock transform to axis",
+      keys: `X Y Z`,
+      category: "Gizmos",
+    },
+    { label: "Transform in 3D", keys: `↑ ↓ ← → PgUp PgDn`, category: "Gizmos" },
+    { label: "Focus camera on object", keys: `F`, category: "Gizmos" },
+
+    {
+      label: "Quick use colour in colour picker",
+      keys: `P`,
+      category: "Gizmos",
+    },
+    { label: "Delete object", keys: `Del`, category: "Gizmos" },
+  ];
+}
+
+// Formats keys for menu nicely
+// You can use + or / and these won't be <kbd> tagged
+function formatKeys(keys) {
+  return keys
+    .split(/( \+ | \/ )/)
+    .map((part) =>
+      part === " + " || part === " / "
+        ? part
+        : part
+            .split(" ")
+            .map((k) => `<kbd>${k}</kbd>`)
+            .join(" "),
+    )
+    .join("");
+}
+
+const ShortcutsPanel = {
+  panel: null,
+  dock: "left",
+
+  init() {
+    this.createPanel();
+    this.setupListeners();
+  },
+
+  createPanel() {
+    const div = document.createElement("div");
+    div.id = "shortcutsPanel";
+    div.className = "shortcuts-panel hidden shortcuts-panel--left";
+    div.setAttribute("role", "region");
+    div.setAttribute("aria-label", "Keyboard shortcuts");
+    div.innerHTML = `
+      <div class="shortcuts-panel__content">
+        <button type="button" class="close-button" id="closeShortcutsPanel" aria-label="Close keyboard shortcuts">&times;</button>
+        <h1 id="shortcuts-panel-title">Keyboard shortcuts</h1>
+        <table id="shortcuts-table"><tbody></tbody></table>
+      </div>`;
+    document.body.appendChild(div);
+    this.panel = div;
+  },
+
+  show() {
+    const tbody = this.panel.querySelector("tbody");
+    const groups = getShortcuts().reduce((acc, s) => {
+      (acc[s.category] ??= []).push(s);
+      return acc;
+    }, {});
+    tbody.innerHTML = Object.entries(groups)
+      .map(
+        ([cat, items]) => `
+      <tr><th colspan="2">${cat}</th></tr>
+      ${items.map(({ label, keys }) => `<tr><td>${label}</td><td>${formatKeys(keys)}</td></tr>`).join("")}
+    `,
+      )
+      .join("");
+    this.panel.classList.remove("hidden");
+  },
+
+  hide() {
+    this.panel.classList.add("hidden");
+  },
+
+  toggle() {
+    this.panel.classList.contains("hidden") ? this.show() : this.hide();
+  },
+
+  setDock(side) {
+    this.dock = side;
+    this.panel.classList.toggle("shortcuts-panel--left", side === "left");
+    this.panel.classList.toggle("shortcuts-panel--right", side === "right");
+  },
+
+  setupListeners() {
+    document.addEventListener("click", (e) => {
+      if (e.target.id === "closeShortcutsPanel") this.hide();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        !this.panel.classList.contains("hidden")
+      ) {
+        const t = e.target;
+        const tag = (t?.tagName || "").toLowerCase();
+        if (t?.isContentEditable || tag === "input" || tag === "textarea" || tag === "select") return;
+
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          this.setDock("left");
+        }
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          this.setDock("right");
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          const content = this.panel.querySelector(".shortcuts-panel__content");
+          content.scrollBy({ top: -100, behavior: "instant" });
+        }
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          const content = this.panel.querySelector(".shortcuts-panel__content");
+          content.scrollBy({ top: 100, behavior: "instant" });
+        }
+      }
+    });
+  },
+};
+
 // Start it up
 AreaManager.init();
 GizmoMenuManager.init();
+ShortcutsPanel.init();
+
+export { ShortcutsPanel };

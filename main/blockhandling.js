@@ -292,7 +292,7 @@ export function initializeBlockHandling() {
       return;
     }
 
-    if (event.ctrlKey && event.key === ".") {
+    if ((event.ctrlKey || event.metaKey) && event.key === ".") {
       event.preventDefault();
 
       createKeywordBlockAtViewportCenter("keyword_block");
@@ -301,7 +301,7 @@ export function initializeBlockHandling() {
 
   // Handle Enter key for adding new blocks
   document.addEventListener("keydown", function (event) {
-    if (event.ctrlKey && event.key === "]") {
+    if ((event.ctrlKey || event.metaKey) && event.key === "]") {
       const selectedBlock = getSelectedBlockForKeywordShortcut();
       event.preventDefault();
 

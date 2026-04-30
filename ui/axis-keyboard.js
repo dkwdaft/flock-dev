@@ -12,14 +12,19 @@ export function createAxisKeyboardHandler({
   let axis = null;
 
   function handler(event) {
-    
     const t = event.target;
     // Don't capture keys when focus is in the code panel, top menu, or docs
-    if (t?.closest?.("#codePanel, header, #info-details")) return;
-     // Don't interfere with text inputs
+    if (t?.closest?.("#codePanel, header, .shortcuts-panel")) return;
+    // Don't interfere with text inputs
     const tag = (t?.tagName || "").toLowerCase();
-    if (t?.isContentEditable || tag === "input" || tag === "textarea" || tag === "select") return;
-    
+    if (
+      t?.isContentEditable ||
+      tag === "input" ||
+      tag === "textarea" ||
+      tag === "select"
+    )
+      return;
+
     const step = event.shiftKey ? stepFast : stepNormal;
 
     switch (event.key) {
@@ -61,7 +66,7 @@ export function createAxisKeyboardHandler({
       case "ArrowUp":
       case "ArrowDown": {
         event.preventDefault();
-        event.stopPropagation(); 
+        event.stopPropagation();
         const sign =
           event.key === "ArrowRight" || event.key === "ArrowUp" ? 1 : -1;
         if (axis) {
@@ -81,13 +86,13 @@ export function createAxisKeyboardHandler({
 
       case "PageUp":
         event.preventDefault();
-        event.stopPropagation(); 
+        event.stopPropagation();
         if (!axis) onMove(0, step, 0);
         break;
 
       case "PageDown":
         event.preventDefault();
-        event.stopPropagation(); 
+        event.stopPropagation();
         if (!axis) onMove(0, -step, 0);
         break;
 
