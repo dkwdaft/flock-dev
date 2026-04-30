@@ -1569,7 +1569,7 @@ body.color-picker-open #renderCanvas {
   line-height: 1.4;
 }
 
-/* Styles for keyboard controls panel */
+/* Styles for keyboard shortcuts panel */
 #shortcuts-table {
   font-size: 1.2em;
   width: 100%;

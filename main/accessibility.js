@@ -258,7 +258,7 @@ function isMac() {
   return navigator.platform.toUpperCase().includes("MAC");
 }
 
-// List of shortcuts to show in the modal, with categories for grouping
+// List of shortcuts to show in the panel, with categories for grouping
 function getShortcuts() {
   const mod = isMac() ? "⌘" : "Ctrl";
   return [
@@ -345,33 +345,33 @@ function formatKeys(keys) {
     .join("");
 }
 
-const ShortcutsModal = {
-  modal: null,
+const ShortcutsPanel = {
+  panel: null,
   dock: "left",
 
   init() {
-    this.createModal();
+    this.createPanel();
     this.setupListeners();
   },
 
-  createModal() {
+  createPanel() {
     const div = document.createElement("div");
-    div.id = "shortcutsModal";
+    div.id = "shortcutsPanel";
     div.className = "shortcuts-panel hidden shortcuts-panel--left";
     div.setAttribute("role", "region");
     div.setAttribute("aria-label", "Keyboard shortcuts");
     div.innerHTML = `
       <div class="shortcuts-panel__content">
-        <button type="button" class="close-button" id="closeShortcutsModal" aria-label="Close keyboard shortcuts">&times;</button>
-        <h1 id="shortcuts-modal-title">Keyboard shortcuts</h1>
+        <button type="button" class="close-button" id="closeShortcutsPanel" aria-label="Close keyboard shortcuts">&times;</button>
+        <h1 id="shortcuts-panel-title">Keyboard shortcuts</h1>
         <table id="shortcuts-table"><tbody></tbody></table>
       </div>`;
     document.body.appendChild(div);
-    this.modal = div;
+    this.panel = div;
   },
 
   show() {
-    const tbody = this.modal.querySelector("tbody");
+    const tbody = this.panel.querySelector("tbody");
     const groups = getShortcuts().reduce((acc, s) => {
       (acc[s.category] ??= []).push(s);
       return acc;
@@ -384,30 +384,30 @@ const ShortcutsModal = {
     `,
       )
       .join("");
-    this.modal.classList.remove("hidden");
+    this.panel.classList.remove("hidden");
   },
 
   hide() {
-    this.modal.classList.add("hidden");
+    this.panel.classList.add("hidden");
   },
 
   setDock(side) {
     this.dock = side;
-    this.modal.classList.toggle("shortcuts-panel--left", side === "left");
-    this.modal.classList.toggle("shortcuts-panel--right", side === "right");
+    this.panel.classList.toggle("shortcuts-panel--left", side === "left");
+    this.panel.classList.toggle("shortcuts-panel--right", side === "right");
   },
 
   setupListeners() {
     document.addEventListener("click", (e) => {
-      if (e.target.id === "closeShortcutsModal") this.hide();
+      if (e.target.id === "closeShortcutsPanel") this.hide();
     });
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && !this.modal.classList.contains("hidden")) {
+      if (e.key === "Escape" && !this.panel.classList.contains("hidden")) {
         this.hide();
       }
       if (
         (e.ctrlKey || e.metaKey) &&
-        !this.modal.classList.contains("hidden")
+        !this.panel.classList.contains("hidden")
       ) {
         if (e.key === "ArrowLeft") {
           e.preventDefault();
@@ -425,6 +425,6 @@ const ShortcutsModal = {
 // Start it up
 AreaManager.init();
 GizmoMenuManager.init();
-ShortcutsModal.init();
+ShortcutsPanel.init();
 
-export { ShortcutsModal };
+export { ShortcutsPanel };

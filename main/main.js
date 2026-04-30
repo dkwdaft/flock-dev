@@ -48,7 +48,7 @@ import {
   initializeSavedLanguage,
   translate,
 } from "./translation.js";
-import { ShortcutsModal } from "./accessibility.js";
+import { ShortcutsPanel } from "./accessibility.js";
 
 function isEmbedModeEnabled() {
   const embedParam = new URLSearchParams(window.location.search).get("embed");
@@ -578,7 +578,7 @@ function initializeApp() {
 
         case "/": {
           e.preventDefault();
-          ShortcutsModal.show();
+          ShortcutsPanel.show();
           break;
         }
 
