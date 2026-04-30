@@ -1671,15 +1671,21 @@ class CustomColorPicker {
   handleCssColorInput(value) {
     if (!value) return;
     let processedValue = value.trim();
+    const cssInput = this.container.querySelector(".css-color-input");
+
+    if (processedValue.startsWith("#")) {
+      processedValue = processedValue.slice(1);
+      if (cssInput) cssInput.value = processedValue;
+    }
+
     let isCompleteColor = false;
 
     if (
-      /^#?[0-9a-fA-F]{6}$/.test(processedValue) ||
-      /^#?[0-9a-fA-F]{3}$/.test(processedValue)
+      /^[0-9a-fA-F]{6}$/.test(processedValue) ||
+      /^[0-9a-fA-F]{3}$/.test(processedValue)
     ) {
       isCompleteColor = true;
-      if (!processedValue.startsWith("#"))
-        processedValue = "#" + processedValue;
+      processedValue = "#" + processedValue;
     } else {
       const tempDiv = document.createElement("div");
       tempDiv.style.color = processedValue;
