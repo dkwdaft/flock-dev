@@ -421,6 +421,16 @@ const ShortcutsPanel = {
           e.preventDefault();
           this.setDock("right");
         }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          const content = this.panel.querySelector(".shortcuts-panel__content");
+          content.scrollBy({ top: -100, behavior: "instant" });
+        }
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          const content = this.panel.querySelector(".shortcuts-panel__content");
+          content.scrollBy({ top: 100, behavior: "instant" });
+        }
       }
     });
   },
