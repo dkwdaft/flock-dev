@@ -51,6 +51,10 @@ export const flockMaterial = {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   },
   getColorFromString(colourString) {
+    if (/^([0-9A-F]{3}|[0-9A-F]{6})$/i.test(colourString)) {
+      return `#${colourString.toLowerCase()}`;
+    }
+
     if (/^#([0-9A-F]{3}){1,2}$/i.test(colourString)) {
       return colourString.toLowerCase();
     }

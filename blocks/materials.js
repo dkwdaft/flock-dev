@@ -550,7 +550,7 @@ export function defineMaterialsBlocks() {
           {
             type: "field_input",
             name: "COLOR",
-            text: "#800080",
+            text: "800080",
           },
         ],
         output: "Colour",
