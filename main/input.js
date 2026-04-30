@@ -302,7 +302,7 @@ export function setupInput() {
 
   function handleCanvasKeyboard(e) {
     // Handle Ctrl+Z for undo when canvas is focused
-    if (e.ctrlKey && e.key.toLowerCase() === "z" && !e.shiftKey) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
       e.preventDefault();
       const workspace = window.mainWorkspace || Blockly.getMainWorkspace();
       if (workspace) {
@@ -314,7 +314,7 @@ export function setupInput() {
 
     // Handle Ctrl+Shift+Z or Ctrl+Y for redo when canvas is focused
     if (
-      (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "z") ||
+      ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "z") ||
       (e.ctrlKey && e.key.toLowerCase() === "y")
     ) {
       e.preventDefault();
