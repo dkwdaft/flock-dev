@@ -545,7 +545,7 @@ export function defineMaterialsBlocks() {
   Blockly.Blocks["colour_from_string"] = {
     init: function () {
       this.jsonInit({
-        message0: translate("colour_from_string"),
+        message0: "# %1",
         args0: [
           {
             type: "field_input",
@@ -558,14 +558,17 @@ export function defineMaterialsBlocks() {
 
       const colorField = this.getField("COLOR");
       colorField.setValidator(function (newVal) {
+        const normalizedInput =
+          typeof newVal === "string" ? newVal.trim().replace(/^#/, "") : "";
         try {
-          const validatedVal = flock.getColorFromString(newVal) || "#000000";
+          const validatedVal =
+            flock.getColorFromString(normalizedInput) || "#000000";
           this.sourceBlock_.setColour(validatedVal);
-          return newVal;
+          return normalizedInput;
         } catch (error) {
           console.warn("Failed to validate colour field value:", error);
           this.sourceBlock_.setColour("#000000");
-          return newVal;
+          return normalizedInput;
         }
       });
 
