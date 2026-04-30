@@ -410,6 +410,10 @@ const ShortcutsPanel = {
         (e.ctrlKey || e.metaKey) &&
         !this.panel.classList.contains("hidden")
       ) {
+        const t = e.target;
+        const tag = (t?.tagName || "").toLowerCase();
+        if (t?.isContentEditable || tag === "input" || tag === "textarea" || tag === "select") return;
+
         if (e.key === "ArrowLeft") {
           e.preventDefault();
           this.setDock("left");
