@@ -218,13 +218,11 @@ function pickMeshFromCanvas() {
 
     const [canvasX, canvasY] = getCanvasXAndCanvasYValues(event, canvasRect);
     applyColorAtPosition(canvasX, canvasY);
-    document.body.style.cursor = "crosshair";
-    canvas.style.cursor = "crosshair";
   };
 
   startCanvasKeyboardMode((x, y) => applyColorAtPosition(x, y));
-  document.body.style.cursor = "crosshair";
-  canvas.style.cursor = "crosshair";
+  document.body.style.cursor = "crosshair"; // works
+  flock.scene.defaultCursor = "crosshair";
 
   setTimeout(() => {
     window.addEventListener("click", onPickMesh);
@@ -756,6 +754,16 @@ function updateRotationBlock(mesh) {
   Blockly.Events.setGroup(null);
 }
 
+// Composite models (e.g. imported glTF) have no geometry on the root mesh;
+// their bounding box only renders when visibility > 0, so we use 0.001.
+function enableBoundingBox(mesh) {
+  if (!mesh) return;
+  if (!mesh.visibility || mesh.visibility === 0) {
+    mesh.visibility = 0.001;
+  }
+  mesh.showBoundingBox = true;
+}
+
 // Pick a mesh (used by multiple gizmos)
 function pickMeshFromScene(onPicked, persistent = false) {
   cleanupScenePick(); // Stop picking
@@ -984,8 +992,7 @@ function startDuplicatePlacement() {
   // Make sure that if there is already a selected mesh
   // its bounding box is visible so the user knows what they are duplicating
   let meshToClone = gizmoManager.attachedMesh;
-  meshToClone.visibility = 0.001;
-  meshToClone.showBoundingBox = true;
+  enableBoundingBox(meshToClone);
 
   blockId = meshBlockIdMap[blockKey];
   duplicateModeActive = true;
@@ -1009,7 +1016,8 @@ function startDuplicatePlacement() {
       if (!duplicateModeActive) return;
 
       const newBlockKey = getBlockKeyFromBlock(newBlock);
-      let nextSource = (newBlockKey ? getMeshFromBlockKey(newBlockKey) : null) ||
+      let nextSource =
+        (newBlockKey ? getMeshFromBlockKey(newBlockKey) : null) ||
         getMeshFromBlock(newBlock);
 
       if (!nextSource && attempt < maxAttempts) {
@@ -1028,8 +1036,7 @@ function startDuplicatePlacement() {
         }
         meshToClone = nextSource;
         gizmoManager.attachToMesh(meshToClone);
-        meshToClone.visibility = 0.001;
-        meshToClone.showBoundingBox = true;
+        enableBoundingBox(meshToClone);
       }
     };
 
@@ -1158,6 +1165,7 @@ export function toggleGizmo(gizmoType) {
   // Is this gizmo already active? If so, toggle it off
   const button = document.getElementById(`${gizmoType}Button`);
   if (button?.classList.contains("active")) {
+    if (gizmoType === "camera") handleCameraGizmo();
     exitGizmoState();
     return;
   }
@@ -1371,7 +1379,7 @@ function handleScaleGizmo() {
 
 // Rotation: Allow the user to rotate the mesh by dragging it
 function handleRotationGizmo() {
-  configureRotationGizmo(gizmoManager);
+  configureRotationGizmo(gizmoManager, { updateToMatchAttachedMesh: true });
 
   // Show that rotation is active
   const rotationButton = document.getElementById("rotationButton");
@@ -1451,6 +1459,11 @@ function handleRotationGizmo() {
       // Is there any physics to restore?
       if (mesh?.physics && mesh.savedMotionType != null) {
         mesh.physics.setMotionType(mesh.savedMotionType);
+      }
+
+      if (mesh?.rotationQuaternion) {
+        mesh.rotation = mesh.rotationQuaternion.toEulerAngles();
+        mesh.rotationQuaternion = null;
       }
 
       updateRotationBlock(mesh); // Update blockly block
@@ -1691,11 +1704,13 @@ function handleDeleteGizmo() {
 
   function applyDelete(pickedMesh) {
     if (!pickedMesh || pickedMesh.name === "ground") {
-      if (
-        document.getElementById("deleteButton")?.classList.contains("active")
-      ) {
-        pickMeshFromScene(applyDelete, false);
-      }
+      setTimeout(() => {
+        if (
+          document.getElementById("deleteButton")?.classList.contains("active")
+        ) {
+          pickMeshFromScene(applyDelete, false);
+        }
+      }, 0);
       return;
     }
     const blockKey = findParentWithBlockId(pickedMesh)?.metadata?.blockKey;
