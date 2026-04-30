@@ -545,8 +545,13 @@ export function defineMaterialsBlocks() {
   Blockly.Blocks["colour_from_string"] = {
     init: function () {
       this.jsonInit({
-        message0: "# %1",
+        message0: "%1 %2",
         args0: [
+          {
+            type: "field_label_serializable",
+            name: "HASH_PREFIX",
+            text: "#",
+          },
           {
             type: "field_input",
             name: "COLOR",
@@ -557,6 +562,15 @@ export function defineMaterialsBlocks() {
       });
 
       const colorField = this.getField("COLOR");
+      const hashPrefixField = this.getField("HASH_PREFIX");
+      const updateHashPrefixContrast = (hexColor) => {
+        if (!hashPrefixField?.getSvgRoot) return;
+        const rgb = flock.hexToRgb(hexColor || "#000000");
+        const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
+        const textColor = luminance > 0.6 ? "#000000" : "#ffffff";
+        hashPrefixField.getSvgRoot().style.fill = textColor;
+      };
+
       colorField.setValidator(function (newVal) {
         const normalizedInput =
           typeof newVal === "string" ? newVal.trim().replace(/^#/, "") : "";
@@ -564,10 +578,12 @@ export function defineMaterialsBlocks() {
           const validatedVal =
             flock.getColorFromString(normalizedInput) || "#000000";
           this.sourceBlock_.setColour(validatedVal);
+          updateHashPrefixContrast(validatedVal);
           return normalizedInput;
         } catch (error) {
           console.warn("Failed to validate colour field value:", error);
           this.sourceBlock_.setColour("#000000");
+          updateHashPrefixContrast("#000000");
           return normalizedInput;
         }
       });
@@ -577,9 +593,11 @@ export function defineMaterialsBlocks() {
         const initialVal = colorField.getValue();
         const validatedVal = flock.getColorFromString(initialVal) || "#000000";
         this.setColour(validatedVal);
+        updateHashPrefixContrast(validatedVal);
       } catch (error) {
         console.warn("Failed to initialize colour block value:", error);
         this.setColour("#000000");
+        updateHashPrefixContrast("#000000");
       }
     },
   };
