@@ -90,7 +90,11 @@ export function registerMaterialGenerators(javascriptGenerator) {
   };
   // Hex colour -------------------------------------------------
   javascriptGenerator.forBlock["colour_from_string"] = function (block) {
-    const colourValue = block.getFieldValue("COLOR") || "#000000";
+    const rawColourValue = (block.getFieldValue("COLOR") || "").trim();
+    const isBareHex = /^([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(rawColourValue);
+    const colourValue = isBareHex
+      ? `#${rawColourValue}`
+      : rawColourValue || "#000000";
     return [`"${colourValue}"`, javascriptGenerator.ORDER_ATOMIC];
   };
 

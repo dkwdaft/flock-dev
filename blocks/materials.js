@@ -545,27 +545,54 @@ export function defineMaterialsBlocks() {
   Blockly.Blocks["colour_from_string"] = {
     init: function () {
       this.jsonInit({
-        message0: translate("colour_from_string"),
+        message0: "%1 %2",
         args0: [
+          {
+            type: "field_label_serializable",
+            name: "HASH_PREFIX",
+            text: "#",
+          },
           {
             type: "field_input",
             name: "COLOR",
-            text: "#800080",
+            text: "800080",
           },
         ],
         output: "Colour",
       });
 
       const colorField = this.getField("COLOR");
+      const hashPrefixField = this.getField("HASH_PREFIX");
+      const updateHashPrefixContrast = (hexColor) => {
+        if (!hashPrefixField?.getSvgRoot) return;
+        const svgRoot = hashPrefixField.getSvgRoot();
+        if (!svgRoot?.style) return;
+        const rgb = flock.hexToRgb(hexColor || "#000000");
+        const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
+        const textColor = luminance > 0.6 ? "#000000" : "#ffffff";
+        const textEl = svgRoot.querySelector("text");
+        if (textEl) {
+          textEl.setAttribute("fill", textColor);
+          textEl.style.setProperty("fill", textColor, "important");
+        } else {
+          svgRoot.style.setProperty("fill", textColor, "important");
+        }
+      };
+
       colorField.setValidator(function (newVal) {
+        const normalizedInput =
+          typeof newVal === "string" ? newVal.trim().replace(/^#/, "") : "";
         try {
-          const validatedVal = flock.getColorFromString(newVal) || "#000000";
+          const validatedVal =
+            flock.getColorFromString(normalizedInput) || "#000000";
           this.sourceBlock_.setColour(validatedVal);
-          return newVal;
+          updateHashPrefixContrast(validatedVal);
+          return normalizedInput;
         } catch (error) {
           console.warn("Failed to validate colour field value:", error);
           this.sourceBlock_.setColour("#000000");
-          return newVal;
+          updateHashPrefixContrast("#000000");
+          return normalizedInput;
         }
       });
 
@@ -574,9 +601,11 @@ export function defineMaterialsBlocks() {
         const initialVal = colorField.getValue();
         const validatedVal = flock.getColorFromString(initialVal) || "#000000";
         this.setColour(validatedVal);
+        updateHashPrefixContrast(validatedVal);
       } catch (error) {
         console.warn("Failed to initialize colour block value:", error);
         this.setColour("#000000");
+        updateHashPrefixContrast("#000000");
       }
     },
   };
