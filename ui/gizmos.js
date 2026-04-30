@@ -1379,7 +1379,7 @@ function handleScaleGizmo() {
 
 // Rotation: Allow the user to rotate the mesh by dragging it
 function handleRotationGizmo() {
-  configureRotationGizmo(gizmoManager, { updateToMatchAttachedMesh: true });
+  configureRotationGizmo(gizmoManager);
 
   // Show that rotation is active
   const rotationButton = document.getElementById("rotationButton");
@@ -1459,11 +1459,6 @@ function handleRotationGizmo() {
       // Is there any physics to restore?
       if (mesh?.physics && mesh.savedMotionType != null) {
         mesh.physics.setMotionType(mesh.savedMotionType);
-      }
-
-      if (mesh?.rotationQuaternion) {
-        mesh.rotation = mesh.rotationQuaternion.toEulerAngles();
-        mesh.rotationQuaternion = null;
       }
 
       updateRotationBlock(mesh); // Update blockly block
