@@ -1594,7 +1594,7 @@ body.color-picker-open #renderCanvas {
 
 kbd {
   background-color: var(--color-bg);
-  border: 1px solid currentColor;
+  border: 1px solid currentcolor;
   border-radius: 3px;
   padding: 1px 5px;
   font-size: 1.2em;
