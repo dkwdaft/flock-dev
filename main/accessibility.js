@@ -406,9 +406,6 @@ const ShortcutsPanel = {
       if (e.target.id === "closeShortcutsPanel") this.hide();
     });
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && !this.panel.classList.contains("hidden")) {
-        this.hide();
-      }
       if (
         (e.ctrlKey || e.metaKey) &&
         !this.panel.classList.contains("hidden")
