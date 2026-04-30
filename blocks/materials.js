@@ -570,7 +570,13 @@ export function defineMaterialsBlocks() {
         const rgb = flock.hexToRgb(hexColor || "#000000");
         const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
         const textColor = luminance > 0.6 ? "#000000" : "#ffffff";
-        svgRoot.style.fill = textColor;
+        const textEl = svgRoot.querySelector("text");
+        if (textEl) {
+          textEl.setAttribute("fill", textColor);
+          textEl.style.fill = textColor;
+        } else {
+          svgRoot.style.fill = textColor;
+        }
       };
 
       colorField.setValidator(function (newVal) {
