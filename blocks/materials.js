@@ -573,9 +573,9 @@ export function defineMaterialsBlocks() {
         const textEl = svgRoot.querySelector("text");
         if (textEl) {
           textEl.setAttribute("fill", textColor);
-          textEl.style.fill = textColor;
+          textEl.style.setProperty("fill", textColor, "important");
         } else {
-          svgRoot.style.fill = textColor;
+          svgRoot.style.setProperty("fill", textColor, "important");
         }
       };
 
