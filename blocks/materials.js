@@ -565,10 +565,12 @@ export function defineMaterialsBlocks() {
       const hashPrefixField = this.getField("HASH_PREFIX");
       const updateHashPrefixContrast = (hexColor) => {
         if (!hashPrefixField?.getSvgRoot) return;
+        const svgRoot = hashPrefixField.getSvgRoot();
+        if (!svgRoot?.style) return;
         const rgb = flock.hexToRgb(hexColor || "#000000");
         const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
         const textColor = luminance > 0.6 ? "#000000" : "#ffffff";
-        hashPrefixField.getSvgRoot().style.fill = textColor;
+        svgRoot.style.fill = textColor;
       };
 
       colorField.setValidator(function (newVal) {
