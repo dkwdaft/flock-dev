@@ -1608,7 +1608,7 @@ kbd {
   right: 0;
   bottom: 0;
   pointer-events: none;
-  z-index: 9999;
+  z-index: 10002;
 }
 
 .shortcuts-panel__content {
