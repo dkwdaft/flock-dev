@@ -48,7 +48,7 @@ import {
   initializeSavedLanguage,
   translate,
 } from "./translation.js";
-import "./accessibility.js";
+import { ShortcutsModal } from "./accessibility.js";
 
 function isEmbedModeEnabled() {
   const embedParam = new URLSearchParams(window.location.search).get("embed");
@@ -577,13 +577,8 @@ function initializeApp() {
           break;
 
         case "/": {
-          // Ctrl+/ - Toggle info details
           e.preventDefault();
-          const infoSummary = document.querySelector("#info-details summary");
-          if (infoSummary) {
-            infoSummary.click(); // Simulate a click to toggle details
-            infoSummary.focus(); // Move focus to the summary
-          }
+          ShortcutsModal.show();
           break;
         }
 
@@ -778,26 +773,6 @@ window.onload = async function () {
       window.loadingCode = false;
     }
   });
-
-  const infoDetails = document.getElementById("info-details");
-  if (infoDetails) {
-    infoDetails.addEventListener("toggle", function () {
-      if (this.open) {
-        setTimeout(() => {
-          const content = this.querySelector(".content");
-          if (content) {
-            content.setAttribute("tabindex", "0"); // Make it focusable
-            content.focus();
-          }
-        }, 10);
-      } else {
-        const content = this.querySelector(".content");
-        if (content) {
-          content.setAttribute("tabindex", "-1"); // Remove from tab order when closed
-        }
-      }
-    });
-  }
 
   // Initial view setup
   window.loadingCode = true;
