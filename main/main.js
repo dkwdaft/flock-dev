@@ -578,7 +578,7 @@ function initializeApp() {
 
         case "/": {
           e.preventDefault();
-          ShortcutsPanel.show();
+          ShortcutsPanel.toggle();
           break;
         }
 

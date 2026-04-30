@@ -391,6 +391,10 @@ const ShortcutsPanel = {
     this.panel.classList.add("hidden");
   },
 
+  toggle() {
+    this.panel.classList.contains("hidden") ? this.show() : this.hide();
+  },
+
   setDock(side) {
     this.dock = side;
     this.panel.classList.toggle("shortcuts-panel--left", side === "left");
