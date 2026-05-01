@@ -14,25 +14,59 @@ export const flockMovement = {
     const scene = flock.scene;
     const up = flock.BABYLON.Vector3.Up();
 
-    const capRaw = model.metadata?.physicsCapsule;
-    if (
-      !capRaw ||
-      typeof capRaw.radius !== "number" ||
-      typeof capRaw.height !== "number"
-    )
-      return;
-
     if (!model.metadata) model.metadata = {};
+    const md = model.metadata;
 
-    // --- One-time evaluate and swap for problematic capsules ---
-    if (!model.metadata._capsuleEvaluatedForLocomotion) {
-      model.metadata._capsuleEvaluatedForLocomotion = true;
+    // --- One-time locomotion collider normalization ---
+    if (!md._locomotionColliderPrepared) {
+      md._locomotionColliderPrepared = true;
 
+      const shape = model.physics?.shape;
+      const isCapsuleShape = shape instanceof flock.BABYLON.PhysicsShapeCapsule;
+
+      // Ensure we have source capsule metrics (from metadata or bbox fallback)
+      let sourceCap = md.physicsCapsule;
+      if (
+        !sourceCap ||
+        typeof sourceCap.radius !== "number" ||
+        typeof sourceCap.height !== "number"
+      ) {
+        model.computeWorldMatrix(true);
+        const bb = model.getBoundingInfo().boundingBox;
+        const localMin = bb.minimum;
+        const localMax = bb.maximum;
+
+        const height = Math.max(0.001, localMax.y - localMin.y);
+        const width = Math.max(0.001, localMax.x - localMin.x);
+        const depth = Math.max(0.001, localMax.z - localMin.z);
+        const radius = Math.min(width, depth) / 2;
+
+        const localCenter = new flock.BABYLON.Vector3(
+          (localMin.x + localMax.x) / 2,
+          (localMin.y + localMax.y) / 2,
+          (localMin.z + localMax.z) / 2,
+        );
+
+        const shrinkAmount = 0.01;
+        const adjustedHeight = Math.max(0, height - shrinkAmount);
+
+        sourceCap = {
+          radius,
+          height: adjustedHeight,
+          localCenter,
+          baseY: localCenter.y - adjustedHeight / 2,
+        };
+        md.physicsCapsule = sourceCap;
+      }
+
+      // Evaluate problem criteria (also used for non-capsule normalization path)
       const groundCheckDistanceForEval = 0.3;
       const diameterToHeightRatio =
-        capRaw.height > 0 ? (2 * capRaw.radius) / capRaw.height : Infinity;
+        sourceCap.height > 0
+          ? (2 * sourceCap.radius) / sourceCap.height
+          : Infinity;
       const probeRatio =
-        groundCheckDistanceForEval / Math.max(capRaw.height * 0.5, 0.001);
+        groundCheckDistanceForEval / Math.max(sourceCap.height * 0.5, 0.001);
 
       const reasons = [];
       if (diameterToHeightRatio > 1.1) {
@@ -40,22 +74,25 @@ export const flockMovement = {
       } else if (diameterToHeightRatio > 0.9) {
         reasons.push("sphere_like_capsule_warning");
       }
-      if (capRaw.radius > 1.0) reasons.push("radius_large_for_player");
+      if (sourceCap.radius > 1.0) reasons.push("radius_large_for_player");
       if (probeRatio < 0.35) reasons.push("ground_probe_too_short_for_capsule");
 
-      const problematic = reasons.length > 0;
+      const problematicCapsule = reasons.length > 0;
+      const mustReplaceBecauseNonCapsule = !isCapsuleShape;
+      const shouldReplace = mustReplaceBecauseNonCapsule || problematicCapsule;
 
-      if (problematic) {
-        model.metadata._originalPhysicsCapsule = { ...capRaw };
+      if (shouldReplace) {
+        md._originalPhysicsShapeType =
+          shape?.constructor?.name || "UNKNOWN_SHAPE";
+        md._originalPhysicsCapsule = { ...sourceCap };
 
-        // Fallback dimensions (character-like)
+        // Use the same fallback profile as problem-case fix
         const fallbackRadius = Math.max(
           0.25,
-          Math.min(0.5, capRaw.radius * 0.35),
+          Math.min(0.5, sourceCap.radius * 0.35),
         );
         const fallbackHeight = Math.max(1.6, fallbackRadius * 3.5);
 
-        // Apply same shrink convention as default capsule creation
         const shrinkAmount = 0.01;
         const adjustedFallbackHeight = Math.max(
           0,
@@ -66,7 +103,7 @@ export const flockMovement = {
           adjustedFallbackHeight * 0.5 - fallbackRadius,
         );
 
-        // Use bbox center for X/Z (existing project convention)
+        // X/Z from bbox center (project convention)
         model.computeWorldMatrix(true);
         const bb = model.getBoundingInfo().boundingBox;
         const localMin = bb.minimum;
@@ -79,11 +116,11 @@ export const flockMovement = {
 
         // Preserve original base alignment for Y
         const rawLocalCenter =
-          capRaw.localCenter || new flock.BABYLON.Vector3(0, 0, 0);
+          sourceCap.localCenter || new flock.BABYLON.Vector3(0, 0, 0);
         const originalBaseY =
-          typeof capRaw.baseY === "number"
-            ? capRaw.baseY
-            : rawLocalCenter.y - capRaw.height * 0.5;
+          typeof sourceCap.baseY === "number"
+            ? sourceCap.baseY
+            : rawLocalCenter.y - sourceCap.height * 0.5;
         const fallbackCenterY = originalBaseY + adjustedFallbackHeight * 0.5;
 
         const centerX = bboxCenter.x;
@@ -107,8 +144,10 @@ export const flockMovement = {
           scene,
         );
 
-        model.metadata.physicsCapsule = {
-          ...capRaw,
+        model.physics.shape = fallbackShape;
+
+        md.physicsCapsule = {
+          ...sourceCap,
           radius: fallbackRadius,
           height: adjustedFallbackHeight,
           localCenter: new flock.BABYLON.Vector3(
@@ -119,33 +158,32 @@ export const flockMovement = {
           baseY: originalBaseY,
         };
 
-        model.physics.shape = fallbackShape;
+        md._usedFallbackLocomotionCapsule = true;
+        md._capsuleProblemReasons = reasons;
 
-        model.metadata._usedFallbackLocomotionCapsule = true;
-        model.metadata._capsuleProblemReasons = reasons;
-
-        console.warn("[moveForward] Swapped to fallback locomotion capsule", {
+        console.warn("[moveForward] Locomotion capsule applied", {
           model: model.name,
+          replacedNonCapsule: mustReplaceBecauseNonCapsule,
+          problematicCapsule,
           reasons,
-          original: {
-            radius: capRaw.radius,
-            height: capRaw.height,
-            localCenter: capRaw.localCenter,
-            baseY: capRaw.baseY,
-          },
-          fallback: {
-            radius: fallbackRadius,
-            height: adjustedFallbackHeight,
-            localCenter: model.metadata.physicsCapsule.localCenter,
-            baseY: model.metadata.physicsCapsule.baseY,
-          },
+          originalShapeType: md._originalPhysicsShapeType,
+          originalCapsule: md._originalPhysicsCapsule,
+          fallbackCapsule: md.physicsCapsule,
         });
       } else {
-        model.metadata._usedFallbackLocomotionCapsule = false;
+        md._usedFallbackLocomotionCapsule = false;
       }
     }
 
-    const cap = model.metadata.physicsCapsule;
+    const cap = md.physicsCapsule;
+    if (
+      !cap ||
+      typeof cap.radius !== "number" ||
+      typeof cap.height !== "number"
+    ) {
+      return;
+    }
+
     const capsuleRadius = cap.radius;
     const capsuleHeightBottomOffset = Math.max(
       0.001,
@@ -181,7 +219,6 @@ export const flockMovement = {
     if (!physicsEngine) return;
     const havokPlugin = physicsEngine.getPhysicsPlugin();
 
-    // Use current capsule local center for query shape consistency
     const lc = cap.localCenter || flock.BABYLON.Vector3.Zero();
     const groundQuery = {
       shape: new flock.BABYLON.PhysicsShapeCapsule(
