@@ -17,6 +17,16 @@ export const flockMovement = {
     if (!model.metadata) model.metadata = {};
     const md = model.metadata;
 
+    // Heuristic character guard: never replace character colliders
+    const meshName = (model.name || "").toLowerCase();
+    const metaModelName = (md.modelName || "").toLowerCase();
+    const isCharacterMesh =
+      md.isCharacter === true ||
+      meshName.includes("character") ||
+      meshName.includes("liz") ||
+      metaModelName.includes("character") ||
+      metaModelName.includes("liz");
+
     // --- One-time locomotion collider normalization ---
     if (!md._locomotionColliderPrepared) {
       md._locomotionColliderPrepared = true;
@@ -59,7 +69,7 @@ export const flockMovement = {
         md.physicsCapsule = sourceCap;
       }
 
-      // Evaluate problem criteria (also used for non-capsule normalization path)
+      // Evaluate problem criteria
       const groundCheckDistanceForEval = 0.3;
       const diameterToHeightRatio =
         sourceCap.height > 0
@@ -79,14 +89,25 @@ export const flockMovement = {
 
       const problematicCapsule = reasons.length > 0;
       const mustReplaceBecauseNonCapsule = !isCapsuleShape;
-      const shouldReplace = mustReplaceBecauseNonCapsule || problematicCapsule;
+      const shouldReplace =
+        !isCharacterMesh && (mustReplaceBecauseNonCapsule || problematicCapsule);
+
+      /*console.warn("[moveForward] locomotion collider decision", {
+        model: model.name,
+        isCharacterMesh,
+        isCapsuleShape,
+        problematicCapsule,
+        mustReplaceBecauseNonCapsule,
+        shouldReplace,
+        reasons,
+      });*/
 
       if (shouldReplace) {
         md._originalPhysicsShapeType =
           shape?.constructor?.name || "UNKNOWN_SHAPE";
         md._originalPhysicsCapsule = { ...sourceCap };
 
-        // Use the same fallback profile as problem-case fix
+        // Fallback profile
         const fallbackRadius = Math.max(
           0.25,
           Math.min(0.5, sourceCap.radius * 0.35),
@@ -103,7 +124,7 @@ export const flockMovement = {
           adjustedFallbackHeight * 0.5 - fallbackRadius,
         );
 
-        // X/Z from bbox center (project convention)
+        // X/Z from bbox center
         model.computeWorldMatrix(true);
         const bb = model.getBoundingInfo().boundingBox;
         const localMin = bb.minimum;
@@ -161,7 +182,7 @@ export const flockMovement = {
         md._usedFallbackLocomotionCapsule = true;
         md._capsuleProblemReasons = reasons;
 
-        console.warn("[moveForward] Locomotion capsule applied", {
+        /*console.warn("[moveForward] Locomotion capsule applied", {
           model: model.name,
           replacedNonCapsule: mustReplaceBecauseNonCapsule,
           problematicCapsule,
@@ -169,7 +190,7 @@ export const flockMovement = {
           originalShapeType: md._originalPhysicsShapeType,
           originalCapsule: md._originalPhysicsCapsule,
           fallbackCapsule: md.physicsCapsule,
-        });
+        });*/
       } else {
         md._usedFallbackLocomotionCapsule = false;
       }
