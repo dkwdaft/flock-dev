@@ -56,7 +56,7 @@ export const flockMesh = {
     const capsuleBaseY = segmentStart.y - radius;
     const baseDelta = capsuleBaseY - bboxBaseY;
     if (Math.abs(baseDelta) > CAPSULE_BASE_MISMATCH_DEBUG_THRESHOLD) {
-      console.warn("[Physics Capsule Debug] Base mismatch detected", {
+      /*console.warn("[Physics Capsule Debug] Base mismatch detected", {
         meshName: mesh.name,
         meshId: mesh.id,
         bboxBaseY,
@@ -72,7 +72,7 @@ export const flockMesh = {
         rawCylinderHeight,
         cylinderHeight,
         scaling: mesh.scaling?.clone ? mesh.scaling.clone() : mesh.scaling,
-      });
+      });*/
     }
 
     let shape;
@@ -95,7 +95,7 @@ export const flockMesh = {
         scene,
       );
 
-      console.warn(
+      /*console.warn(
         "[Physics Capsule Debug] Capsule degenerated/near-degenerated; using cylinder fallback",
         {
           meshName: mesh.name,
@@ -105,7 +105,7 @@ export const flockMesh = {
           rawCylinderHeight,
           epsilon: CAPSULE_DEGENERATE_EPSILON,
         },
-      );
+      );*/
     } else {
       shape = new flock.BABYLON.PhysicsShapeCapsule(
         segmentStart,
@@ -236,7 +236,7 @@ export const flockMesh = {
         radius,
         scene,
       );
-      console.warn(
+      /*console.warn(
         "[Physics Capsule Debug] Capsule degenerated to sphere; using cylinder fallback",
         {
           meshName: mesh.name,
@@ -244,7 +244,7 @@ export const flockMesh = {
           adjustedHeight,
           radius,
         },
-      );
+      );*/
     } else {
       shape = new flock.BABYLON.PhysicsShapeCapsule(
         segmentStart,
