@@ -8,8 +8,12 @@ export function setFlockReference(ref) {
 
 export const flockMesh = {
   createCapsuleFromBoundingBox(mesh, scene) {
+    const CAPSULE_BASE_MISMATCH_DEBUG_THRESHOLD = 0.25;
+    const CAPSULE_DEGENERATE_EPSILON = 0.01;
+
     mesh.computeWorldMatrix(true);
     const boundingInfo = mesh.getBoundingInfo();
+
     // Use LOCAL bounding box coordinates
     const localMin = boundingInfo.boundingBox.minimum;
     const localMax = boundingInfo.boundingBox.maximum;
@@ -22,11 +26,14 @@ export const flockMesh = {
     const radius = Math.min(width, depth) / 2;
 
     // Shrink the capsule vertically to allow intersections
-    const shrinkAmount = 0.01; // Adjust this value as needed
+    const shrinkAmount = 0.01;
     const adjustedHeight = Math.max(0, height - shrinkAmount);
-    const cylinderHeight = Math.max(0, adjustedHeight - 2 * radius);
 
-    // Center the capsule at the bounding box center in LOCAL space
+    // Use raw height for fallback decision, clamped height for capsule segment construction
+    const rawCylinderHeight = adjustedHeight - 2 * radius;
+    const cylinderHeight = Math.max(0, rawCylinderHeight);
+
+    // Center in LOCAL space
     const localCenter = new flock.BABYLON.Vector3(
       (localMin.x + localMax.x) / 2,
       (localMin.y + localMax.y) / 2,
@@ -44,12 +51,69 @@ export const flockMesh = {
       localCenter.z,
     );
 
-    const shape = new flock.BABYLON.PhysicsShapeCapsule(
-      segmentStart,
-      segmentEnd,
-      radius,
-      scene,
-    );
+    // Debug: compare local bbox base vs resulting capsule-equivalent base
+    const bboxBaseY = localMin.y;
+    const capsuleBaseY = segmentStart.y - radius;
+    const baseDelta = capsuleBaseY - bboxBaseY;
+    if (Math.abs(baseDelta) > CAPSULE_BASE_MISMATCH_DEBUG_THRESHOLD) {
+      console.warn("[Physics Capsule Debug] Base mismatch detected", {
+        meshName: mesh.name,
+        meshId: mesh.id,
+        bboxBaseY,
+        capsuleBaseY,
+        baseDelta,
+        localMin: localMin.clone ? localMin.clone() : localMin,
+        localMax: localMax.clone ? localMax.clone() : localMax,
+        height,
+        width,
+        depth,
+        radius,
+        adjustedHeight,
+        rawCylinderHeight,
+        cylinderHeight,
+        scaling: mesh.scaling?.clone ? mesh.scaling.clone() : mesh.scaling,
+      });
+    }
+
+    let shape;
+    if (rawCylinderHeight <= CAPSULE_DEGENERATE_EPSILON) {
+      const cylinderStart = new flock.BABYLON.Vector3(
+        localCenter.x,
+        localCenter.y - adjustedHeight / 2,
+        localCenter.z,
+      );
+      const cylinderEnd = new flock.BABYLON.Vector3(
+        localCenter.x,
+        localCenter.y + adjustedHeight / 2,
+        localCenter.z,
+      );
+
+      shape = new flock.BABYLON.PhysicsShapeCylinder(
+        cylinderStart,
+        cylinderEnd,
+        radius,
+        scene,
+      );
+
+      console.warn(
+        "[Physics Capsule Debug] Capsule degenerated/near-degenerated; using cylinder fallback",
+        {
+          meshName: mesh.name,
+          meshId: mesh.id,
+          adjustedHeight,
+          radius,
+          rawCylinderHeight,
+          epsilon: CAPSULE_DEGENERATE_EPSILON,
+        },
+      );
+    } else {
+      shape = new flock.BABYLON.PhysicsShapeCapsule(
+        segmentStart,
+        segmentEnd,
+        radius,
+        scene,
+      );
+    }
 
     if (!mesh.metadata) mesh.metadata = {};
     mesh.metadata.physicsCapsule = {
@@ -154,12 +218,41 @@ export const flockMesh = {
       localCenter.z + cylinderLength / 2,
     );
 
-    const shape = new flock.BABYLON.PhysicsShapeCapsule(
-      segmentStart,
-      segmentEnd,
-      radius,
-      scene,
-    );
+    let shape;
+    if (cylinderHeight <= 0) {
+      const cylinderStart = new flock.BABYLON.Vector3(
+        localCenter.x,
+        localCenter.y - adjustedHeight / 2,
+        localCenter.z,
+      );
+      const cylinderEnd = new flock.BABYLON.Vector3(
+        localCenter.x,
+        localCenter.y + adjustedHeight / 2,
+        localCenter.z,
+      );
+      shape = new flock.BABYLON.PhysicsShapeCylinder(
+        cylinderStart,
+        cylinderEnd,
+        radius,
+        scene,
+      );
+      console.warn(
+        "[Physics Capsule Debug] Capsule degenerated to sphere; using cylinder fallback",
+        {
+          meshName: mesh.name,
+          meshId: mesh.id,
+          adjustedHeight,
+          radius,
+        },
+      );
+    } else {
+      shape = new flock.BABYLON.PhysicsShapeCapsule(
+        segmentStart,
+        segmentEnd,
+        radius,
+        scene,
+      );
+    }
 
     return shape;
   },
