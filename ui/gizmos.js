@@ -47,6 +47,13 @@ const DEFAULT_ROTATION = 0.05;
 const FAST_SCALE = 0.5;
 const DEFAULT_SCALE = 0.05;
 
+const MODEL_BLOCK_TYPES = new Set([
+  "load_model",
+  "load_multi_object",
+  "load_object",
+  "load_character",
+]);
+
 window.selectedColor = "#ffffff"; // Default color
 let colorPicker = null;
 
@@ -291,12 +298,12 @@ function attachMeshForActiveTool(pickedMesh) {
     pickedMesh = getRootMesh(pickedMesh.parent);
   }
 
-  gizmoManager.attachToMesh(pickedMesh);
-
   const blockId = meshMap[pickedMesh?.metadata?.blockKey];
   if (blockId) {
     highlightBlockById(Blockly.getMainWorkspace(), blockId);
   }
+
+  gizmoManager.attachToMesh(pickedMesh);
 
   return pickedMesh;
 }
@@ -705,6 +712,26 @@ function setBlockAxisValue(block, inputName, value) {
   }
 }
 
+// Find an existing rotate_to block in mesh's DO section without creating one.
+function findExistingRotateBlock(mesh) {
+  const block = meshMap[mesh?.metadata?.blockKey];
+  if (!block) return null;
+  const modelVariable = block.getFieldValue("ID_VAR");
+  const statementConnection = block.getInput("DO")?.connection;
+  if (!statementConnection) return null;
+  let current = statementConnection.targetBlock();
+  while (current) {
+    if (
+      current.type === "rotate_to" &&
+      current.getFieldValue("MODEL") === modelVariable
+    ) {
+      return current;
+    }
+    current = current.getNextBlock();
+  }
+  return null;
+}
+
 // Find the existing rotate_to block in mesh's DO section, or create one.
 // Returns the rotateBlock, or null if there is no associated Blockly block.
 function findOrCreateRotateBlock(mesh) {
@@ -849,6 +876,89 @@ function pickMeshFromScene(onPicked, persistent = false) {
   }, 0);
 }
 
+// Find an existing resize block in mesh's DO section without creating one.
+function findExistingResizeBlock(mesh) {
+  const block = meshMap[mesh?.metadata?.blockKey];
+  if (!block || !MODEL_BLOCK_TYPES.has(block.type)) return null;
+  const modelVariable = block.getFieldValue("ID_VAR");
+  const stmt = block.getInput("DO")?.connection?.targetBlock?.();
+  for (let cur = stmt; cur; cur = cur.getNextBlock?.()) {
+    if (
+      cur.type === "resize" &&
+      cur.getFieldValue?.("BLOCK_NAME") === modelVariable
+    ) {
+      return cur;
+    }
+  }
+  return null;
+}
+
+// Find the existing resize block in mesh's DO section, or create one.
+// Returns the resizeBlock, or null if mesh is not a model type.
+function findOrCreateResizeBlock(mesh) {
+  const block = meshMap[mesh?.metadata?.blockKey];
+  if (!block || !MODEL_BLOCK_TYPES.has(block.type)) return null;
+
+  const groupId = Blockly.utils.idGenerator.genUid();
+  Blockly.Events.setGroup(groupId);
+
+  let addedDoSection = false;
+  if (!block.getInput("DO")) {
+    block.appendStatementInput("DO").setCheck(null).appendField("");
+    addedDoSection = true;
+  }
+
+  const modelVariable = block.getFieldValue("ID_VAR");
+  const stmt = block.getInput("DO")?.connection?.targetBlock?.();
+  let resizeBlock = null;
+  for (let cur = stmt; cur; cur = cur.getNextBlock?.()) {
+    if (
+      cur.type === "resize" &&
+      cur.getFieldValue?.("BLOCK_NAME") === modelVariable
+    ) {
+      resizeBlock = cur;
+      break;
+    }
+  }
+
+  if (!resizeBlock) {
+    resizeBlock = Blockly.getMainWorkspace().newBlock("resize");
+    resizeBlock.setFieldValue(modelVariable, "BLOCK_NAME");
+    resizeBlock.initSvg();
+    resizeBlock.render();
+
+    ["X", "Y", "Z"].forEach((axis) => {
+      const input = resizeBlock.getInput(axis);
+      const shadow = Blockly.getMainWorkspace().newBlock("math_number");
+      shadow.setFieldValue("1", "NUM");
+      shadow.setShadow(true);
+      shadow.initSvg();
+      shadow.render();
+      input.connection.connect(shadow.outputConnection);
+    });
+
+    resizeBlock.render();
+
+    const doFirstBlock = block.getInput("DO").connection.targetBlock();
+    if (doFirstBlock) {
+      let tail = doFirstBlock;
+      while (tail.getNextBlock()) tail = tail.getNextBlock();
+      tail.nextConnection.connect(resizeBlock.previousConnection);
+    } else {
+      block.getInput("DO").connection.connect(resizeBlock.previousConnection);
+    }
+
+    gizmoCreatedBlocks.set(resizeBlock.id, {
+      parentId: block.id,
+      createdDoSection: addedDoSection,
+      timestamp: Date.now(),
+    });
+  }
+
+  Blockly.Events.setGroup(null);
+  return resizeBlock;
+}
+
 // Update blockly block after a scale
 function updateScaleBlock(mesh, originalBottomY = null) {
   const block = meshMap[mesh?.metadata?.blockKey];
@@ -944,64 +1054,9 @@ function updateScaleBlock(mesh, originalBottomY = null) {
       case "load_multi_object":
       case "load_object":
       case "load_character": {
-        const groupId = Blockly.utils.idGenerator.genUid();
-        Blockly.Events.setGroup(groupId);
+        const resizeBlock = findOrCreateResizeBlock(mesh);
+        if (!resizeBlock) break;
 
-        let addedDoSection = false;
-        if (!block.getInput("DO")) {
-          block.appendStatementInput("DO").setCheck(null).appendField("");
-          addedDoSection = true;
-        }
-
-        let resizeBlock = null;
-        const modelVariable = block.getFieldValue("ID_VAR");
-
-        const stmt = block.getInput("DO")?.connection?.targetBlock?.();
-        for (let cur = stmt; cur; cur = cur.getNextBlock?.()) {
-          if (
-            cur.type === "resize" &&
-            cur.getFieldValue?.("BLOCK_NAME") === modelVariable
-          ) {
-            resizeBlock = cur;
-            break;
-          }
-        }
-
-        if (!resizeBlock) {
-          resizeBlock = Blockly.getMainWorkspace().newBlock("resize");
-          resizeBlock.setFieldValue(modelVariable, "BLOCK_NAME");
-          resizeBlock.initSvg();
-          resizeBlock.render();
-
-          ["X", "Y", "Z"].forEach((axis) => {
-            const input = resizeBlock.getInput(axis);
-            const shadow = Blockly.getMainWorkspace().newBlock("math_number");
-            shadow.setFieldValue("1", "NUM");
-            shadow.setShadow(true);
-            shadow.initSvg();
-            shadow.render();
-            input.connection.connect(shadow.outputConnection);
-          });
-
-          resizeBlock.render();
-
-          const doFirstBlock = block.getInput("DO").connection.targetBlock();
-          if (doFirstBlock) {
-            let tail = doFirstBlock;
-            while (tail.getNextBlock()) tail = tail.getNextBlock();
-            tail.nextConnection.connect(resizeBlock.previousConnection);
-          } else {
-            block
-              .getInput("DO")
-              .connection.connect(resizeBlock.previousConnection);
-          }
-
-          gizmoCreatedBlocks.set(resizeBlock.id, {
-            parentId: block.id,
-            createdDoSection: addedDoSection,
-            timestamp: Date.now(),
-          });
-        }
         mesh.computeWorldMatrix(true);
         mesh.refreshBoundingInfo();
         const sizeLocalScaled = getScaledSize(mesh);
@@ -1011,8 +1066,6 @@ function updateScaleBlock(mesh, originalBottomY = null) {
           Y: sizeLocalScaled.y,
           Z: sizeLocalScaled.z,
         });
-
-        Blockly.Events.setGroup(null);
         break;
       }
     }
@@ -1321,11 +1374,17 @@ function handleScaleGizmo() {
     lastScaledMesh = mesh;
     startScaleKeyboardHandler(mesh);
 
-    const blockKey = mesh?.metadata?.blockKey;
-    const blockId = blockKey ? meshMap[blockKey] : null;
-    if (!blockId) return;
+    const creationBlock = meshMap[mesh?.metadata?.blockKey];
+    if (!creationBlock) return;
 
-    highlightBlockById(Blockly.getMainWorkspace(), blockId);
+    if (MODEL_BLOCK_TYPES.has(creationBlock.type)) {
+      const existingResize = findExistingResizeBlock(mesh);
+      if (existingResize) {
+        highlightBlockById(Blockly.getMainWorkspace(), existingResize);
+        return;
+      }
+    }
+    highlightBlockById(Blockly.getMainWorkspace(), creationBlock);
   });
 
   onExit(() => gizmoManager.onAttachedToMeshObservable.remove(scaleObs));
@@ -1397,8 +1456,19 @@ function handleScaleGizmo() {
         mesh.physics.disablePreStep = false;
       }
 
-      const block = meshMap[mesh?.metadata?.blockKey];
-      highlightBlockById(Blockly.getMainWorkspace(), block);
+      const creationBlock = meshMap[mesh?.metadata?.blockKey];
+      if (creationBlock) {
+        if (MODEL_BLOCK_TYPES.has(creationBlock.type)) {
+          const resizeBlock = findOrCreateResizeBlock(mesh);
+          if (resizeBlock) {
+            highlightBlockById(Blockly.getMainWorkspace(), resizeBlock);
+          } else {
+            highlightBlockById(Blockly.getMainWorkspace(), creationBlock);
+          }
+        } else {
+          highlightBlockById(Blockly.getMainWorkspace(), creationBlock);
+        }
+      }
     });
 
   onExit(() =>
@@ -1457,11 +1527,14 @@ function handleRotationGizmo() {
 
     startRotateKeyboardHandler(mesh);
 
-    const blockKey = mesh?.metadata?.blockKey;
-    const blockId = blockKey ? meshMap[blockKey] : null;
-    if (!blockId) return;
-
-    highlightBlockById(Blockly.getMainWorkspace(), blockId);
+    const existingRotateBlock = findExistingRotateBlock(mesh);
+    if (existingRotateBlock) {
+      highlightBlockById(Blockly.getMainWorkspace(), existingRotateBlock);
+    } else {
+      const blockKey = mesh?.metadata?.blockKey;
+      const creationBlock = blockKey ? meshMap[blockKey] : null;
+      if (creationBlock) highlightBlockById(Blockly.getMainWorkspace(), creationBlock);
+    }
   });
 
   onExit(() => gizmoManager.onAttachedToMeshObservable.remove(rotateObs));
@@ -1491,6 +1564,11 @@ function handleRotationGizmo() {
     gizmoManager.gizmos.rotationGizmo.onDragStartObservable.add(() => {
       let mesh = gizmoManager.attachedMesh;
       if (!mesh) return;
+
+      const rotateBlock = findOrCreateRotateBlock(mesh);
+      if (rotateBlock) {
+        highlightBlockById(Blockly.getMainWorkspace(), rotateBlock);
+      }
 
       if (!mesh.physics) return;
 
