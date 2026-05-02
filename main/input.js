@@ -66,13 +66,6 @@ export function setupInput() {
         .querySelectorAll("#gizmoButtons button, #gizmoButtons input")
         .forEach(pushUnique);
 
-      // 3) Info panel
-      pushUnique(document.querySelector("#info-details summary"));
-      const infoDetails = document.getElementById("info-details");
-      if (infoDetails && infoDetails.open) {
-        pushUnique(infoDetails.querySelector(".content"));
-      }
-
       // 4) Logo link + resizer
       pushUnique(document.querySelector("#info-panel-link"));
       pushUnique(document.querySelector("#resizer"));
@@ -198,13 +191,6 @@ export function setupInput() {
       ) {
         // Let custom management handle this - will go to next UI element
       }
-      // If we're on the summary and details is open, let browser handle the Tab into content
-      else if (
-        activeElement.matches("#info-details summary") &&
-        detailsElement.open
-      ) {
-        return; // Let browser handle tab into details content
-      }
       // If we're anywhere inside open details content, let browser handle it
       else if (activeElement.closest("#info-details") && detailsElement.open) {
         return; // Let browser handle navigation within details
@@ -302,7 +288,11 @@ export function setupInput() {
 
   function handleCanvasKeyboard(e) {
     // Handle Ctrl+Z for undo when canvas is focused
-    if (e.ctrlKey && e.key.toLowerCase() === "z" && !e.shiftKey) {
+    if (
+      (e.ctrlKey || e.metaKey) &&
+      e.key.toLowerCase() === "z" &&
+      !e.shiftKey
+    ) {
       e.preventDefault();
       const workspace = window.mainWorkspace || Blockly.getMainWorkspace();
       if (workspace) {
@@ -314,7 +304,7 @@ export function setupInput() {
 
     // Handle Ctrl+Shift+Z or Ctrl+Y for redo when canvas is focused
     if (
-      (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "z") ||
+      ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "z") ||
       (e.ctrlKey && e.key.toLowerCase() === "y")
     ) {
       e.preventDefault();

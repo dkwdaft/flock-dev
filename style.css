@@ -259,7 +259,7 @@
 }
 
 #info-panel {
-  margin-top: 15px;
+  margin-top: 25px;
   margin-left: 10px;
   margin-right: 10px;
 }
@@ -1493,7 +1493,6 @@ body.color-picker-open #renderCanvas {
 }
 
 /* Area Menu Styles */
-
 #area-menu-overlay {
   position: fixed;
   top: 0;
@@ -1538,4 +1537,95 @@ body.color-picker-open #renderCanvas {
   background: rgba(128, 128, 128, 0.15);
   pointer-events: none; /* Let clicks pass through */
   z-index: 10000;
+}
+
+/* Gizmo menu overlay */
+#gizmo-menu-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 10000;
+  pointer-events: none;
+}
+
+.gizmo-key-badge {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  color: #000;
+  border: 1px solid #aaa;
+  border-radius: 4px;
+  box-shadow: 0 2px 0 #888;
+  padding: 2px 6px;
+  font-size: 13px;
+  font-weight: bold;
+  font-family: monospace;
+  pointer-events: none;
+  z-index: 10001;
+  min-width: 10px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+/* Styles for keyboard shortcuts panel */
+#shortcuts-table {
+  font-size: 1.2em;
+  width: 100%;
+  table-layout: fixed;
+}
+
+#shortcuts-table td:first-child {
+  width: 70%;
+}
+
+#shortcuts-table td {
+  padding: 0.5em;
+  vertical-align: top;
+  line-height: 1.5em;
+}
+
+#shortcuts-table th {
+  text-align: left;
+  padding-top: 1em;
+  font-size: 1.2em;
+}
+
+kbd {
+  background-color: var(--color-bg);
+  border: 1px solid currentcolor;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 1.2em;
+}
+
+/* Shortcuts panel — floats over UI, pointer events pass through the wrapper */
+.shortcuts-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 10002;
+}
+
+.shortcuts-panel__content {
+  position: absolute;
+  pointer-events: auto;
+  top: 0;
+  bottom: 0;
+  background-color: var(--color-bg);
+  padding: 1.5em;
+  width: min(300px, 100%);
+  overflow-y: auto;
+}
+
+.shortcuts-panel--left .shortcuts-panel__content {
+  left: 0;
+}
+
+.shortcuts-panel--right .shortcuts-panel__content {
+  right: 0;
 }
