@@ -524,17 +524,17 @@ export function registerSceneGenerators(javascriptGenerator) {
       Blockly.Names.NameType.VARIABLE,
     );
 
-    const emitterMesh = javascriptGenerator.nameDB_.getName(
-      block.getFieldValue("EMITTER_MESH"),
-      Blockly.Names.NameType.VARIABLE,
-    );
+    const {
+      generatedName: emitterMesh,
+      userVariableName: emitterMeshName,
+    } = getVariableInfo(block, "EMITTER_MESH");
 
     const shape = block.getFieldValue("SHAPE");
     const gravity = block.getFieldValue("GRAVITY") === "TRUE";
 
     const options = `
             {
-                  emitterMesh: ${emitterMesh},
+                  emitterMesh: "${emitterMeshName}",
                   emitRate: ${emitRate},
                   colors: {
                     start: ${startColor},
