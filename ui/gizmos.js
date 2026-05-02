@@ -623,7 +623,7 @@ function startRotateKeyboardHandler(mesh) {
   stopAxisKeyboard?.();
   stopAxisKeyboard = null;
   setTimeout(() => {
-    const touchedAxes = { x: false, y: false, z: false };
+    const rotateBlock = findOrCreateRotateBlock(mesh);
 
     stopAxisKeyboard = createAxisKeyboardHandler({
       onMove: (dx, dy, dz) => {
@@ -647,23 +647,16 @@ function startRotateKeyboardHandler(mesh) {
             mesh.rotationQuaternion,
           );
         }
-        if (dx !== 0) touchedAxes.x = true;
-        if (dy !== 0) touchedAxes.y = true;
-        if (dz !== 0) touchedAxes.z = true;
+        if (rotateBlock) {
+          const rot = getMeshRotationInDegrees(mesh);
+          setBlockXYZ(rotateBlock, rot.x, rot.y, rot.z);
+        }
       },
       onConfirm: () => {
-        const filter = touchedAxes.x || touchedAxes.y || touchedAxes.z
-          ? touchedAxes
-          : null;
-        updateRotationBlock(mesh, filter);
         exitGizmoState();
         document.getElementById("rotationButton")?.focus();
       },
       onCancel: () => {
-        const filter = touchedAxes.x || touchedAxes.y || touchedAxes.z
-          ? touchedAxes
-          : null;
-        updateRotationBlock(mesh, filter);
         exitGizmoState();
         gizmoManager.attachToMesh(null);
         document.getElementById("rotationButton")?.focus();
@@ -686,14 +679,13 @@ function startScaleKeyboardHandler(mesh) {
         mesh.scaling.y = Math.max(0.01, mesh.scaling.y + dy);
         mesh.scaling.z = Math.max(0.01, mesh.scaling.z + dz);
         flock.updatePhysics(mesh);
+        updateScaleBlock(mesh);
       },
       onConfirm: () => {
-        updateScaleBlock(mesh);
         exitGizmoState();
         document.getElementById("scaleButton")?.focus();
       },
       onCancel: () => {
-        updateScaleBlock(mesh);
         exitGizmoState();
         gizmoManager.attachToMesh(null);
         document.getElementById("scaleButton")?.focus();
@@ -713,11 +705,11 @@ function setBlockAxisValue(block, inputName, value) {
   }
 }
 
-// Update the blockly block after a rotation.
-// axisFilter: optional { x, y, z } booleans — only those axes are written.
-function updateRotationBlock(mesh, axisFilter = null) {
+// Find the existing rotate_to block in mesh's DO section, or create one.
+// Returns the rotateBlock, or null if there is no associated Blockly block.
+function findOrCreateRotateBlock(mesh) {
   const block = meshMap[mesh?.metadata?.blockKey];
-  if (!block) return;
+  if (!block) return null;
 
   const groupId = Blockly.utils.idGenerator.genUid();
   Blockly.Events.setGroup(groupId);
@@ -777,6 +769,19 @@ function updateRotationBlock(mesh, axisFilter = null) {
       timestamp: Date.now(),
     });
   }
+
+  Blockly.Events.setGroup(null);
+  return rotateBlock;
+}
+
+// Update the blockly block after a rotation.
+// axisFilter: optional { x, y, z } booleans — only those axes are written.
+function updateRotationBlock(mesh, axisFilter = null) {
+  const rotateBlock = findOrCreateRotateBlock(mesh);
+  if (!rotateBlock) return;
+
+  const groupId = Blockly.utils.idGenerator.genUid();
+  Blockly.Events.setGroup(groupId);
 
   const currentRotation = getMeshRotationInDegrees(mesh);
   if (axisFilter) {
