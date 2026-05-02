@@ -152,6 +152,8 @@ export default {
     "scivola %1 a x %2 y %3 z %4 in %5 secondi \n%6 ritorna? %7 ripeti? %8 %9",
   glide_to_object:
     "scivola %1 verso %2 in %6 secondi\noffset x: %3 y: %4 z: %5\n%7 ritorna? %8 ripeti? %9 %10",
+  glide_to_axis:
+    "scivola %1 %2 %3 in %4 secondi\n%5 ritorna? %6 ripeti? %7 %8",
   rotate_anim:
     "ruota %1 a x %2 y %3 z %4 in %5 ms\n%6 inverti? %7 ripeti? %8  %9",
   rotate_anim_seconds:
@@ -392,6 +394,8 @@ export default {
     "Scivola a una posizione in un tempo dato con opzioni di inversione, loop ed easing.",
   glide_to_object_tooltip:
     "Scivola verso la posizione di un altro oggetto con offset x/y/z opzionali (0 predefinito) e opzioni di inversione, loop ed easing.",
+  glide_to_axis_tooltip:
+    "Scivola lungo un asse (X, Y o Z) verso un valore obiettivo. Gli altri due assi sono fissati alla posizione attuale dell'oggetto (con supporto ancoraggio). Stesse opzioni del blocco glide standard.",
   rotate_anim_tooltip:
     "Ruota un oggetto ad angoli specificati in un intervallo, con opzioni di inversione, loop ed easing.",
   rotate_anim_seconds_tooltip:

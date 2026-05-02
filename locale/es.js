@@ -147,6 +147,8 @@ export default {
     "deslizar %1 a x %2 y %3 z %4 en %5 segundos \n%6 ¿regresar? %7 ¿repetir? %8 %9", // human
   glide_to_object:
     "deslizar %1 a %2 en %6 segundos\ndesplazamiento x: %3 y: %4 z: %5\n%7 ¿regresar? %8 ¿repetir? %9 %10", // human
+  glide_to_axis:
+    "deslizar %1 %2 %3 en %4 segundos\n%5 ¿regresar? %6 ¿repetir? %7 %8", // human
   rotate_anim:
     "rotar %1 a x %2 y %3 z %4 en %5 ms\n%6 ¿invertir? %7 ¿repetir? %8 %9", // human
   rotate_anim_seconds:
@@ -390,6 +392,8 @@ export default {
     "Deslízate a una posición especificada durante una duración, con opciones para inversión, bucle y facilidando.", // human
   glide_to_object_tooltip:
     "Deslízate a la posición de otro objeto con desplazamientos x/y/z opcionales (0 por defecto) y opciones de invertir, bucle y facilidando.", // human
+  glide_to_axis_tooltip:
+    "Desliza a lo largo de un eje (X, Y o Z) hasta un valor objetivo. Los otros dos ejes se fijan a la posición actual del objeto (con soporte de anclaje). Mismas opciones que el bloque de deslizamiento estándar.", // human
   rotate_anim_tooltip:
     "Rota un objeto a ángulos determinados durante una duración, con opciones de inversión, bucle y facilidando.", // human
   rotate_anim_seconds_tooltip:

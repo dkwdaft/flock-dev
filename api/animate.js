@@ -297,9 +297,12 @@ export const flockAnimate = {
       Number.isFinite(Number(duration)) && Number(duration) > 0
         ? Number(duration)
         : 1;
-    x = Number.isFinite(Number(x)) ? Number(x) : 0;
-    z = Number.isFinite(Number(z)) ? Number(z) : 0;
-    if (y !== "__ground__level__") {
+    const keepX = x === "__current__";
+    const keepY = y === "__current__";
+    const keepZ = z === "__current__";
+    if (!keepX) x = Number.isFinite(Number(x)) ? Number(x) : 0;
+    if (!keepZ) z = Number.isFinite(Number(z)) ? Number(z) : 0;
+    if (!keepY && y !== "__ground__level__") {
       y = Number.isFinite(Number(y)) ? Number(y) : 0;
     }
 
@@ -333,6 +336,9 @@ export const flockAnimate = {
       }
 
       const startAnchor = flock._getAnchor(mesh);
+      if (keepX) x = startAnchor.x;
+      if (keepY) y = startAnchor.y;
+      if (keepZ) z = startAnchor.z;
       const targetAnchor = new flock.BABYLON.Vector3(x, y, z);
       const anchorDelta = targetAnchor.subtract(
         new flock.BABYLON.Vector3(startAnchor.x, startAnchor.y, startAnchor.z),
@@ -460,6 +466,38 @@ export const flockAnimate = {
       x: baseX + worldOffsetX,
       y: baseY + worldOffsetY,
       z: baseZ + worldOffsetZ,
+      duration,
+      reverse,
+      loop,
+      easing,
+    });
+  },
+  async glideDirection(
+    meshName,
+    {
+      direction = "forward",
+      distance = 1,
+      duration = 1,
+      reverse = false,
+      loop = false,
+      easing = "Linear",
+    } = {},
+  ) {
+    const mesh = await flock.whenModelReady(meshName);
+    if (!mesh) return;
+
+    const anchor = flock._getAnchor(mesh);
+    mesh.computeWorldMatrix(true);
+
+    let dir;
+    if (direction === "forward") dir = mesh.forward.negate();
+    else if (direction === "sideways") dir = mesh.right.negate();
+    else dir = mesh.up;
+
+    await this.glideTo(meshName, {
+      x: anchor.x + distance * dir.x,
+      y: anchor.y + distance * dir.y,
+      z: anchor.z + distance * dir.z,
       duration,
       reverse,
       loop,
