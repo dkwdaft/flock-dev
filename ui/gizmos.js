@@ -631,6 +631,13 @@ function startRotateKeyboardHandler(mesh) {
   stopAxisKeyboard = null;
   setTimeout(() => {
     const rotateBlock = findOrCreateRotateBlock(mesh);
+    if (rotateBlock) {
+      highlightBlockById(Blockly.getMainWorkspace(), rotateBlock);
+    } else {
+      const blockKey = mesh?.metadata?.blockKey;
+      const creationBlock = blockKey ? meshMap[blockKey] : null;
+      if (creationBlock) highlightBlockById(Blockly.getMainWorkspace(), creationBlock);
+    }
 
     stopAxisKeyboard = createAxisKeyboardHandler({
       onMove: (dx, dy, dz) => {
@@ -680,6 +687,19 @@ function startScaleKeyboardHandler(mesh) {
   stopAxisKeyboard?.();
   stopAxisKeyboard = null;
   setTimeout(() => {
+    const creationBlock = meshMap[mesh?.metadata?.blockKey];
+    if (creationBlock) {
+      if (MODEL_BLOCK_TYPES.has(creationBlock.type)) {
+        const existingResize = findExistingResizeBlock(mesh);
+        highlightBlockById(
+          Blockly.getMainWorkspace(),
+          existingResize ?? creationBlock,
+        );
+      } else {
+        highlightBlockById(Blockly.getMainWorkspace(), creationBlock);
+      }
+    }
+
     stopAxisKeyboard = createAxisKeyboardHandler({
       onMove: (dx, dy, dz) => {
         mesh.scaling.x = Math.max(0.01, mesh.scaling.x + dx);
@@ -1373,18 +1393,6 @@ function handleScaleGizmo() {
 
     lastScaledMesh = mesh;
     startScaleKeyboardHandler(mesh);
-
-    const creationBlock = meshMap[mesh?.metadata?.blockKey];
-    if (!creationBlock) return;
-
-    if (MODEL_BLOCK_TYPES.has(creationBlock.type)) {
-      const existingResize = findExistingResizeBlock(mesh);
-      if (existingResize) {
-        highlightBlockById(Blockly.getMainWorkspace(), existingResize);
-        return;
-      }
-    }
-    highlightBlockById(Blockly.getMainWorkspace(), creationBlock);
   });
 
   onExit(() => gizmoManager.onAttachedToMeshObservable.remove(scaleObs));
@@ -1526,15 +1534,6 @@ function handleRotationGizmo() {
     lastRotatedMesh = mesh;
 
     startRotateKeyboardHandler(mesh);
-
-    const existingRotateBlock = findExistingRotateBlock(mesh);
-    if (existingRotateBlock) {
-      highlightBlockById(Blockly.getMainWorkspace(), existingRotateBlock);
-    } else {
-      const blockKey = mesh?.metadata?.blockKey;
-      const creationBlock = blockKey ? meshMap[blockKey] : null;
-      if (creationBlock) highlightBlockById(Blockly.getMainWorkspace(), creationBlock);
-    }
   });
 
   onExit(() => gizmoManager.onAttachedToMeshObservable.remove(rotateObs));
