@@ -623,23 +623,47 @@ function startRotateKeyboardHandler(mesh) {
   stopAxisKeyboard?.();
   stopAxisKeyboard = null;
   setTimeout(() => {
+    const touchedAxes = { x: false, y: false, z: false };
+
     stopAxisKeyboard = createAxisKeyboardHandler({
       onMove: (dx, dy, dz) => {
-        if (mesh.rotationQuaternion) {
-          mesh.rotation = mesh.rotationQuaternion.toEulerAngles();
-          mesh.rotationQuaternion = null;
+        if (!mesh.rotationQuaternion) {
+          mesh.rotationQuaternion = flock.BABYLON.Quaternion.FromEulerAngles(
+            mesh.rotation.x,
+            mesh.rotation.y,
+            mesh.rotation.z,
+          );
         }
-        mesh.rotation.x += dx;
-        mesh.rotation.y += dy;
-        mesh.rotation.z += dz;
+        const delta = flock.BABYLON.Quaternion.RotationYawPitchRoll(
+          dy,
+          dx,
+          dz,
+        );
+        mesh.rotationQuaternion.multiplyInPlace(delta).normalize();
+        if (mesh.physics) {
+          mesh.physics.disablePreStep = false;
+          mesh.physics.setTargetTransform(
+            mesh.absolutePosition,
+            mesh.rotationQuaternion,
+          );
+        }
+        if (dx !== 0) touchedAxes.x = true;
+        if (dy !== 0) touchedAxes.y = true;
+        if (dz !== 0) touchedAxes.z = true;
       },
       onConfirm: () => {
-        updateRotationBlock(mesh); // Update/create blockly block
+        const filter = touchedAxes.x || touchedAxes.y || touchedAxes.z
+          ? touchedAxes
+          : null;
+        updateRotationBlock(mesh, filter);
         exitGizmoState();
         document.getElementById("rotationButton")?.focus();
       },
       onCancel: () => {
-        updateRotationBlock(mesh); // Update/create blockly block
+        const filter = touchedAxes.x || touchedAxes.y || touchedAxes.z
+          ? touchedAxes
+          : null;
+        updateRotationBlock(mesh, filter);
         exitGizmoState();
         gizmoManager.attachToMesh(null);
         document.getElementById("rotationButton")?.focus();
@@ -680,8 +704,18 @@ function startScaleKeyboardHandler(mesh) {
   }, 0);
 }
 
-// Update the blockly block after a rotation
-function updateRotationBlock(mesh) {
+// Set a single numeric axis input on a block (e.g. "X", "Y", or "Z")
+function setBlockAxisValue(block, inputName, value) {
+  const input = block.getInput(inputName);
+  const connected = input?.connection?.targetBlock();
+  if (connected) {
+    connected.setFieldValue(String(Math.round(value * 10) / 10), "NUM");
+  }
+}
+
+// Update the blockly block after a rotation.
+// axisFilter: optional { x, y, z } booleans — only those axes are written.
+function updateRotationBlock(mesh, axisFilter = null) {
   const block = meshMap[mesh?.metadata?.blockKey];
   if (!block) return;
 
@@ -719,7 +753,7 @@ function updateRotationBlock(mesh) {
     ["X", "Y", "Z"].forEach((axis) => {
       const input = rotateBlock.getInput(axis);
       const shadow = Blockly.getMainWorkspace().newBlock("math_number");
-      shadow.setFieldValue("1", "NUM");
+      shadow.setFieldValue("0", "NUM");
       shadow.setShadow(true);
       shadow.initSvg();
       shadow.render();
@@ -745,12 +779,18 @@ function updateRotationBlock(mesh) {
   }
 
   const currentRotation = getMeshRotationInDegrees(mesh);
-  setBlockXYZ(
-    rotateBlock,
-    currentRotation.x,
-    currentRotation.y,
-    currentRotation.z,
-  );
+  if (axisFilter) {
+    if (axisFilter.x) setBlockAxisValue(rotateBlock, "X", currentRotation.x);
+    if (axisFilter.y) setBlockAxisValue(rotateBlock, "Y", currentRotation.y);
+    if (axisFilter.z) setBlockAxisValue(rotateBlock, "Z", currentRotation.z);
+  } else {
+    setBlockXYZ(
+      rotateBlock,
+      currentRotation.x,
+      currentRotation.y,
+      currentRotation.z,
+    );
+  }
   Blockly.Events.setGroup(null);
 }
 
@@ -1421,6 +1461,27 @@ function handleRotationGizmo() {
 
   onExit(() => gizmoManager.onAttachedToMeshObservable.remove(rotateObs));
 
+  // Track which axis ring is being dragged so only that axis is written to the block
+  let draggedAxis = null;
+  const rg = gizmoManager.gizmos.rotationGizmo;
+  const axisDragObservers = [];
+  [
+    { gizmo: rg?.xGizmo, axis: "x" },
+    { gizmo: rg?.yGizmo, axis: "y" },
+    { gizmo: rg?.zGizmo, axis: "z" },
+  ].forEach(({ gizmo, axis }) => {
+    if (!gizmo?.dragBehavior) return;
+    const obs = gizmo.dragBehavior.onDragStartObservable.add(() => {
+      draggedAxis = axis;
+    });
+    axisDragObservers.push({ behavior: gizmo.dragBehavior, obs });
+  });
+  onExit(() => {
+    axisDragObservers.forEach(({ behavior, obs }) =>
+      behavior.onDragStartObservable.remove(obs),
+    );
+  });
+
   const rotDragStart =
     gizmoManager.gizmos.rotationGizmo.onDragStartObservable.add(() => {
       let mesh = gizmoManager.attachedMesh;
@@ -1461,7 +1522,12 @@ function handleRotationGizmo() {
         mesh.physics.setMotionType(mesh.savedMotionType);
       }
 
-      updateRotationBlock(mesh); // Update blockly block
+      // Only update the axis that was dragged; fall back to all axes if unknown
+      const axisFilter = draggedAxis
+        ? { x: draggedAxis === "x", y: draggedAxis === "y", z: draggedAxis === "z" }
+        : null;
+      draggedAxis = null;
+      updateRotationBlock(mesh, axisFilter);
     },
   );
 
