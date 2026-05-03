@@ -1467,11 +1467,12 @@ export const flockAnimate = {
       return retargetedGroup;
     }
 
+    const previousGroup = mesh._currentAnimGroup;
     const outgoingGroup =
-      mesh._currentAnimGroup &&
-      mesh._currentAnimGroup !== retargetedGroup &&
-      mesh._currentAnimGroup.isPlaying
-        ? mesh._currentAnimGroup
+      previousGroup &&
+      previousGroup !== retargetedGroup &&
+      previousGroup.isPlaying
+        ? previousGroup
         : null;
 
     mesh._currentAnimGroup = retargetedGroup;
@@ -1482,11 +1483,22 @@ export const flockAnimate = {
 
     updateCapsuleShapeForAnimation(physicsMesh, animationName);
 
-    if (outgoingGroup && blendDuration > 0) {
+    const shouldBlend = blendDuration > 0 && (outgoingGroup !== null || !previousGroup);
+    if (shouldBlend) {
+      let effectiveOutgoing = outgoingGroup;
+      if (!effectiveOutgoing) {
+        const snap = flock._createCurrentPoseGroup(mesh, scene);
+        if (snap) {
+          snap._isSnapshot = true;
+          snap.start(true, 1.0, 0, 1, false);
+          snap.setWeightForAllAnimatables(1);
+          effectiveOutgoing = snap;
+        }
+      }
       retargetedGroup.stop();
       retargetedGroup.reset();
       retargetedGroup.start(loop);
-      flock._blendAnimationGroups(outgoingGroup, retargetedGroup, blendDuration, scene, mesh);
+      flock._blendAnimationGroups(effectiveOutgoing, retargetedGroup, blendDuration, scene, mesh);
     } else {
       if (outgoingGroup) {
         outgoingGroup.stop();
@@ -1586,14 +1598,56 @@ export const flockAnimate = {
     }
   },
 
+  _createCurrentPoseGroup(skeletonMesh, scene) {
+    const skeleton = skeletonMesh.skeleton;
+    if (!skeleton) return null;
+
+    const group = new flock.BABYLON.AnimationGroup("__pose_snapshot__", scene);
+
+    for (const bone of skeleton.bones) {
+      const tn = bone._linkedTransformNode;
+      if (!tn) continue;
+
+      if (tn.rotationQuaternion) {
+        const q = tn.rotationQuaternion.clone();
+        const anim = new flock.BABYLON.Animation(
+          `__pose_rot_${bone.name}`, "rotationQuaternion", 30,
+          flock.BABYLON.Animation.ANIMATIONTYPE_QUATERNION,
+          flock.BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT,
+        );
+        anim.setKeys([{ frame: 0, value: q }, { frame: 1, value: q }]);
+        group.addTargetedAnimation(anim, tn);
+      }
+
+      {
+        const p = tn.position.clone();
+        const anim = new flock.BABYLON.Animation(
+          `__pose_pos_${bone.name}`, "position", 30,
+          flock.BABYLON.Animation.ANIMATIONTYPE_VECTOR3,
+          flock.BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT,
+        );
+        anim.setKeys([{ frame: 0, value: p }, { frame: 1, value: p }]);
+        group.addTargetedAnimation(anim, tn);
+      }
+    }
+
+    if (group.targetedAnimations.length === 0) {
+      group.dispose();
+      return null;
+    }
+
+    return group;
+  },
+
   _blendAnimationGroups(outgoingGroup, incomingGroup, blendDuration, scene, mesh, onComplete) {
-    if (!outgoingGroup || !incomingGroup || blendDuration <= 0) return;
+    if (!incomingGroup || blendDuration <= 0) return;
 
     if (mesh && mesh._activeBlend) {
       const prev = mesh._activeBlend;
       scene.onBeforeRenderObservable.remove(prev.observer);
-      if (prev.outgoingGroup !== incomingGroup) {
+      if (prev.outgoingGroup && prev.outgoingGroup !== incomingGroup) {
         prev.outgoingGroup.stop();
+        if (prev.outgoingGroup._isSnapshot) prev.outgoingGroup.dispose();
       }
       if (prev.incomingGroup !== incomingGroup) {
         prev.incomingGroup.setWeightForAllAnimatables(1);
@@ -1608,11 +1662,14 @@ export const flockAnimate = {
       elapsed += dt;
       const t = Math.min(elapsed / blendDuration, 1);
       incomingGroup.setWeightForAllAnimatables(t);
-      outgoingGroup.setWeightForAllAnimatables(1 - t);
+      if (outgoingGroup) outgoingGroup.setWeightForAllAnimatables(1 - t);
       if (t >= 1) {
         scene.onBeforeRenderObservable.remove(observer);
         if (mesh) mesh._activeBlend = null;
-        outgoingGroup.stop();
+        if (outgoingGroup) {
+          outgoingGroup.stop();
+          if (outgoingGroup._isSnapshot) outgoingGroup.dispose();
+        }
         incomingGroup.setWeightForAllAnimatables(1);
         if (onComplete) onComplete();
       }
@@ -1741,14 +1798,29 @@ export const flockAnimate = {
       flock.stopAnimationsTargetingMesh(scene, rootMesh);
     }
 
+    const previousGroup = rootMesh.animationGroups[0] ?? null;
     const outgoingGroup =
-      rootMesh.animationGroups[0] &&
-      rootMesh.animationGroups[0] !== targetAnimationGroup &&
-      rootMesh.animationGroups[0].isPlaying
-        ? rootMesh.animationGroups[0]
+      previousGroup &&
+      previousGroup !== targetAnimationGroup &&
+      previousGroup.isPlaying
+        ? previousGroup
         : null;
 
-    if (outgoingGroup && blendDuration > 0) {
+    const shouldBlend = blendDuration > 0 && (outgoingGroup !== null || !previousGroup);
+    if (shouldBlend) {
+      let effectiveOutgoing = outgoingGroup;
+      if (!effectiveOutgoing) {
+        const skeletonMesh = findMeshWithSkeleton(rootMesh);
+        if (skeletonMesh) {
+          const snap = flock._createCurrentPoseGroup(skeletonMesh, scene);
+          if (snap) {
+            snap._isSnapshot = true;
+            snap.start(true, 1.0, 0, 1, false);
+            snap.setWeightForAllAnimatables(1);
+            effectiveOutgoing = snap;
+          }
+        }
+      }
       rootMesh.animationGroups[0] = targetAnimationGroup;
       targetAnimationGroup.reset();
       targetAnimationGroup.stop();
@@ -1759,7 +1831,7 @@ export const flockAnimate = {
         targetAnimationGroup.to,
         false,
       );
-      flock._blendAnimationGroups(outgoingGroup, targetAnimationGroup, blendDuration, scene, rootMesh);
+      flock._blendAnimationGroups(effectiveOutgoing, targetAnimationGroup, blendDuration, scene, rootMesh);
     } else {
       if (outgoingGroup) {
         flock.stopAnimationsTargetingMesh(scene, rootMesh);
