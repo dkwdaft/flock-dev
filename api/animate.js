@@ -100,7 +100,7 @@ const updateCapsuleShapeForAnimation = (physicsMesh, animationName) => {
 export const flockAnimate = {
   async playAnimation(
     meshName,
-    { animationName, loop = false, restart = true } = {},
+    { animationName, loop = false, restart = true, blendDuration = 0.3 } = {},
   ) {
     return new Promise((resolve) => {
       flock.whenModelReady(meshName, async (mesh) => {
@@ -116,18 +116,21 @@ export const flockAnimate = {
             animationName,
             loop,
             restart,
+            blendDuration,
           });
         } else if (flock.separateAnimations) {
           await flock._playAnimationLoad(meshName, {
             animationName,
             loop,
             restart,
+            blendDuration,
           });
         } else {
           await flock._playAnimationModel(meshName, {
             animationName,
             loop,
             restart,
+            blendDuration,
           });
         }
         resolve();
@@ -136,7 +139,7 @@ export const flockAnimate = {
   },
   switchAnimation(
     meshName,
-    { animationName, loop = true, restart = false } = {},
+    { animationName, loop = true, restart = false, blendDuration = 0.3 } = {},
   ) {
     return new Promise((resolve) => {
       flock.whenModelReady(meshName, async (mesh) => {
@@ -147,6 +150,8 @@ export const flockAnimate = {
             animationName,
             loop,
             restart,
+            true,
+            blendDuration,
           ),
         );
         resolve();
@@ -1347,6 +1352,7 @@ export const flockAnimate = {
     loop = true,
     restart = false,
     play = true,
+    blendDuration = 0.3,
   ) {
     const findMeshWithSkeleton = (rootMesh) => {
       if (rootMesh?.skeleton) return rootMesh;
@@ -1461,14 +1467,12 @@ export const flockAnimate = {
       return retargetedGroup;
     }
 
-    if (
+    const outgoingGroup =
       mesh._currentAnimGroup &&
       mesh._currentAnimGroup !== retargetedGroup &&
       mesh._currentAnimGroup.isPlaying
-    ) {
-      mesh._currentAnimGroup.stop();
-      mesh._currentAnimGroup = null;
-    }
+        ? mesh._currentAnimGroup
+        : null;
 
     mesh._currentAnimGroup = retargetedGroup;
     mesh.metadata.currentAnimationName = animationName;
@@ -1478,10 +1482,21 @@ export const flockAnimate = {
 
     updateCapsuleShapeForAnimation(physicsMesh, animationName);
 
-    if (!retargetedGroup.isPlaying || restart) {
+    if (outgoingGroup && blendDuration > 0) {
       retargetedGroup.stop();
       retargetedGroup.reset();
       retargetedGroup.start(loop);
+      flock._blendAnimationGroups(outgoingGroup, retargetedGroup, blendDuration, scene, mesh);
+    } else {
+      if (outgoingGroup) {
+        outgoingGroup.stop();
+      }
+      if (!retargetedGroup.isPlaying || restart) {
+        retargetedGroup.stop();
+        retargetedGroup.reset();
+        retargetedGroup.start(loop);
+        retargetedGroup.setWeightForAllAnimatables(1);
+      }
     }
 
     return retargetedGroup;
@@ -1489,7 +1504,7 @@ export const flockAnimate = {
 
   async _playAnimationLoad(
     meshName,
-    { animationName, loop = false, restart = true } = {},
+    { animationName, loop = false, restart = true, blendDuration = 0.3 } = {},
   ) {
     if (!animationName) {
       console.warn(
@@ -1509,6 +1524,8 @@ export const flockAnimate = {
       animationName,
       loop,
       restart,
+      true,
+      blendDuration,
     );
     if (!animGroup) {
       console.warn(
@@ -1534,6 +1551,7 @@ export const flockAnimate = {
     loop = true,
     restart = false,
     play = true,
+    blendDuration = 0.3,
   ) {
     const modelName = meshOrGroup.metadata?.modelName;
 
@@ -1544,10 +1562,9 @@ export const flockAnimate = {
         animationName,
         loop,
         restart,
+        blendDuration,
       );
     } else if (flock.separateAnimations) {
-      // || meshOrGroup.name.includes('ANIMTEST'))
-
       return flock._switchToAnimationLoad(
         scene,
         meshOrGroup,
@@ -1555,6 +1572,7 @@ export const flockAnimate = {
         loop,
         restart,
         play,
+        blendDuration,
       );
     } else {
       return flock._switchToAnimationModel(
@@ -1563,8 +1581,44 @@ export const flockAnimate = {
         animationName,
         loop,
         restart,
+        blendDuration,
       );
     }
+  },
+
+  _blendAnimationGroups(outgoingGroup, incomingGroup, blendDuration, scene, mesh, onComplete) {
+    if (!outgoingGroup || !incomingGroup || blendDuration <= 0) return;
+
+    if (mesh && mesh._activeBlend) {
+      const prev = mesh._activeBlend;
+      scene.onBeforeRenderObservable.remove(prev.observer);
+      if (prev.outgoingGroup !== incomingGroup) {
+        prev.outgoingGroup.stop();
+      }
+      if (prev.incomingGroup !== incomingGroup) {
+        prev.incomingGroup.setWeightForAllAnimatables(1);
+      }
+      mesh._activeBlend = null;
+    }
+
+    let elapsed = 0;
+    incomingGroup.setWeightForAllAnimatables(0);
+    const observer = scene.onBeforeRenderObservable.add(() => {
+      const dt = scene.getEngine().getDeltaTime() / 1000;
+      elapsed += dt;
+      const t = Math.min(elapsed / blendDuration, 1);
+      incomingGroup.setWeightForAllAnimatables(t);
+      outgoingGroup.setWeightForAllAnimatables(1 - t);
+      if (t >= 1) {
+        scene.onBeforeRenderObservable.remove(observer);
+        if (mesh) mesh._activeBlend = null;
+        outgoingGroup.stop();
+        incomingGroup.setWeightForAllAnimatables(1);
+        if (onComplete) onComplete();
+      }
+    });
+
+    if (mesh) mesh._activeBlend = { observer, outgoingGroup, incomingGroup };
   },
   _switchToAnimationModel(
     scene,
@@ -1572,6 +1626,7 @@ export const flockAnimate = {
     animationName,
     loop = true,
     restart = false,
+    blendDuration = 0.3,
   ) {
     const newAnimationName = animationName;
     const findMeshWithSkeleton = (candidateRoot) => {
@@ -1677,6 +1732,7 @@ export const flockAnimate = {
         loop,
         restart,
         true,
+        blendDuration,
       );
     }
 
@@ -1685,30 +1741,56 @@ export const flockAnimate = {
       flock.stopAnimationsTargetingMesh(scene, rootMesh);
     }
 
-    if (
+    const outgoingGroup =
       rootMesh.animationGroups[0] &&
-      rootMesh.animationGroups[0].name !== newAnimationName
-    ) {
-      flock.stopAnimationsTargetingMesh(scene, rootMesh);
-      rootMesh.animationGroups[0].stop();
-      rootMesh.animationGroups = [];
-    }
+      rootMesh.animationGroups[0] !== targetAnimationGroup &&
+      rootMesh.animationGroups[0].isPlaying
+        ? rootMesh.animationGroups[0]
+        : null;
 
-    if (
-      !rootMesh.animationGroups[0] ||
-      (rootMesh.animationGroups[0].name == newAnimationName && restart)
-    ) {
-      flock.stopAnimationsTargetingMesh(scene, rootMesh);
+    if (outgoingGroup && blendDuration > 0) {
       rootMesh.animationGroups[0] = targetAnimationGroup;
-      rootMesh.animationGroups[0].reset();
-      rootMesh.animationGroups[0].stop();
-      rootMesh.animationGroups[0].start(
+      targetAnimationGroup.reset();
+      targetAnimationGroup.stop();
+      targetAnimationGroup.start(
         loop,
         1.0,
         targetAnimationGroup.from,
         targetAnimationGroup.to,
         false,
       );
+      flock._blendAnimationGroups(outgoingGroup, targetAnimationGroup, blendDuration, scene, rootMesh);
+    } else {
+      if (outgoingGroup) {
+        flock.stopAnimationsTargetingMesh(scene, rootMesh);
+        outgoingGroup.stop();
+        rootMesh.animationGroups = [];
+      } else if (
+        rootMesh.animationGroups[0] &&
+        rootMesh.animationGroups[0] !== targetAnimationGroup
+      ) {
+        flock.stopAnimationsTargetingMesh(scene, rootMesh);
+        rootMesh.animationGroups[0].stop();
+        rootMesh.animationGroups = [];
+      }
+
+      if (
+        !rootMesh.animationGroups[0] ||
+        (rootMesh.animationGroups[0] === targetAnimationGroup && restart)
+      ) {
+        flock.stopAnimationsTargetingMesh(scene, rootMesh);
+        rootMesh.animationGroups[0] = targetAnimationGroup;
+        rootMesh.animationGroups[0].reset();
+        rootMesh.animationGroups[0].stop();
+        rootMesh.animationGroups[0].start(
+          loop,
+          1.0,
+          targetAnimationGroup.from,
+          targetAnimationGroup.to,
+          false,
+        );
+        rootMesh.animationGroups[0].setWeightForAllAnimatables(1);
+      }
     }
 
     // Update physics shape based on animation
@@ -1721,7 +1803,7 @@ export const flockAnimate = {
 
   async _playAnimationModel(
     meshName,
-    { animationName, loop = false, restart = true } = {},
+    { animationName, loop = false, restart = true, blendDuration = 0.3 } = {},
   ) {
     if (!animationName) {
       console.warn(
@@ -1741,6 +1823,8 @@ export const flockAnimate = {
         animationName,
         loop,
         restart,
+        true,
+        blendDuration,
       ),
     );
     if (!animGroup) {

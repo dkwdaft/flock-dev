@@ -219,7 +219,7 @@ export const flockMesh = {
     );
 
     let shape;
-    if (cylinderHeight <= 0) {
+    if (cylinderLength <= 0) {
       const cylinderStart = new flock.BABYLON.Vector3(
         localCenter.x,
         localCenter.y - adjustedHeight / 2,

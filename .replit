@@ -2,7 +2,7 @@ run = "npm run dev"
 entrypoint = "main.js"
 
 hidden = [".config", ".gitignore"]
-modules = ["nodejs-20:v8-20230920-bd784b9"]
+modules = ["nodejs-20", "python-3.11"]
 
 [nix]
 channel = "stable-22_11"
@@ -32,6 +32,10 @@ start = "typescript-language-server --stdio"
 deploymentTarget = "static"
 build = ["npm", "run", "build"]
 publicDir = "dist"
+
+[[ports]]
+localPort = 3000
+externalPort = 6800
 
 [[ports]]
 localPort = 4173
