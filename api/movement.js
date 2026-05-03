@@ -12,13 +12,34 @@ export const flockMovement = {
     flock.ensureVerticalConstraint(model);
 
     // --- Tunables ---
-    const cap = model.metadata?.physicsCapsule;
+    let cap = model.metadata?.physicsCapsule;
     if (
       !cap ||
       typeof cap.radius !== "number" ||
       typeof cap.height !== "number"
-    )
-      return;
+    ) {
+      model.computeWorldMatrix(true);
+      const bb = model.getBoundingInfo().boundingBox;
+      const localMin = bb.minimum;
+      const localMax = bb.maximum;
+      const height = Math.max(0.001, localMax.y - localMin.y);
+      const width = Math.max(0.001, localMax.x - localMin.x);
+      const depth = Math.max(0.001, localMax.z - localMin.z);
+      const radius = Math.min(width, depth) / 2;
+      const localCenter = new flock.BABYLON.Vector3(
+        (localMin.x + localMax.x) / 2,
+        (localMin.y + localMax.y) / 2,
+        (localMin.z + localMax.z) / 2,
+      );
+      const adjustedHeight = Math.max(0, height - 0.01);
+      cap = {
+        radius,
+        height: adjustedHeight,
+        localCenter,
+      };
+      model.metadata = model.metadata || {};
+      model.metadata.physicsCapsule = cap;
+    }
     const capsuleRadius = cap.radius;
 
     // height is the full capsule height (including hemispherical caps)
