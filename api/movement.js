@@ -17,15 +17,15 @@ export const flockMovement = {
     if (!model.metadata) model.metadata = {};
     const md = model.metadata;
 
-    // Heuristic character guard: never replace character colliders
+    // Character guard: metadata is authoritative, name checks are fallback only
     const meshName = (model.name || "").toLowerCase();
     const metaModelName = (md.modelName || "").toLowerCase();
     const isCharacterMesh =
       md.isCharacter === true ||
+      md.kind === "character" ||
+      md.type === "character" ||
       meshName.includes("character") ||
-      meshName.includes("liz") ||
-      metaModelName.includes("character") ||
-      metaModelName.includes("liz");
+      metaModelName.includes("character");
 
     // --- One-time locomotion collider normalization ---
     if (!md._locomotionColliderPrepared) {
