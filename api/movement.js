@@ -301,8 +301,8 @@ export const flockMovement = {
       }
     }
 
-    // Step-up
-    if (grounded || withinCoyoteTime) {
+    // Step-up (non-character meshes only; avoid character bounce/jitter)
+    if (!isCharacterMesh && (grounded || withinCoyoteTime)) {
       const probeStartLow = model.position.add(
         new flock.BABYLON.Vector3(0, 0.05, 0),
       );
