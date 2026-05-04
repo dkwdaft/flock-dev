@@ -380,6 +380,7 @@ function focusCameraOnMesh() {
     if (mesh && mesh.name === "ground") mesh = null;
   }
   if (!mesh) return;
+  applyMeshSelection(mesh);
 
   mesh.computeWorldMatrix(true);
   const { min, max } = mesh.getHierarchyBoundingVectors(true);
@@ -399,6 +400,36 @@ function focusCameraOnMesh() {
     newTarget.z - currentDistance,
   );
   camera.setTarget(newTarget);
+}
+
+function applyMeshSelection(pickedMesh, pickedPoint) {
+  if (pickedMesh && pickedMesh.name !== "ground") {
+    if (pickedMesh.parent) {
+      pickedMesh = getRootMesh(pickedMesh.parent);
+      pickedMesh.visibility = 0.001;
+    }
+    const block = meshMap[pickedMesh?.metadata?.blockKey];
+    highlightBlockById(Blockly.getMainWorkspace(), block);
+    gizmoManager.attachToMesh(pickedMesh);
+    enableBoundingBox(pickedMesh);
+    return;
+  }
+
+  if (pickedMesh && pickedMesh.name === "ground") {
+    const roundedPosition = roundVectorToFixed(pickedPoint, 2);
+    flock.printText({
+      text: translate("position_readout").replace(
+        "{position}",
+        String(roundedPosition),
+      ),
+      duration: 30,
+      color: "black",
+    });
+  }
+  if (gizmoManager.attachedMesh) {
+    resetChildMeshesOfAttachedMesh();
+    gizmoManager.attachToMesh(null);
+  }
 }
 
 function viewMeshWithCamera() {
@@ -1774,34 +1805,8 @@ function handleSelectGizmo() {
         duration: 30,
         color: "black",
       });
-      if (flock.meshDebug) console.log(pickedMesh.parent);
-      if (pickedMesh.parent) {
-        pickedMesh = getRootMesh(pickedMesh.parent);
-        if (flock.meshDebug) console.log(pickedMesh.visibility);
-        pickedMesh.visibility = 0.001;
-        if (flock.meshDebug) console.log(pickedMesh.visibility);
-      }
-      const block = meshMap[pickedMesh?.metadata?.blockKey];
-      highlightBlockById(Blockly.getMainWorkspace(), block);
-      gizmoManager.attachToMesh(pickedMesh);
-      pickedMesh.showBoundingBox = true;
-    } else {
-      if (pickedMesh && pickedMesh.name === "ground") {
-        const roundedPosition = roundVectorToFixed(pickedPoint, 2);
-        flock.printText({
-          text: translate("position_readout").replace(
-            "{position}",
-            String(roundedPosition),
-          ),
-          duration: 30,
-          color: "black",
-        });
-      }
-      if (gizmoManager.attachedMesh) {
-        resetChildMeshesOfAttachedMesh();
-        gizmoManager.attachToMesh(null);
-      }
     }
+    applyMeshSelection(pickedMesh, pickedPoint);
     setTimeout(() => {
       if (!getCanvasCircle()) document.body.style.cursor = "crosshair";
     }, 0);
