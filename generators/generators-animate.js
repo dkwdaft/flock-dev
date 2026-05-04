@@ -102,6 +102,49 @@ export function registerAnimateGenerators(javascriptGenerator) {
     return `${asyncWrapper}glideToObject(${meshName1}, ${meshName2}, { offsetX: ${xOffset}, offsetY: ${yOffset}, offsetZ: ${zOffset}, duration: ${duration}, reverse: ${reverse}, loop: ${loop}, easing: "${easing}" });\n`;
   };
 
+  // Glide along a single axis, fixing other axes to current position
+  javascriptGenerator.forBlock["glide_to_axis"] = function (block) {
+    const meshName = javascriptGenerator.nameDB_.getName(
+      block.getFieldValue("MESH_VAR"),
+      Blockly.Names.NameType.VARIABLE,
+    );
+    const axis = block.getFieldValue("AXIS");
+    const target =
+      javascriptGenerator.valueToCode(
+        block,
+        "TARGET",
+        javascriptGenerator.ORDER_ATOMIC,
+      ) || "0";
+    const duration = getFieldValue(block, "DURATION", "0");
+    const mode = block.getFieldValue("MODE");
+    const reverse = block.getFieldValue("REVERSE") === "TRUE";
+    const loop = block.getFieldValue("LOOP") === "TRUE";
+    const easing = block.getFieldValue("EASING");
+
+    const asyncWrapper = mode === "AWAIT" ? "await " : "";
+
+    if (axis === "forward" || axis === "sideways") {
+      return `${asyncWrapper}glideDirection(${meshName}, { direction: "${axis}", distance: ${target}, duration: ${duration}, reverse: ${reverse}, loop: ${loop}, easing: "${easing}" });\n`;
+    }
+
+    let x, y, z;
+    if (axis === "x") {
+      x = target;
+      y = `"__current__"`;
+      z = `"__current__"`;
+    } else if (axis === "y") {
+      x = `"__current__"`;
+      y = target;
+      z = `"__current__"`;
+    } else {
+      x = `"__current__"`;
+      y = `"__current__"`;
+      z = target;
+    }
+
+    return `${asyncWrapper}glideTo(${meshName}, { x: ${x}, y: ${y}, z: ${z}, duration: ${duration}, reverse: ${reverse}, loop: ${loop}, easing: "${easing}" });\n`;
+  };
+
   // Rotate object to coordinates
   javascriptGenerator.forBlock["rotate_anim_seconds"] = function (block) {
     const meshName = javascriptGenerator.nameDB_.getName(

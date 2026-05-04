@@ -47,6 +47,13 @@ const DEFAULT_ROTATION = 0.05;
 const FAST_SCALE = 0.5;
 const DEFAULT_SCALE = 0.05;
 
+const MODEL_BLOCK_TYPES = new Set([
+  "load_model",
+  "load_multi_object",
+  "load_object",
+  "load_character",
+]);
+
 window.selectedColor = "#ffffff"; // Default color
 let colorPicker = null;
 
@@ -291,12 +298,12 @@ function attachMeshForActiveTool(pickedMesh) {
     pickedMesh = getRootMesh(pickedMesh.parent);
   }
 
-  gizmoManager.attachToMesh(pickedMesh);
-
   const blockId = meshMap[pickedMesh?.metadata?.blockKey];
   if (blockId) {
     highlightBlockById(Blockly.getMainWorkspace(), blockId);
   }
+
+  gizmoManager.attachToMesh(pickedMesh);
 
   return pickedMesh;
 }
@@ -373,6 +380,7 @@ function focusCameraOnMesh() {
     if (mesh && mesh.name === "ground") mesh = null;
   }
   if (!mesh) return;
+  applyMeshSelection(mesh);
 
   mesh.computeWorldMatrix(true);
   const { min, max } = mesh.getHierarchyBoundingVectors(true);
@@ -392,6 +400,36 @@ function focusCameraOnMesh() {
     newTarget.z - currentDistance,
   );
   camera.setTarget(newTarget);
+}
+
+function applyMeshSelection(pickedMesh, pickedPoint) {
+  if (pickedMesh && pickedMesh.name !== "ground") {
+    if (pickedMesh.parent) {
+      pickedMesh = getRootMesh(pickedMesh.parent);
+      pickedMesh.visibility = 0.001;
+    }
+    const block = meshMap[pickedMesh?.metadata?.blockKey];
+    highlightBlockById(Blockly.getMainWorkspace(), block);
+    gizmoManager.attachToMesh(pickedMesh);
+    enableBoundingBox(pickedMesh);
+    return;
+  }
+
+  if (pickedMesh && pickedMesh.name === "ground") {
+    const roundedPosition = roundVectorToFixed(pickedPoint, 2);
+    flock.printText({
+      text: translate("position_readout").replace(
+        "{position}",
+        String(roundedPosition),
+      ),
+      duration: 30,
+      color: "black",
+    });
+  }
+  if (gizmoManager.attachedMesh) {
+    resetChildMeshesOfAttachedMesh();
+    gizmoManager.attachToMesh(null);
+  }
 }
 
 function viewMeshWithCamera() {
@@ -623,23 +661,47 @@ function startRotateKeyboardHandler(mesh) {
   stopAxisKeyboard?.();
   stopAxisKeyboard = null;
   setTimeout(() => {
+    const rotateBlock = findOrCreateRotateBlock(mesh);
+    if (rotateBlock) {
+      highlightBlockById(Blockly.getMainWorkspace(), rotateBlock);
+    } else {
+      const blockKey = mesh?.metadata?.blockKey;
+      const creationBlock = blockKey ? meshMap[blockKey] : null;
+      if (creationBlock) highlightBlockById(Blockly.getMainWorkspace(), creationBlock);
+    }
+
     stopAxisKeyboard = createAxisKeyboardHandler({
       onMove: (dx, dy, dz) => {
-        if (mesh.rotationQuaternion) {
-          mesh.rotation = mesh.rotationQuaternion.toEulerAngles();
-          mesh.rotationQuaternion = null;
+        if (!mesh.rotationQuaternion) {
+          mesh.rotationQuaternion = flock.BABYLON.Quaternion.FromEulerAngles(
+            mesh.rotation.x,
+            mesh.rotation.y,
+            mesh.rotation.z,
+          );
         }
-        mesh.rotation.x += dx;
-        mesh.rotation.y += dy;
-        mesh.rotation.z += dz;
+        const delta = flock.BABYLON.Quaternion.RotationYawPitchRoll(
+          dy,
+          dx,
+          dz,
+        );
+        mesh.rotationQuaternion.multiplyInPlace(delta).normalize();
+        if (mesh.physics) {
+          mesh.physics.disablePreStep = false;
+          mesh.physics.setTargetTransform(
+            mesh.absolutePosition,
+            mesh.rotationQuaternion,
+          );
+        }
+        if (rotateBlock) {
+          const rot = getMeshRotationInDegrees(mesh);
+          setBlockXYZ(rotateBlock, rot.x, rot.y, rot.z);
+        }
       },
       onConfirm: () => {
-        updateRotationBlock(mesh); // Update/create blockly block
         exitGizmoState();
         document.getElementById("rotationButton")?.focus();
       },
       onCancel: () => {
-        updateRotationBlock(mesh); // Update/create blockly block
         exitGizmoState();
         gizmoManager.attachToMesh(null);
         document.getElementById("rotationButton")?.focus();
@@ -656,20 +718,32 @@ function startScaleKeyboardHandler(mesh) {
   stopAxisKeyboard?.();
   stopAxisKeyboard = null;
   setTimeout(() => {
+    const creationBlock = meshMap[mesh?.metadata?.blockKey];
+    if (creationBlock) {
+      if (MODEL_BLOCK_TYPES.has(creationBlock.type)) {
+        const existingResize = findExistingResizeBlock(mesh);
+        highlightBlockById(
+          Blockly.getMainWorkspace(),
+          existingResize ?? creationBlock,
+        );
+      } else {
+        highlightBlockById(Blockly.getMainWorkspace(), creationBlock);
+      }
+    }
+
     stopAxisKeyboard = createAxisKeyboardHandler({
       onMove: (dx, dy, dz) => {
         mesh.scaling.x = Math.max(0.01, mesh.scaling.x + dx);
         mesh.scaling.y = Math.max(0.01, mesh.scaling.y + dy);
         mesh.scaling.z = Math.max(0.01, mesh.scaling.z + dz);
         flock.updatePhysics(mesh);
+        updateScaleBlock(mesh);
       },
       onConfirm: () => {
-        updateScaleBlock(mesh);
         exitGizmoState();
         document.getElementById("scaleButton")?.focus();
       },
       onCancel: () => {
-        updateScaleBlock(mesh);
         exitGizmoState();
         gizmoManager.attachToMesh(null);
         document.getElementById("scaleButton")?.focus();
@@ -680,10 +754,40 @@ function startScaleKeyboardHandler(mesh) {
   }, 0);
 }
 
-// Update the blockly block after a rotation
-function updateRotationBlock(mesh) {
+// Set a single numeric axis input on a block (e.g. "X", "Y", or "Z")
+function setBlockAxisValue(block, inputName, value) {
+  const input = block.getInput(inputName);
+  const connected = input?.connection?.targetBlock();
+  if (connected) {
+    connected.setFieldValue(String(Math.round(value * 10) / 10), "NUM");
+  }
+}
+
+// Find an existing rotate_to block in mesh's DO section without creating one.
+function findExistingRotateBlock(mesh) {
   const block = meshMap[mesh?.metadata?.blockKey];
-  if (!block) return;
+  if (!block) return null;
+  const modelVariable = block.getFieldValue("ID_VAR");
+  const statementConnection = block.getInput("DO")?.connection;
+  if (!statementConnection) return null;
+  let current = statementConnection.targetBlock();
+  while (current) {
+    if (
+      current.type === "rotate_to" &&
+      current.getFieldValue("MODEL") === modelVariable
+    ) {
+      return current;
+    }
+    current = current.getNextBlock();
+  }
+  return null;
+}
+
+// Find the existing rotate_to block in mesh's DO section, or create one.
+// Returns the rotateBlock, or null if there is no associated Blockly block.
+function findOrCreateRotateBlock(mesh) {
+  const block = meshMap[mesh?.metadata?.blockKey];
+  if (!block) return null;
 
   const groupId = Blockly.utils.idGenerator.genUid();
   Blockly.Events.setGroup(groupId);
@@ -719,7 +823,7 @@ function updateRotationBlock(mesh) {
     ["X", "Y", "Z"].forEach((axis) => {
       const input = rotateBlock.getInput(axis);
       const shadow = Blockly.getMainWorkspace().newBlock("math_number");
-      shadow.setFieldValue("1", "NUM");
+      shadow.setFieldValue("0", "NUM");
       shadow.setShadow(true);
       shadow.initSvg();
       shadow.render();
@@ -744,13 +848,32 @@ function updateRotationBlock(mesh) {
     });
   }
 
+  Blockly.Events.setGroup(null);
+  return rotateBlock;
+}
+
+// Update the blockly block after a rotation.
+// axisFilter: optional { x, y, z } booleans — only those axes are written.
+function updateRotationBlock(mesh, axisFilter = null) {
+  const rotateBlock = findOrCreateRotateBlock(mesh);
+  if (!rotateBlock) return;
+
+  const groupId = Blockly.utils.idGenerator.genUid();
+  Blockly.Events.setGroup(groupId);
+
   const currentRotation = getMeshRotationInDegrees(mesh);
-  setBlockXYZ(
-    rotateBlock,
-    currentRotation.x,
-    currentRotation.y,
-    currentRotation.z,
-  );
+  if (axisFilter) {
+    if (axisFilter.x) setBlockAxisValue(rotateBlock, "X", currentRotation.x);
+    if (axisFilter.y) setBlockAxisValue(rotateBlock, "Y", currentRotation.y);
+    if (axisFilter.z) setBlockAxisValue(rotateBlock, "Z", currentRotation.z);
+  } else {
+    setBlockXYZ(
+      rotateBlock,
+      currentRotation.x,
+      currentRotation.y,
+      currentRotation.z,
+    );
+  }
   Blockly.Events.setGroup(null);
 }
 
@@ -802,6 +925,89 @@ function pickMeshFromScene(onPicked, persistent = false) {
     document.body.style.cursor = "crosshair";
     flock.scene.defaultCursor = "crosshair";
   }, 0);
+}
+
+// Find an existing resize block in mesh's DO section without creating one.
+function findExistingResizeBlock(mesh) {
+  const block = meshMap[mesh?.metadata?.blockKey];
+  if (!block || !MODEL_BLOCK_TYPES.has(block.type)) return null;
+  const modelVariable = block.getFieldValue("ID_VAR");
+  const stmt = block.getInput("DO")?.connection?.targetBlock?.();
+  for (let cur = stmt; cur; cur = cur.getNextBlock?.()) {
+    if (
+      cur.type === "resize" &&
+      cur.getFieldValue?.("BLOCK_NAME") === modelVariable
+    ) {
+      return cur;
+    }
+  }
+  return null;
+}
+
+// Find the existing resize block in mesh's DO section, or create one.
+// Returns the resizeBlock, or null if mesh is not a model type.
+function findOrCreateResizeBlock(mesh) {
+  const block = meshMap[mesh?.metadata?.blockKey];
+  if (!block || !MODEL_BLOCK_TYPES.has(block.type)) return null;
+
+  const groupId = Blockly.utils.idGenerator.genUid();
+  Blockly.Events.setGroup(groupId);
+
+  let addedDoSection = false;
+  if (!block.getInput("DO")) {
+    block.appendStatementInput("DO").setCheck(null).appendField("");
+    addedDoSection = true;
+  }
+
+  const modelVariable = block.getFieldValue("ID_VAR");
+  const stmt = block.getInput("DO")?.connection?.targetBlock?.();
+  let resizeBlock = null;
+  for (let cur = stmt; cur; cur = cur.getNextBlock?.()) {
+    if (
+      cur.type === "resize" &&
+      cur.getFieldValue?.("BLOCK_NAME") === modelVariable
+    ) {
+      resizeBlock = cur;
+      break;
+    }
+  }
+
+  if (!resizeBlock) {
+    resizeBlock = Blockly.getMainWorkspace().newBlock("resize");
+    resizeBlock.setFieldValue(modelVariable, "BLOCK_NAME");
+    resizeBlock.initSvg();
+    resizeBlock.render();
+
+    ["X", "Y", "Z"].forEach((axis) => {
+      const input = resizeBlock.getInput(axis);
+      const shadow = Blockly.getMainWorkspace().newBlock("math_number");
+      shadow.setFieldValue("1", "NUM");
+      shadow.setShadow(true);
+      shadow.initSvg();
+      shadow.render();
+      input.connection.connect(shadow.outputConnection);
+    });
+
+    resizeBlock.render();
+
+    const doFirstBlock = block.getInput("DO").connection.targetBlock();
+    if (doFirstBlock) {
+      let tail = doFirstBlock;
+      while (tail.getNextBlock()) tail = tail.getNextBlock();
+      tail.nextConnection.connect(resizeBlock.previousConnection);
+    } else {
+      block.getInput("DO").connection.connect(resizeBlock.previousConnection);
+    }
+
+    gizmoCreatedBlocks.set(resizeBlock.id, {
+      parentId: block.id,
+      createdDoSection: addedDoSection,
+      timestamp: Date.now(),
+    });
+  }
+
+  Blockly.Events.setGroup(null);
+  return resizeBlock;
 }
 
 // Update blockly block after a scale
@@ -899,64 +1105,9 @@ function updateScaleBlock(mesh, originalBottomY = null) {
       case "load_multi_object":
       case "load_object":
       case "load_character": {
-        const groupId = Blockly.utils.idGenerator.genUid();
-        Blockly.Events.setGroup(groupId);
+        const resizeBlock = findOrCreateResizeBlock(mesh);
+        if (!resizeBlock) break;
 
-        let addedDoSection = false;
-        if (!block.getInput("DO")) {
-          block.appendStatementInput("DO").setCheck(null).appendField("");
-          addedDoSection = true;
-        }
-
-        let resizeBlock = null;
-        const modelVariable = block.getFieldValue("ID_VAR");
-
-        const stmt = block.getInput("DO")?.connection?.targetBlock?.();
-        for (let cur = stmt; cur; cur = cur.getNextBlock?.()) {
-          if (
-            cur.type === "resize" &&
-            cur.getFieldValue?.("BLOCK_NAME") === modelVariable
-          ) {
-            resizeBlock = cur;
-            break;
-          }
-        }
-
-        if (!resizeBlock) {
-          resizeBlock = Blockly.getMainWorkspace().newBlock("resize");
-          resizeBlock.setFieldValue(modelVariable, "BLOCK_NAME");
-          resizeBlock.initSvg();
-          resizeBlock.render();
-
-          ["X", "Y", "Z"].forEach((axis) => {
-            const input = resizeBlock.getInput(axis);
-            const shadow = Blockly.getMainWorkspace().newBlock("math_number");
-            shadow.setFieldValue("1", "NUM");
-            shadow.setShadow(true);
-            shadow.initSvg();
-            shadow.render();
-            input.connection.connect(shadow.outputConnection);
-          });
-
-          resizeBlock.render();
-
-          const doFirstBlock = block.getInput("DO").connection.targetBlock();
-          if (doFirstBlock) {
-            let tail = doFirstBlock;
-            while (tail.getNextBlock()) tail = tail.getNextBlock();
-            tail.nextConnection.connect(resizeBlock.previousConnection);
-          } else {
-            block
-              .getInput("DO")
-              .connection.connect(resizeBlock.previousConnection);
-          }
-
-          gizmoCreatedBlocks.set(resizeBlock.id, {
-            parentId: block.id,
-            createdDoSection: addedDoSection,
-            timestamp: Date.now(),
-          });
-        }
         mesh.computeWorldMatrix(true);
         mesh.refreshBoundingInfo();
         const sizeLocalScaled = getScaledSize(mesh);
@@ -966,8 +1117,6 @@ function updateScaleBlock(mesh, originalBottomY = null) {
           Y: sizeLocalScaled.y,
           Z: sizeLocalScaled.z,
         });
-
-        Blockly.Events.setGroup(null);
         break;
       }
     }
@@ -1275,12 +1424,6 @@ function handleScaleGizmo() {
 
     lastScaledMesh = mesh;
     startScaleKeyboardHandler(mesh);
-
-    const blockKey = mesh?.metadata?.blockKey;
-    const blockId = blockKey ? meshMap[blockKey] : null;
-    if (!blockId) return;
-
-    highlightBlockById(Blockly.getMainWorkspace(), blockId);
   });
 
   onExit(() => gizmoManager.onAttachedToMeshObservable.remove(scaleObs));
@@ -1352,8 +1495,19 @@ function handleScaleGizmo() {
         mesh.physics.disablePreStep = false;
       }
 
-      const block = meshMap[mesh?.metadata?.blockKey];
-      highlightBlockById(Blockly.getMainWorkspace(), block);
+      const creationBlock = meshMap[mesh?.metadata?.blockKey];
+      if (creationBlock) {
+        if (MODEL_BLOCK_TYPES.has(creationBlock.type)) {
+          const resizeBlock = findOrCreateResizeBlock(mesh);
+          if (resizeBlock) {
+            highlightBlockById(Blockly.getMainWorkspace(), resizeBlock);
+          } else {
+            highlightBlockById(Blockly.getMainWorkspace(), creationBlock);
+          }
+        } else {
+          highlightBlockById(Blockly.getMainWorkspace(), creationBlock);
+        }
+      }
     });
 
   onExit(() =>
@@ -1411,20 +1565,40 @@ function handleRotationGizmo() {
     lastRotatedMesh = mesh;
 
     startRotateKeyboardHandler(mesh);
-
-    const blockKey = mesh?.metadata?.blockKey;
-    const blockId = blockKey ? meshMap[blockKey] : null;
-    if (!blockId) return;
-
-    highlightBlockById(Blockly.getMainWorkspace(), blockId);
   });
 
   onExit(() => gizmoManager.onAttachedToMeshObservable.remove(rotateObs));
+
+  // Track which axis ring is being dragged so only that axis is written to the block
+  let draggedAxis = null;
+  const rg = gizmoManager.gizmos.rotationGizmo;
+  const axisDragObservers = [];
+  [
+    { gizmo: rg?.xGizmo, axis: "x" },
+    { gizmo: rg?.yGizmo, axis: "y" },
+    { gizmo: rg?.zGizmo, axis: "z" },
+  ].forEach(({ gizmo, axis }) => {
+    if (!gizmo?.dragBehavior) return;
+    const obs = gizmo.dragBehavior.onDragStartObservable.add(() => {
+      draggedAxis = axis;
+    });
+    axisDragObservers.push({ behavior: gizmo.dragBehavior, obs });
+  });
+  onExit(() => {
+    axisDragObservers.forEach(({ behavior, obs }) =>
+      behavior.onDragStartObservable.remove(obs),
+    );
+  });
 
   const rotDragStart =
     gizmoManager.gizmos.rotationGizmo.onDragStartObservable.add(() => {
       let mesh = gizmoManager.attachedMesh;
       if (!mesh) return;
+
+      const rotateBlock = findOrCreateRotateBlock(mesh);
+      if (rotateBlock) {
+        highlightBlockById(Blockly.getMainWorkspace(), rotateBlock);
+      }
 
       if (!mesh.physics) return;
 
@@ -1461,7 +1635,12 @@ function handleRotationGizmo() {
         mesh.physics.setMotionType(mesh.savedMotionType);
       }
 
-      updateRotationBlock(mesh); // Update blockly block
+      // Only update the axis that was dragged; fall back to all axes if unknown
+      const axisFilter = draggedAxis
+        ? { x: draggedAxis === "x", y: draggedAxis === "y", z: draggedAxis === "z" }
+        : null;
+      draggedAxis = null;
+      updateRotationBlock(mesh, axisFilter);
     },
   );
 
@@ -1626,34 +1805,8 @@ function handleSelectGizmo() {
         duration: 30,
         color: "black",
       });
-      if (flock.meshDebug) console.log(pickedMesh.parent);
-      if (pickedMesh.parent) {
-        pickedMesh = getRootMesh(pickedMesh.parent);
-        if (flock.meshDebug) console.log(pickedMesh.visibility);
-        pickedMesh.visibility = 0.001;
-        if (flock.meshDebug) console.log(pickedMesh.visibility);
-      }
-      const block = meshMap[pickedMesh?.metadata?.blockKey];
-      highlightBlockById(Blockly.getMainWorkspace(), block);
-      gizmoManager.attachToMesh(pickedMesh);
-      pickedMesh.showBoundingBox = true;
-    } else {
-      if (pickedMesh && pickedMesh.name === "ground") {
-        const roundedPosition = roundVectorToFixed(pickedPoint, 2);
-        flock.printText({
-          text: translate("position_readout").replace(
-            "{position}",
-            String(roundedPosition),
-          ),
-          duration: 30,
-          color: "black",
-        });
-      }
-      if (gizmoManager.attachedMesh) {
-        resetChildMeshesOfAttachedMesh();
-        gizmoManager.attachToMesh(null);
-      }
     }
+    applyMeshSelection(pickedMesh, pickedPoint);
     setTimeout(() => {
       if (!getCanvasCircle()) document.body.style.cursor = "crosshair";
     }, 0);

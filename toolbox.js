@@ -2026,6 +2026,29 @@ const toolboxAnimate = {
     },
     {
       kind: "block",
+      type: "glide_to_axis",
+      keyword: "glideaxis",
+      inputs: {
+        TARGET: {
+          shadow: {
+            type: "math_number",
+            fields: {
+              NUM: 0,
+            },
+          },
+        },
+        DURATION: {
+          shadow: {
+            type: "math_number",
+            fields: {
+              NUM: 1,
+            },
+          },
+        },
+      },
+    },
+    {
+      kind: "block",
       type: "rotate_anim_seconds",
       keyword: "spin",
       inputs: {

@@ -60,6 +60,7 @@ export function setupInput() {
 
       // 1) Canvas
       pushUnique(document.getElementById("renderCanvas"));
+      pushUnique(document.getElementById("babylonUnmuteButton"));
 
       // 2) Gizmo buttons
       document

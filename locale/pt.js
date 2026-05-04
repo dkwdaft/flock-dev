@@ -147,6 +147,8 @@ export default {
     "deslizar %1 para x %2 y %3 z %4 em %5 segundos\n%6 voltar? %7 repetir? %8 %9",
   glide_to_object:
     "deslizar %1 até %2 em %6 segundos\ndeslocamento x: %3 y: %4 z: %5\n%7 voltar? %8 repetir? %9 %10",
+  glide_to_axis:
+    "deslizar %1 %2 %3 em %4 segundos\n%5 voltar? %6 repetir? %7 %8",
   rotate_anim:
     "girar %1 para x %2 y %3 z %4 em %5 ms\n%6 inverter? %7 repetir? %8 %9",
   rotate_anim_seconds:
@@ -385,6 +387,8 @@ export default {
     "Desliza para uma posição específica durante um período com opções de reverso, repetição e easing.",
   glide_to_object_tooltip:
     "Desliza até a posição de outro objeto com deslocamentos x/y/z opcionais (padrão 0) e opções de reverso, repetição e easing.",
+  glide_to_axis_tooltip:
+    "Desliza ao longo de um eixo (X, Y ou Z) até um valor alvo. Os outros dois eixos são fixados à posição atual do objeto (com suporte de âncora). Mesmas opções do bloco de deslizamento padrão.",
   rotate_anim_tooltip:
     "Gira um objeto para ângulos específicos durante um tempo com opções de reverso, repetição e easing.",
   rotate_anim_seconds_tooltip:

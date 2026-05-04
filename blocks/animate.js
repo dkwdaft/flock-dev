@@ -253,6 +253,80 @@ export function defineAnimateBlocks() {
     },
   };
 
+  Blockly.Blocks["glide_to_axis"] = {
+    init: function () {
+      this.jsonInit({
+        type: "glide_to_axis",
+        message0: translate("glide_to_axis"),
+        args0: [
+          {
+            type: "field_variable",
+            name: "MESH_VAR",
+            variable: window.currentMesh,
+          },
+          {
+            type: "field_dropdown",
+            name: "AXIS",
+            options: [
+              ["x", "x"],
+              ["y", "y"],
+              ["z", "z"],
+              getDropdownOption("forward"),
+              getDropdownOption("sideways"),
+            ],
+          },
+          {
+            type: "input_value",
+            name: "TARGET",
+            check: "Number",
+          },
+          {
+            type: "input_value",
+            name: "DURATION",
+            check: "Number",
+          },
+          {
+            type: "field_dropdown",
+            name: "MODE",
+            options: [getDropdownOption("AWAIT"), getDropdownOption("START")],
+          },
+          {
+            type: "field_checkbox",
+            name: "REVERSE",
+            checked: false,
+            text: "reverse",
+          },
+          {
+            type: "field_checkbox",
+            name: "LOOP",
+            checked: false,
+            text: "loop",
+          },
+          {
+            type: "field_dropdown",
+            name: "EASING",
+            options: [
+              getDropdownOption("Linear"),
+              getDropdownOption("SineEase"),
+              getDropdownOption("CubicEase"),
+              getDropdownOption("QuadraticEase"),
+              getDropdownOption("ExponentialEase"),
+              getDropdownOption("BounceEase"),
+              getDropdownOption("ElasticEase"),
+              getDropdownOption("BackEase"),
+            ],
+          },
+        ],
+        previousStatement: null,
+        nextStatement: null,
+        colour: categoryColours["Animate"],
+        tooltip: getTooltip("glide_to_axis"),
+      });
+      this.setHelpUrl(getHelpUrlFor(this.type));
+      this.setStyle("animate_blocks");
+    },
+  };
+
   Blockly.Blocks["rotate_anim"] = {
     init: function () {
       this.jsonInit({

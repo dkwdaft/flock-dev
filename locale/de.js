@@ -152,6 +152,8 @@ export default {
     "%1 gleitet zu x %2 y %3 z %4 in %5 Sekunden\n%6 zurück? %7 Schleife? %8 %9",
   glide_to_object:
     "%1 gleitet zu %2 in %6 Sekunden\nVersatz x: %3 y: %4 z: %5\n%7 zurück? %8 Schleife? %9 %10",
+  glide_to_axis:
+    "%1 gleitet %2 %3 in %4 Sekunden\n%5 zurück? %6 Schleife? %7 %8",
   rotate_anim:
     "rotiere %1 zu x %2 y %3 z %4 in %5 ms\n%6 rückwärts? %7 Schleife? %8 %9",
   rotate_anim_seconds:
@@ -532,6 +534,8 @@ export default {
     "Gleite zu einer Position über Sekunden mit Optionen zum Rückwärtslaufen, Schleifen und Easing.",
   glide_to_object_tooltip:
     "Gleite zur Position eines angegebenen Objekts mit optionalen x/y/z-Versätzen (Standard 0) sowie Optionen für Rückwärtslauf, Schleife und Easing.",
+  glide_to_axis_tooltip:
+    "Gleite entlang einer Achse (X, Y oder Z) zu einem Zielwert. Die anderen zwei Achsen werden auf die aktuelle Position des Objekts fixiert (Ankerpunkt-bewusst). Gleiche Optionen wie beim Standard-Gleit-Block.",
   rotate_anim_tooltip:
     "Rotiert ein Objekt zu angegebenen Winkeln über eine Dauer mit Optionen für Rückwärtslauf, Schleife und Easing.",
   rotate_anim_seconds_tooltip:

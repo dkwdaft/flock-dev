@@ -11,215 +11,56 @@ export const flockMovement = {
 
     flock.ensureVerticalConstraint(model);
 
-    const scene = flock.scene;
-    const up = flock.BABYLON.Vector3.Up();
-
-    if (!model.metadata) model.metadata = {};
-    const md = model.metadata;
-
-    // Heuristic character guard: never replace character colliders
-    const meshName = (model.name || "").toLowerCase();
-    const metaModelName = (md.modelName || "").toLowerCase();
-    const isCharacterMesh =
-      md.isCharacter === true ||
-      meshName.includes("character") ||
-      meshName.includes("liz") ||
-      metaModelName.includes("character") ||
-      metaModelName.includes("liz");
-
-    // --- One-time locomotion collider normalization ---
-    if (!md._locomotionColliderPrepared) {
-      md._locomotionColliderPrepared = true;
-
-      const shape = model.physics?.shape;
-      const isCapsuleShape = shape instanceof flock.BABYLON.PhysicsShapeCapsule;
-
-      // Ensure we have source capsule metrics (from metadata or bbox fallback)
-      let sourceCap = md.physicsCapsule;
-      if (
-        !sourceCap ||
-        typeof sourceCap.radius !== "number" ||
-        typeof sourceCap.height !== "number"
-      ) {
-        model.computeWorldMatrix(true);
-        const bb = model.getBoundingInfo().boundingBox;
-        const localMin = bb.minimum;
-        const localMax = bb.maximum;
-
-        const height = Math.max(0.001, localMax.y - localMin.y);
-        const width = Math.max(0.001, localMax.x - localMin.x);
-        const depth = Math.max(0.001, localMax.z - localMin.z);
-        const radius = Math.min(width, depth) / 2;
-
-        const localCenter = new flock.BABYLON.Vector3(
-          (localMin.x + localMax.x) / 2,
-          (localMin.y + localMax.y) / 2,
-          (localMin.z + localMax.z) / 2,
-        );
-
-        const shrinkAmount = 0.01;
-        const adjustedHeight = Math.max(0, height - shrinkAmount);
-
-        sourceCap = {
-          radius,
-          height: adjustedHeight,
-          localCenter,
-          baseY: localCenter.y - adjustedHeight / 2,
-        };
-        md.physicsCapsule = sourceCap;
-      }
-
-      // Evaluate problem criteria
-      const groundCheckDistanceForEval = 0.3;
-      const diameterToHeightRatio =
-        sourceCap.height > 0
-          ? (2 * sourceCap.radius) / sourceCap.height
-          : Infinity;
-      const probeRatio =
-        groundCheckDistanceForEval / Math.max(sourceCap.height * 0.5, 0.001);
-
-      const reasons = [];
-      if (diameterToHeightRatio > 1.1) {
-        reasons.push("sphere_like_capsule_severe");
-      } else if (diameterToHeightRatio > 0.9) {
-        reasons.push("sphere_like_capsule_warning");
-      }
-      if (sourceCap.radius > 1.0) reasons.push("radius_large_for_player");
-      if (probeRatio < 0.35) reasons.push("ground_probe_too_short_for_capsule");
-
-      const problematicCapsule = reasons.length > 0;
-      const mustReplaceBecauseNonCapsule = !isCapsuleShape;
-      const shouldReplace =
-        !isCharacterMesh && (mustReplaceBecauseNonCapsule || problematicCapsule);
-
-      /*console.warn("[moveForward] locomotion collider decision", {
-        model: model.name,
-        isCharacterMesh,
-        isCapsuleShape,
-        problematicCapsule,
-        mustReplaceBecauseNonCapsule,
-        shouldReplace,
-        reasons,
-      });*/
-
-      if (shouldReplace) {
-        md._originalPhysicsShapeType =
-          shape?.constructor?.name || "UNKNOWN_SHAPE";
-        md._originalPhysicsCapsule = { ...sourceCap };
-
-        // Fallback profile
-        const fallbackRadius = Math.max(
-          0.25,
-          Math.min(0.5, sourceCap.radius * 0.35),
-        );
-        const fallbackHeight = Math.max(1.6, fallbackRadius * 3.5);
-
-        const shrinkAmount = 0.01;
-        const adjustedFallbackHeight = Math.max(
-          0,
-          fallbackHeight - shrinkAmount,
-        );
-        const fallbackHalfSeg = Math.max(
-          0.001,
-          adjustedFallbackHeight * 0.5 - fallbackRadius,
-        );
-
-        // X/Z from bbox center
-        model.computeWorldMatrix(true);
-        const bb = model.getBoundingInfo().boundingBox;
-        const localMin = bb.minimum;
-        const localMax = bb.maximum;
-        const bboxCenter = new flock.BABYLON.Vector3(
-          (localMin.x + localMax.x) / 2,
-          (localMin.y + localMax.y) / 2,
-          (localMin.z + localMax.z) / 2,
-        );
-
-        // Preserve original base alignment for Y
-        const rawLocalCenter =
-          sourceCap.localCenter || new flock.BABYLON.Vector3(0, 0, 0);
-        const originalBaseY =
-          typeof sourceCap.baseY === "number"
-            ? sourceCap.baseY
-            : rawLocalCenter.y - sourceCap.height * 0.5;
-        const fallbackCenterY = originalBaseY + adjustedFallbackHeight * 0.5;
-
-        const centerX = bboxCenter.x;
-        const centerZ = bboxCenter.z;
-
-        const pointA = new flock.BABYLON.Vector3(
-          centerX,
-          fallbackCenterY - fallbackHalfSeg,
-          centerZ,
-        );
-        const pointB = new flock.BABYLON.Vector3(
-          centerX,
-          fallbackCenterY + fallbackHalfSeg,
-          centerZ,
-        );
-
-        const fallbackShape = new flock.BABYLON.PhysicsShapeCapsule(
-          pointA,
-          pointB,
-          fallbackRadius,
-          scene,
-        );
-
-        model.physics.shape = fallbackShape;
-
-        md.physicsCapsule = {
-          ...sourceCap,
-          radius: fallbackRadius,
-          height: adjustedFallbackHeight,
-          localCenter: new flock.BABYLON.Vector3(
-            centerX,
-            fallbackCenterY,
-            centerZ,
-          ),
-          baseY: originalBaseY,
-        };
-
-        md._usedFallbackLocomotionCapsule = true;
-        md._capsuleProblemReasons = reasons;
-
-        /*console.warn("[moveForward] Locomotion capsule applied", {
-          model: model.name,
-          replacedNonCapsule: mustReplaceBecauseNonCapsule,
-          problematicCapsule,
-          reasons,
-          originalShapeType: md._originalPhysicsShapeType,
-          originalCapsule: md._originalPhysicsCapsule,
-          fallbackCapsule: md.physicsCapsule,
-        });*/
-      } else {
-        md._usedFallbackLocomotionCapsule = false;
-      }
-    }
-
-    const cap = md.physicsCapsule;
+    // --- Tunables ---
+    let cap = model.metadata?.physicsCapsule;
     if (
       !cap ||
       typeof cap.radius !== "number" ||
       typeof cap.height !== "number"
     ) {
-      return;
+      model.computeWorldMatrix(true);
+      const bb = model.getBoundingInfo().boundingBox;
+      const localMin = bb.minimum;
+      const localMax = bb.maximum;
+      const height = Math.max(0.001, localMax.y - localMin.y);
+      const width = Math.max(0.001, localMax.x - localMin.x);
+      const depth = Math.max(0.001, localMax.z - localMin.z);
+      const radius = Math.min(width, depth) / 2;
+      const localCenter = new flock.BABYLON.Vector3(
+        (localMin.x + localMax.x) / 2,
+        (localMin.y + localMax.y) / 2,
+        (localMin.z + localMax.z) / 2,
+      );
+      const adjustedHeight = Math.max(0, height - 0.01);
+      cap = {
+        radius,
+        height: adjustedHeight,
+        localCenter,
+      };
+      model.metadata = model.metadata || {};
+      model.metadata.physicsCapsule = cap;
     }
-
     const capsuleRadius = cap.radius;
+
+    // height is the full capsule height (including hemispherical caps)
     const capsuleHeightBottomOffset = Math.max(
       0.001,
       cap.height * 0.5 - capsuleRadius,
     );
 
-    // --- Tunables ---
     const maxSlopeAngleDeg = 45;
     const groundCheckDistance = 0.3;
-    const coyoteTimeMs = 120;
-    const airControlFactor = 0.0;
-    const airDragPerTick = 0.9;
+    const coyoteTimeMs = 120; // brief grace after leaving ground
+    const airControlFactor = 0.0; // 0 = no airborne acceleration
+    const airDragPerTick = 0.9; // horizontal decay while airborne
     const stepHeight = 0.3;
     const stepProbeDistance = 0.6;
     const maxVerticalVelocity = 3.0;
+
+    const up = flock.BABYLON.Vector3.Up();
+    const scene = flock.scene;
+
+    const capsuleLocalCenter = cap.localCenter || flock.BABYLON.Vector3.Zero();
 
     // Desired horizontal direction from camera
     const cameraForward = scene.activeCamera.getForwardRay().direction;
@@ -230,7 +71,7 @@ export const flockMovement = {
     ).normalize();
     const desiredHorizontalVelocity = horizontalForward.scale(speed);
 
-    // Grounded check
+    // --- Grounded check via capsule shapeCast ---
     const groundCheckStart = model.position.clone();
     const groundCheckEnd = groundCheckStart.add(
       new flock.BABYLON.Vector3(0, -groundCheckDistance, 0),
@@ -240,11 +81,18 @@ export const flockMovement = {
     if (!physicsEngine) return;
     const havokPlugin = physicsEngine.getPhysicsPlugin();
 
-    const lc = cap.localCenter || flock.BABYLON.Vector3.Zero();
     const groundQuery = {
       shape: new flock.BABYLON.PhysicsShapeCapsule(
-        new flock.BABYLON.Vector3(lc.x, lc.y - capsuleHeightBottomOffset, lc.z),
-        new flock.BABYLON.Vector3(lc.x, lc.y + capsuleHeightBottomOffset, lc.z),
+        new flock.BABYLON.Vector3(
+          capsuleLocalCenter.x,
+          capsuleLocalCenter.y - capsuleHeightBottomOffset,
+          capsuleLocalCenter.z,
+        ),
+        new flock.BABYLON.Vector3(
+          capsuleLocalCenter.x,
+          capsuleLocalCenter.y + capsuleHeightBottomOffset,
+          capsuleLocalCenter.z,
+        ),
         capsuleRadius,
         scene,
       ),
@@ -252,7 +100,7 @@ export const flockMovement = {
       startPosition: groundCheckStart,
       endPosition: groundCheckEnd,
       shouldHitTriggers: false,
-      ignoredBodies: [],
+      ignoredBodies: [], // must be an array
       collisionFilterGroup: -1,
       collisionFilterMask: -1,
     };
@@ -274,7 +122,7 @@ export const flockMovement = {
       }
     }
 
-    // Coyote
+    // --- Coyote time window ---
     const nowMs =
       typeof performance !== "undefined" && performance.now
         ? performance.now()
@@ -284,7 +132,7 @@ export const flockMovement = {
       ? nowMs - model._lastGroundedAt <= coyoteTimeMs
       : false;
 
-    // Horizontal policy
+    // --- Horizontal control policy ---
     const currentVelocity = model.physics.getLinearVelocity();
     const currentHorizontalVelocity = new flock.BABYLON.Vector3(
       currentVelocity.x,
@@ -294,8 +142,10 @@ export const flockMovement = {
 
     let appliedHorizontalVelocity;
     if (grounded || withinCoyoteTime) {
+      // full control on ground/coyote
       appliedHorizontalVelocity = desiredHorizontalVelocity;
     } else {
+      // airborne: no acceleration toward input, apply drag
       appliedHorizontalVelocity =
         currentHorizontalVelocity.scale(airDragPerTick);
       if (airControlFactor > 0) {
@@ -305,7 +155,7 @@ export const flockMovement = {
       }
     }
 
-    // Step-up
+    // --- Step-up probe to allow ledge hops when near ground ---
     if (grounded || withinCoyoteTime) {
       const probeStartLow = model.position.add(
         new flock.BABYLON.Vector3(0, 0.05, 0),
@@ -349,22 +199,25 @@ export const flockMovement = {
         const highHitResult = new flock.BABYLON.ShapeCastResult();
         havokPlugin.shapeCast(stepProbeQueryHigh, highResult, highHitResult);
         if (!highResult.hasHit) {
+          // Only boost if we haven't recently boosted
           const lastStepBoost = model._lastStepBoost || 0;
           if (nowMs - lastStepBoost > 400) {
             model._lastStepBoost = nowMs;
+
+            // Apply upward boost
             const boostedVelocity = new flock.BABYLON.Vector3(
               appliedHorizontalVelocity.x,
               Math.max(currentVelocity.y, 2.5),
               appliedHorizontalVelocity.z,
             );
             model.physics.setLinearVelocity(boostedVelocity);
-            return;
+            return; // Skip rest of movement logic this frame
           }
         }
       }
     }
 
-    // Vertical clamp
+    // --- Vertical: let gravity act; just clamp extremes ---
     const clampedVertical = Math.min(
       Math.max(currentVelocity.y, -maxVerticalVelocity),
       maxVerticalVelocity,
@@ -377,7 +230,7 @@ export const flockMovement = {
     );
     model.physics.setLinearVelocity(finalVelocity);
 
-    // Face direction
+    // --- Face movement direction if there is meaningful horizontal speed ---
     const horizontalSpeedSq = appliedHorizontalVelocity.lengthSquared();
     if (horizontalSpeedSq > 1e-6) {
       const facingDirection = appliedHorizontalVelocity.normalize();

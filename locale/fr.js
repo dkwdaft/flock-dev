@@ -147,6 +147,8 @@ export default {
     "glisser %1 vers x %2 y %3 z %4 en %5 secondes \n%6 retour? %7 boucle? %8 %9",
   glide_to_object:
     "glisser %1 vers %2 en %6 secondes\ndécalage x: %3 y: %4 z: %5\n%7 retour? %8 boucle? %9 %10",
+  glide_to_axis:
+    "glisser %1 %2 %3 en %4 secondes\n%5 retour? %6 boucle? %7 %8",
   rotate_anim:
     "tourner %1 vers x %2 y %3 z %4 en %5 ms\n%6 inverse? %7 boucle? %8 %9",
   rotate_anim_seconds:
@@ -390,6 +392,8 @@ export default {
     "Glisser vers une position spécifiée sur une durée avec des options pour inverser, boucler et appliquer une accélération.",
   glide_to_object_tooltip:
     "Glisser vers la position d’une autre forme avec des décalages x/y/z optionnels (0 par défaut) et des options d’inversion, de boucle et d’accélération.",
+  glide_to_axis_tooltip:
+    "Glisser le long d'un axe (X, Y ou Z) vers une valeur cible. Les deux autres axes sont fixés à la position actuelle de l'objet (ancre prise en compte). Mêmes options que le bloc de glissement standard.",
   rotate_anim_tooltip:
     "Faire pivoter une forme vers des angles spécifiés sur une durée avec des options pour inverser, boucler et appliquer une accélération.",
   rotate_anim_seconds_tooltip:

@@ -147,6 +147,8 @@ export default {
     "przesuń %1 do x: %2, y: %3, z: %4 w czasie %5 sekund\n%6 powrót? %7 pętla? %8 %9",
   glide_to_object:
     "przesuń %1 do %2 w czasie %6 sekund\nprzesunięcie x: %3, y: %4, z: %5\n%7 powrót? %8 pętla? %9 %10",
+  glide_to_axis:
+    "przesuń %1 %2 %3 w czasie %4 sekund\n%5 powrót? %6 pętla? %7 %8",
   rotate_anim:
     "obróć %1 do x: %2, y: %3, z: %4 w czasie %5 ms\n%6 odwróć? %7 pętla? %8 %9",
   rotate_anim_seconds:
@@ -390,6 +392,8 @@ export default {
     "Przesuń się do zadanej pozycji w określonym czasie z opcjami odwrócenia, pętli i easing.",
   glide_to_object_tooltip:
     "Przesuń się do pozycji innego obiektu z opcjonalnymi przesunięciami x/y/z (domyślnie 0) oraz opcjami odwrócenia, pętli i easing.",
+  glide_to_axis_tooltip:
+    "Przesuń wzdłuż jednej osi (X, Y lub Z) do wartości docelowej. Pozostałe dwie osie są zablokowane na aktualnej pozycji obiektu (z uwzględnieniem punktu kotwiczenia). Te same opcje co w standardowym bloku glide.",
   rotate_anim_tooltip:
     "Obróć obiekt do zadanych kątów w określonym czasie z opcjami odwrócenia, pętli i easing.",
   rotate_anim_seconds_tooltip:

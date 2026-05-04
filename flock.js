@@ -1002,6 +1002,7 @@ export const flock = {
       moveByVector: this.moveByVector?.bind(this),
       glideTo: this.glideTo?.bind(this),
       glideToObject: this.glideToObject?.bind(this),
+      glideDirection: this.glideDirection?.bind(this),
       rotateToObject: this.rotateToObject?.bind(this),
       wait: this.wait?.bind(this),
       createAnimation: this.createAnimation?.bind(this),
@@ -1887,6 +1888,7 @@ export const flock = {
     flock.pendingTriggers = new Map();
     flock.pendingIntersections = new Map();
     flock._nameRegistry = new Map();
+    flock.modelReadyPromises = new Map();
     flock._animationFileCache = {};
     flock.materialCache = {};
     flock.havokAbortHandled = false;
