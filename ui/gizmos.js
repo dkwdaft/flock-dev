@@ -411,7 +411,7 @@ function applyMeshSelection(pickedMesh, pickedPoint) {
     const block = meshMap[pickedMesh?.metadata?.blockKey];
     highlightBlockById(Blockly.getMainWorkspace(), block);
     gizmoManager.attachToMesh(pickedMesh);
-    pickedMesh.showBoundingBox = true;
+    enableBoundingBox(pickedMesh);
     return;
   }
 
