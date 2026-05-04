@@ -501,10 +501,63 @@ function initializeApp() {
 
   const observer = new MutationObserver(() => {
     const unmuteButton = document.getElementById("babylonUnmuteButton");
-    if (unmuteButton && !unmuteButton.getAttribute("aria-label")) {
-      unmuteButton.setAttribute("aria-label", translate("unmute_audio_aria"));
-      observer.disconnect(); // Stop observing once we've found it
+    if (unmuteButton) {
+      if (!unmuteButton.getAttribute("aria-label")) {
+        unmuteButton.setAttribute("aria-label", translate("unmute_audio_aria"));
+      }
+      if (!unmuteButton.hasAttribute("tabindex")) {
+        unmuteButton.setAttribute("tabindex", "0");
+      }
+      if (!unmuteButton.getAttribute("type")) {
+        unmuteButton.setAttribute("type", "button");
+      }
+      observer.disconnect();
     }
+
+    const canvas = document.getElementById("renderCanvas");
+
+    const restoreCanvasFocus = () => {
+      if (!canvas) return;
+      canvas.focus({ preventScroll: true });
+    };
+
+    const focusAfterUnmuteSettles = () => {
+      // Try immediately and shortly after in case Babylon reflows/replaces elements
+      restoreCanvasFocus();
+      setTimeout(restoreCanvasFocus, 0);
+      setTimeout(restoreCanvasFocus, 50);
+    };
+
+    const onActivate = () => {
+      // Wait until Babylon hides/removes the unmute button
+      const isGoneOrHidden = () =>
+        !document.body.contains(unmuteButton) ||
+        getComputedStyle(unmuteButton).display === "none" ||
+        getComputedStyle(unmuteButton).visibility === "hidden";
+
+      if (isGoneOrHidden()) {
+        focusAfterUnmuteSettles();
+        return;
+      }
+
+      const mo = new MutationObserver(() => {
+        if (isGoneOrHidden()) {
+          mo.disconnect();
+          focusAfterUnmuteSettles();
+        }
+      });
+
+      mo.observe(document.body, { childList: true, subtree: true, attributes: true });
+    };
+
+    unmuteButton.addEventListener("click", onActivate, { once: true });
+    unmuteButton.addEventListener(
+      "keydown",
+      (e) => {
+        if (e.key === "Enter" || e.key === " ") onActivate();
+      },
+      { once: true },
+    );
   });
 
   observer.observe(document.body, {
