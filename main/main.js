@@ -622,11 +622,8 @@ function initializeApp() {
 
         case "p": // Ctrl+P - Execute code
           e.preventDefault();
-          if (typeof executeCode === "function") {
-            executeCode();
-          } else {
-            console.warn("executeCode is not defined.");
-          }
+          const canvas = document.getElementById("renderCanvas");
+           canvas.focus({ preventScroll: true });
           break;
 
         case "/": {
