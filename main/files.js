@@ -1000,8 +1000,7 @@ export async function openFile(workspace, executeCallback) {
       window.loadingCode = true;
       document.getElementById("projectName").value =
         getSafeImportedFileBaseName(file.name);
-      currentFileHandle = fileHandle;
-      updateSaveButtonState();
+      clearFileHandle();
       loadWorkspaceAndExecute(json, workspace, executeCallback);
     } catch (e) {
       if (e.name === "AbortError") return;
