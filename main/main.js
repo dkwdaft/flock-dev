@@ -501,6 +501,7 @@ function initializeApp() {
 
   const observer = new MutationObserver(() => {
     const unmuteButton = document.getElementById("babylonUnmuteButton");
+    if (!unmuteButton) return;
     if (unmuteButton) {
       if (!unmuteButton.getAttribute("aria-label")) {
         unmuteButton.setAttribute("aria-label", translate("unmute_audio_aria"));
