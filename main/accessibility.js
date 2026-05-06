@@ -24,6 +24,9 @@ const AreaManager = {
     div.id = "area-menu-overlay";
     div.className = "hidden";
     div.classList.add("hidden");
+    div.setAttribute("role", "dialog");
+    div.setAttribute("aria-modal", "true");
+    div.setAttribute("aria-label", "Area navigation menu");
     div.innerHTML = `<div id="area-menu-content"> </div>`;
     document.body.appendChild(div);
     this.overlay = div;
