@@ -85,76 +85,38 @@ function registerBindings() {
   InputManager.on("GIZMO", "KeyF", noMod(focusCameraOnMesh));
   InputManager.on("GIZMO", "KeyV", noMod(viewMeshWithCamera));
   // Delete selected mesh with Del key
-  InputManager.on("GIZMO", "Delete", () => {
+  InputManager.on("GIZMO", "Delete", (e) => {
+    if (!gizmoManager?.attachedMesh) return;
+    if (Blockly.getMainWorkspace()?.getInjectionDiv()?.contains(e.target))
+      return;
+    e.stopPropagation();
     const blockKey = findParentWithBlockId(gizmoManager.attachedMesh)?.metadata
       ?.blockKey;
-    const blockId = meshBlockIdMap[blockKey];
-    deleteBlockWithUndo(blockId);
+    deleteBlockWithUndo(meshBlockIdMap[blockKey]);
   });
-}
-
-document.addEventListener("DOMContentLoaded", function () {
-  const colorButton = document.getElementById("colorPickerButton");
-
-  window.addEventListener(
-    "keydown",
-    (e) => {
-      // If they press Tab while a gizmo button
-      // is active, exit the gizmo state
-      if (e.key === "Tab" && document.querySelector(".gizmo-button.active")) {
-        e.preventDefault();
-        exitGizmoState();
-      }
-
-      // Handle Delete key to delete selected mesh
-      if (e.key === "Delete" && gizmoManager?.attachedMesh) {
-        const t = e.target;
-        const tag = (t?.tagName || "").toLowerCase();
-        if (
-          !t?.isContentEditable &&
-          tag !== "input" &&
-          tag !== "textarea" &&
-          tag !== "select"
-        ) {
-          if (Blockly.getMainWorkspace()?.getInjectionDiv()?.contains(t))
-            return;
-          e.stopPropagation();
-          const blockKey = findParentWithBlockId(gizmoManager.attachedMesh)
-            ?.metadata?.blockKey;
-          deleteBlockWithUndo(meshBlockIdMap[blockKey]);
-          return;
-        }
-      }
-
-      // Only plain Esc (no modifiers)
-      if (e.key !== "Escape" || e.ctrlKey || e.altKey || e.metaKey) return;
-
-      // Don’t hijack when typing
-      const t = e.target;
-      const tag = (t?.tagName || "").toLowerCase();
-      if (
-        t?.isContentEditable ||
-        tag === "input" ||
-        tag === "textarea" ||
-        tag === "select"
-      ) {
-        return;
-      }
-
-      // If gizmos are on, disable them
+  // Exit gizmo with Tab key
+  InputManager.on("GIZMO", "Tab", (e) => {
+    e.preventDefault();
+    exitGizmoState();
+  });
+  // Exit gizmo with Esc and unselect mesh
+  InputManager.on(
+    "GIZMO",
+    "Escape",
+    noMod(() => {
       try {
         exitGizmoState();
         gizmoManager?.attachToMesh(null);
       } catch {
-        // fail-safe: still attempt to disable
         disableGizmos?.();
       }
-
-      // Broadcast a generic Esc event apps can listen to if they want
       window.dispatchEvent(new CustomEvent("global:escape"));
-    },
-    true,
-  ); // capture=true so we run before scene/camera handlers
+    }),
+  );
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  const colorButton = document.getElementById("colorPickerButton");
 
   // Register input handlers for gizmo actions
   registerBindings();
