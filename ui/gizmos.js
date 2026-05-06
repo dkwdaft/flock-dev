@@ -76,6 +76,23 @@ const cleanupFns = [];
 // Track DO sections and their associated blocks for cleanup
 const gizmoCreatedBlocks = new Map(); // blockId -> { parentId, createdDoSection, timestamp }
 
+// Register input handlers for gizmo actions
+function registerBindings() {
+  const noMod = (fn) => (e) => {
+    if (!e.ctrlKey && !e.altKey && !e.metaKey) fn(e);
+  };
+  // Focus on mesh with V or F key
+  InputManager.on("GIZMO", "KeyF", noMod(focusCameraOnMesh));
+  InputManager.on("GIZMO", "KeyV", noMod(viewMeshWithCamera));
+  // Delete selected mesh with Del key
+  InputManager.on("GIZMO", "Delete", () => {
+    const blockKey = findParentWithBlockId(gizmoManager.attachedMesh)?.metadata
+      ?.blockKey;
+    const blockId = meshBlockIdMap[blockKey];
+    deleteBlockWithUndo(blockId);
+  });
+}
+
 document.addEventListener("DOMContentLoaded", function () {
   const colorButton = document.getElementById("colorPickerButton");
 
@@ -139,15 +156,8 @@ document.addEventListener("DOMContentLoaded", function () {
     true,
   ); // capture=true so we run before scene/camera handlers
 
-  // Use F or V to focus camera on mesh
-  InputManager.on("GIZMO", "KeyF", (event) => {
-    if (event.ctrlKey || event.altKey || event.metaKey) return;
-    focusCameraOnMesh();
-  });
-  InputManager.on("GIZMO", "KeyV", (event) => {
-    if (event.ctrlKey || event.altKey || event.metaKey) return;
-    viewMeshWithCamera();
-  });
+  // Register input handlers for gizmo actions
+  registerBindings();
 
   // Initialize custom color picker
   if (!colorPicker) {
@@ -2144,14 +2154,6 @@ export function setGizmoManager(value) {
       });
     }
   };
-
-  // Delete object when delete key pressed
-  InputManager.on("GIZMO", "Delete", () => {
-    const blockKey = findParentWithBlockId(gizmoManager.attachedMesh)?.metadata
-      ?.blockKey;
-    const blockId = meshBlockIdMap[blockKey];
-    deleteBlockWithUndo(blockId);
-  });
 }
 
 export function disposeGizmoManager() {
