@@ -9,8 +9,13 @@ import {
 } from "./blocklyshadowutil.js";
 let lastAddMenuHighlighted = null;
 
-function trackAddMenuHighlight(workspace, blockId) {
+function trackBlockHighlight(workspace, blockId) {
   lastAddMenuHighlighted = { workspace, blockId };
+  const block = workspace.getBlockById(blockId);
+  const previouslyFocused = document.activeElement;
+  Blockly.keyboardNavigationController?.setIsActive?.(true); // Make sure keyboard navigation is active
+  Blockly.getFocusManager().focusNode(block);
+  previouslyFocused?.focus();
 }
 
 function clearAddMenuHighlight(workspace, newSelectedId) {
@@ -55,12 +60,12 @@ export function highlightBlockById(workspace, block) {
 
     clearAddMenuHighlight(workspace, block.id);
 
-    block.select();
+    //block.select();
     // Update the keyboard cursor position passively so that Ctrl+E returns
     // the user to this block, not wherever keyboard navigation last was.
     //workspace.getCursor?.()?.setCurNode?.(block);
 
-    trackAddMenuHighlight(workspace, block.id);
+    trackBlockHighlight(workspace, block.id);
 
     // Scroll to position the block at the top and its parent at the left
     scrollToBlockTopParentLeft(workspace, block.id);
