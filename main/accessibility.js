@@ -224,6 +224,14 @@ const GizmoMenuManager = {
       },
       true,
     );
+
+    // Move the badges if the window is resized
+    const gizmoButtons = document.getElementById("gizmoButtons");
+    if (gizmoButtons) {
+      new ResizeObserver(() => {
+        if (this.isOpen()) this.renderBadges();
+      }).observe(gizmoButtons);
+    }
   },
 
   activateButton(entry) {
@@ -412,7 +420,13 @@ const ShortcutsPanel = {
       ) {
         const t = e.target;
         const tag = (t?.tagName || "").toLowerCase();
-        if (t?.isContentEditable || tag === "input" || tag === "textarea" || tag === "select") return;
+        if (
+          t?.isContentEditable ||
+          tag === "input" ||
+          tag === "textarea" ||
+          tag === "select"
+        )
+          return;
 
         if (e.key === "ArrowLeft") {
           e.preventDefault();
