@@ -231,11 +231,19 @@ const GizmoMenuManager = {
     );
 
     const gizmoButtons = document.getElementById("gizmoButtons");
+    const resizer = document.getElementById("resizer");
     if (gizmoButtons) {
       // Move the badges if the window is resized
       new ResizeObserver(() => {
         if (this.isOpen()) this.renderBadges();
       }).observe(gizmoButtons);
+    }
+    if (resizer) {
+      new MutationObserver(() => {
+        if (!resizer.classList.contains("resizing") && this.isOpen()) {
+          this.renderBadges();
+        }
+      }).observe(resizer, { attributes: true, attributeFilter: ["class"] });
     }
   },
 
