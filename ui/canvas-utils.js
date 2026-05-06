@@ -158,6 +158,7 @@ function ensureCircle() {
 // Deal with key down events for canvas keyboard mode
 function handleKeydown(event) {
   if (!keyboardCursorActive) return;
+  if (event.target?.closest?.(".shortcuts-panel")) return;
 
   // If a button was focused and they pressed enter/space, don't
   // move the circle, interact with the button
@@ -253,7 +254,7 @@ export function setCrosshairCursor() {
 // Restore default cursor
 export function setDefaultCursor() {
   document.body.style.cursor = "default";
- if (flock.scene) {
+  if (flock.scene) {
     flock.scene.hoverCursor = "pointer"; // Babylon.js default
     flock.scene.defaultCursor = ""; // Babylon.js default (inherits from body)
   }
