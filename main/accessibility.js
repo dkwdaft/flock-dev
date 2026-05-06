@@ -27,6 +27,7 @@ const AreaManager = {
     div.setAttribute("role", "dialog");
     div.setAttribute("aria-modal", "true");
     div.setAttribute("aria-label", "Area navigation menu");
+    div.tabIndex = -1;
     div.innerHTML = `<div id="area-menu-content"> </div>`;
     document.body.appendChild(div);
     this.overlay = div;
@@ -37,10 +38,7 @@ const AreaManager = {
       if (show) {
         GizmoMenuManager.toggle(false); // Close gizmo menu if open
         this.renderHighlights();
-        setTimeout(
-          () => this.overlay.querySelector(".area-number-badge")?.focus(),
-          0,
-        );
+        setTimeout(() => this.overlay.focus(), 0);
       }
       this.overlay.classList.toggle("hidden", !show);
     }
@@ -121,7 +119,7 @@ const AreaManager = {
         const badge = document.createElement("div");
         badge.className = "area-number-badge";
         badge.setAttribute("role", "button");
-        badge.setAttribute("aria-label", ` ${area.label}: ${area.name}`);
+        badge.setAttribute("aria-label", `${area.label}: ${area.name}`);
         badge.tabIndex = 0; // Make badges focusable
         badge.innerText = area.label;
 
