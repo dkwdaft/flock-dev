@@ -55,10 +55,10 @@ export function highlightBlockById(workspace, block) {
 
     clearAddMenuHighlight(workspace, block.id);
 
-    //block.select();
+    block.select();
     // Update the keyboard cursor position passively so that Ctrl+E returns
     // the user to this block, not wherever keyboard navigation last was.
-    workspace.getCursor?.()?.setCurNode?.(block);
+    //workspace.getCursor?.()?.setCurNode?.(block);
 
     trackAddMenuHighlight(workspace, block.id);
 
