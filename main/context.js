@@ -101,6 +101,7 @@ export const ContextManager = {
 // Inject this debug overlay into index.html
 (function injectDebugUI() {
   const start = () => {
+    if (window.location.hostname !== "localhost") return; // Only show debug on dev
     // 1. Create Style with !important to prevent overrides
     const style = document.createElement("style");
     style.textContent = `
