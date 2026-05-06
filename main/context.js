@@ -2,7 +2,7 @@
  * Flock Context Manager
  * Priority-based state tracker for keyboard/mouse intent.
  */
-const ContextManager = {
+export const ContextManager = {
   // Define priority order (Top of list = most important)
   priorities: [
     "TYPING",

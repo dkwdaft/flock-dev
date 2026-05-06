@@ -31,6 +31,7 @@ import {
   setDefaultCursor,
 } from "./canvas-utils.js";
 import { createAxisKeyboardHandler } from "./axis-keyboard.js";
+import { InputManager } from "../main/inputmanager.js";
 export let gizmoManager;
 
 // Enable debug messages
@@ -138,23 +139,14 @@ document.addEventListener("DOMContentLoaded", function () {
     true,
   ); // capture=true so we run before scene/camera handlers
 
-  window.addEventListener("keydown", (event) => {
+  // Use F or V to focus camera on mesh
+  InputManager.on("GIZMO", "KeyF", (event) => {
     if (event.ctrlKey || event.altKey || event.metaKey) return;
-    const t = event.target;
-    const tag = (t?.tagName || "").toLowerCase();
-    if (
-      t?.isContentEditable ||
-      tag === "input" ||
-      tag === "textarea" ||
-      tag === "select"
-    )
-      return;
-
-    if (event.code === "KeyF") {
-      focusCameraOnMesh();
-    } else if (event.code === "KeyV") {
-      viewMeshWithCamera();
-    }
+    focusCameraOnMesh();
+  });
+  InputManager.on("GIZMO", "KeyV", (event) => {
+    if (event.ctrlKey || event.altKey || event.metaKey) return;
+    viewMeshWithCamera();
   });
 
   // Initialize custom color picker
@@ -667,7 +659,8 @@ function startRotateKeyboardHandler(mesh) {
     } else {
       const blockKey = mesh?.metadata?.blockKey;
       const creationBlock = blockKey ? meshMap[blockKey] : null;
-      if (creationBlock) highlightBlockById(Blockly.getMainWorkspace(), creationBlock);
+      if (creationBlock)
+        highlightBlockById(Blockly.getMainWorkspace(), creationBlock);
     }
 
     stopAxisKeyboard = createAxisKeyboardHandler({
@@ -679,11 +672,7 @@ function startRotateKeyboardHandler(mesh) {
             mesh.rotation.z,
           );
         }
-        const delta = flock.BABYLON.Quaternion.RotationYawPitchRoll(
-          dy,
-          dx,
-          dz,
-        );
+        const delta = flock.BABYLON.Quaternion.RotationYawPitchRoll(dy, dx, dz);
         mesh.rotationQuaternion.multiplyInPlace(delta).normalize();
         if (mesh.physics) {
           mesh.physics.disablePreStep = false;
@@ -1637,7 +1626,11 @@ function handleRotationGizmo() {
 
       // Only update the axis that was dragged; fall back to all axes if unknown
       const axisFilter = draggedAxis
-        ? { x: draggedAxis === "x", y: draggedAxis === "y", z: draggedAxis === "z" }
+        ? {
+            x: draggedAxis === "x",
+            y: draggedAxis === "y",
+            z: draggedAxis === "z",
+          }
         : null;
       draggedAxis = null;
       updateRotationBlock(mesh, axisFilter);
@@ -2152,20 +2145,12 @@ export function setGizmoManager(value) {
     }
   };
 
-  const canvas = flock.scene.getEngine().getRenderingCanvas();
-
-  // Add event listener for keydown events on the canvas
-  canvas.addEventListener("keydown", function (event) {
-    if (event.keyCode === 46) {
-      // KeyCode for 'Delete' key is 46
-      // Handle delete action
-
-      const blockKey = findParentWithBlockId(gizmoManager.attachedMesh)
-        ?.metadata?.blockKey;
-      const blockId = meshBlockIdMap[blockKey];
-
-      deleteBlockWithUndo(blockId);
-    }
+  // Delete object when delete key pressed
+  InputManager.on("GIZMO", "Delete", () => {
+    const blockKey = findParentWithBlockId(gizmoManager.attachedMesh)?.metadata
+      ?.blockKey;
+    const blockId = meshBlockIdMap[blockKey];
+    deleteBlockWithUndo(blockId);
   });
 }
 

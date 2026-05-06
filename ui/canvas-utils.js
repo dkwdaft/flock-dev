@@ -1,4 +1,5 @@
 import { flock } from "../flock.js";
+import { InputManager } from "../main/inputmanager.js";
 
 // Create yellow circle for canvas position indicator
 // One circle selector can be active on the canvas at once
@@ -100,7 +101,7 @@ export function startCanvasKeyboardMode(
   isValidPosition = null,
 ) {
   stopCanvasKeyboardMode(); // Ensure any existing mode is cleared
-  document.addEventListener("keydown", handleKeydown);
+  InputManager.pushMode(handleKeydown);
   document.addEventListener("keyup", handleKeyup);
   previouslyFocusedElement = document.activeElement; // Save current focus
   keyboardCursorActive = true;
@@ -122,7 +123,7 @@ export function stopCanvasKeyboardMode() {
   keyboardCursorActive = false;
   keyboardCursorCallback = null;
   hitChecker = null;
-  document.removeEventListener("keydown", handleKeydown);
+  InputManager.popMode();
   document.removeEventListener("keyup", handleKeyup);
   heldKeys.clear();
   destroyCanvasCircle();
@@ -171,7 +172,6 @@ function handleKeydown(event) {
       event.target?.isContentEditable) &&
     (event.key === "Enter" || event.key === " " || event.key === "Spacebar")
   ) {
-    console.log("Button interaction, not moving canvas circle");
     return;
   }
   const moveDistance = event.shiftKey ? 10 : 2;
