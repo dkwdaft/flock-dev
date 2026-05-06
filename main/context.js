@@ -4,7 +4,15 @@
  */
 const ContextManager = {
   // Define priority order (Top of list = most important)
-  priorities: ["TYPING", "OVERLAY", "GIZMO", "NAVIGATION", "RESIZER", "CAMERA"],
+  priorities: [
+    "TYPING",
+    "OVERLAY",
+    "GIZMO",
+    "RESIZER",
+    "NAVIGATION",
+    "EDITOR",
+    "CAMERA",
+  ],
 
   getCurrentContext() {
     // TYPING: Are they in an input box or search box
@@ -38,12 +46,11 @@ const ContextManager = {
     // OVERLAY: are they currently in an overlay?
     const overlaySelectors =
       "#area-menu-overlay, #gizmo-menu-overlay, .shortcuts-panel";
-    const activeOverlay = document.querySelector(overlaySelectors);
+    const isOverlayVisible = Array.from(
+      document.querySelectorAll(overlaySelectors),
+    ).some((el) => window.getComputedStyle(el).display !== "none");
 
-    if (
-      activeOverlay &&
-      window.getComputedStyle(activeOverlay).display !== "none"
-    ) {
+    if (isOverlayVisible) {
       return "OVERLAY";
     }
 
@@ -54,7 +61,6 @@ const ContextManager = {
 
     // RESIZER: Are they changing the canvas size?
     const resizer = document.getElementById("resizer");
-    console.log("Active Element:", activeEl);
     if (activeEl === resizer) {
       return "RESIZER";
     }
@@ -86,7 +92,7 @@ const ContextManager = {
 
   // Helper to show context in the UI for debugging
   updateDebugDisplay() {
-    const el = document.getElementById("context-debug");
+    const el = document.getElementById("flock-context-debug");
     if (el) {
       el.innerText = `Current Context: ${this.getCurrentContext()}`;
     }
