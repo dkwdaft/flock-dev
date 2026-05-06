@@ -121,7 +121,7 @@ export function createAxisKeyboardHandler({
     }
   }
 
-  InputManager.pushMode(handler);
+  InputManager.pushMode(handler, "axis-keyboard");
 
   function stop() {
     axis = null;

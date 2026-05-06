@@ -5,6 +5,17 @@ import { ContextManager } from "./context.js";
  * Handles keyboard input events based on the current context.
  */
 
+// Work out what key combo was pressed (e.g. Ctrl+Shift+KeyA)
+function _keyCombo(event) {
+  const mods = [
+    event.ctrlKey && "Ctrl",
+    event.metaKey && "Meta",
+    event.altKey && "Alt",
+    event.shiftKey && "Shift",
+  ].filter(Boolean);
+  return mods.length ? `${mods.join("+")}+${event.code}` : event.code;
+}
+
 const InputManager = {
   _registry: {},
   _modeStack: [],
@@ -17,8 +28,8 @@ const InputManager = {
     delete this._registry[`${context}:${code}`];
   },
 
-  pushMode(handler) {
-    this._modeStack.push(handler);
+  pushMode(handler, name = "modal") {
+    this._modeStack.push({ handler, name });
   },
 
   popMode() {
@@ -29,15 +40,35 @@ const InputManager = {
     const context = ContextManager.getCurrentContext();
     if (this._modeStack.length > 0) {
       if (context === "TYPING" || context === "OVERLAY") return;
-      this._modeStack[this._modeStack.length - 1](event);
-      if (event.cancelBubble) return;
+      const mode = this._modeStack[this._modeStack.length - 1];
+      mode.handler(event);
+      if (event.cancelBubble) {
+        _debugShow(_keyCombo(event), mode.name);
+        return;
+      }
     }
     const handler =
       this._registry[`${context}:${event.code}`] ||
       this._registry[`*:${event.code}`];
+    _debugShow(
+      _keyCombo(event),
+      handler ? `${context}:${event.code}` : "external",
+    );
     if (handler) handler(event);
   },
 };
+
+// Print debug info for all key presses
+let _debugTimer = null;
+function _debugShow(code, label) {
+  const el = document.getElementById("input-debug-value");
+  if (!el) return;
+  el.textContent = `${code} → ${label}`;
+  clearTimeout(_debugTimer);
+  _debugTimer = setTimeout(() => {
+    el.textContent = "-";
+  }, 2000);
+}
 
 // Handle keydown for all presses
 document.addEventListener("keydown", (e) => InputManager._dispatch(e), true);

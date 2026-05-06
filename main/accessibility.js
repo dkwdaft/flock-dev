@@ -248,7 +248,6 @@ const GizmoMenuManager = {
   },
 
   activateButton(entry) {
-    this.toggle(false);
     const el = document.getElementById(entry.id);
     if (!el) return;
     el.focus();
@@ -462,4 +461,4 @@ AreaManager.init();
 GizmoMenuManager.init();
 ShortcutsPanel.init();
 
-export { ShortcutsPanel };
+export { ShortcutsPanel, GizmoMenuManager };

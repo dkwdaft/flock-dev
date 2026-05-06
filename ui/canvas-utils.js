@@ -101,7 +101,7 @@ export function startCanvasKeyboardMode(
   isValidPosition = null,
 ) {
   stopCanvasKeyboardMode(); // Ensure any existing mode is cleared
-  InputManager.pushMode(handleKeydown);
+  InputManager.pushMode(handleKeydown, "canvas-cursor");
   document.addEventListener("keyup", handleKeyup);
   previouslyFocusedElement = document.activeElement; // Save current focus
   keyboardCursorActive = true;
@@ -181,6 +181,7 @@ function handleKeydown(event) {
     case "ArrowDown":
     case "ArrowUp":
       event.preventDefault();
+      event.stopPropagation();
       heldKeys.add(event.key);
       ensureCircle();
       // Calculate where to move
@@ -196,6 +197,7 @@ function handleKeydown(event) {
     // Tab is assumed to restart keyboard nav mode
     case "Tab":
       event.preventDefault(); // don't actually tab!
+      event.stopPropagation();
       stopCanvasKeyboardMode();
       break;
 
@@ -204,6 +206,7 @@ function handleKeydown(event) {
     case "Spacebar":
     case "Space":
       event.preventDefault();
+      event.stopPropagation();
       ensureCircle(); // It must exist to click it
       // If there's a hitChecker and it returns false
       // show invalid press animation instead of clicking
@@ -229,6 +232,7 @@ function handleKeydown(event) {
 
     case "Escape":
       event.preventDefault();
+      event.stopPropagation();
       stopCanvasKeyboardMode();
       break;
 

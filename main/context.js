@@ -44,8 +44,7 @@ export const ContextManager = {
     if (isInput || isBlocklyTyping) return "TYPING";
 
     // OVERLAY: are they currently in an overlay?
-    const overlaySelectors =
-      "#area-menu-overlay, #gizmo-menu-overlay, .shortcuts-panel";
+    const overlaySelectors = "#area-menu-overlay, .shortcuts-panel";
     const isOverlayVisible = Array.from(
       document.querySelectorAll(overlaySelectors),
     ).some((el) => window.getComputedStyle(el).display !== "none");
@@ -128,7 +127,8 @@ export const ContextManager = {
     // 2. Create the Element
     const debugDiv = document.createElement("div");
     debugDiv.id = "flock-context-debug";
-    debugDiv.innerHTML = `CONTEXT: <span id="ctx-value">...</span>`;
+    debugDiv.innerHTML = `CONTEXT: <span id="ctx-value">...</span><br>
+    INPUT: <span id="input-debug-value">...</span>`;
     document.body.appendChild(debugDiv);
 
     // Update loop

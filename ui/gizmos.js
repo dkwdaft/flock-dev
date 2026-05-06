@@ -32,6 +32,7 @@ import {
 } from "./canvas-utils.js";
 import { createAxisKeyboardHandler } from "./axis-keyboard.js";
 import { InputManager } from "../main/inputmanager.js";
+import { GizmoMenuManager } from "../main/accessibility.js";
 export let gizmoManager;
 
 // Enable debug messages
@@ -582,6 +583,7 @@ export function exitGizmoState() {
     .forEach((btn) => btn.classList.remove("active"));
   disableGizmos();
   document.body.style.cursor = "default";
+  GizmoMenuManager.toggle(false);
 }
 
 // Start the keyboard handler for moving a mesh
@@ -1290,6 +1292,7 @@ export function toggleGizmo(gizmoType) {
     return;
   }
 
+  GizmoMenuManager.toggle(true);
   exitGizmoState(); // Clean up any existing gizmo state
   resetAttachedMeshIfMeshAttached();
 
