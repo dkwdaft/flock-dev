@@ -404,9 +404,9 @@ const ShortcutsPanel = {
   },
 
   hide() {
-    this.panel.classList.add("hidden");
     this.previousFocus?.focus();
     this.previousFocus = null;
+    this.panel.classList.add("hidden");
   },
 
   toggle() {
@@ -442,6 +442,7 @@ const ShortcutsPanel = {
       }
       if (e.key === "Tab") {
         e.preventDefault();
+        e.stopPropagation();
         this.hide();
       }
     });
