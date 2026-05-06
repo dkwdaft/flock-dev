@@ -100,6 +100,7 @@ export function createAxisKeyboardHandler({
       case "Enter":
       case " ": {
         event.preventDefault();
+        event.stopPropagation();
         try {
           onConfirm();
         } finally {
@@ -110,6 +111,7 @@ export function createAxisKeyboardHandler({
 
       case "Escape":
         event.preventDefault();
+        event.stopPropagation();
         try {
           onCancel();
         } finally {

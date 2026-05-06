@@ -96,7 +96,6 @@ function registerBindings() {
   });
   // Exit gizmo with Tab key
   InputManager.on("GIZMO", "Tab", (e) => {
-    e.preventDefault();
     exitGizmoState();
   });
   // Exit gizmo with Esc and unselect mesh

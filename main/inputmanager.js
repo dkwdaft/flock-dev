@@ -30,7 +30,7 @@ const InputManager = {
     if (this._modeStack.length > 0) {
       if (context === "TYPING" || context === "OVERLAY") return;
       this._modeStack[this._modeStack.length - 1](event);
-      return;
+      if (event.cancelBubble) return;
     }
     const handler =
       this._registry[`${context}:${event.code}`] ||
