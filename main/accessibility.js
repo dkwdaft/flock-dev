@@ -236,11 +236,6 @@ const GizmoMenuManager = {
       new ResizeObserver(() => {
         if (this.isOpen()) this.renderBadges();
       }).observe(gizmoButtons);
-
-      // Hide buttons if a gizmo is clicked
-      gizmoButtons.addEventListener("click", () => {
-        if (this.isOpen()) this.toggle(false);
-      });
     }
   },
 
