@@ -32,6 +32,7 @@ const AreaManager = {
   toggle(show) {
     if (this.overlay) {
       if (show) {
+        GizmoMenuManager.toggle(false); // Close gizmo menu if open
         this.renderHighlights();
         setTimeout(
           () => this.overlay.querySelector(".area-number-badge")?.focus(),
@@ -220,6 +221,10 @@ const GizmoMenuManager = {
         if (e.key >= "1" && e.key <= "9") {
           const entry = this.buttons.find((b) => b.label === e.key);
           if (entry) this.activateButton(entry);
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          this.toggle(false);
         }
       },
       true,
@@ -440,7 +445,7 @@ const ShortcutsPanel = {
         e.preventDefault();
         this.panel.scrollBy({ top: 100, behavior: "instant" });
       }
-      if (e.key === "Tab") {
+      if (e.key === "Tab" || e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
         this.hide();
