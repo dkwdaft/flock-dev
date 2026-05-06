@@ -4,13 +4,13 @@
 const AreaManager = {
   overlay: null,
   areas: [
-    { selector: "#menuleft", label: "1" }, // Top left menu (line 148 input.js - demo menu is excluded?)
-    { selector: "#menuright", label: "2" }, // Top right
-    { selector: "#renderCanvas", label: "3" }, // Main canvas
-    { selector: "#gizmoButtons", label: "4" }, // Gizmos
-    { selector: "#resizer", label: "5", pad: -3 }, // Resizer
-    { selector: ".blocklyToolbox", label: "6" }, // Blockly toolbox
-    { selector: "svg.blocklySvg", label: "7" }, // Block workspace
+    { selector: "#menuleft", label: "1", name: "Top left menu" },
+    { selector: "#menuright", label: "2", name: "Top right menu" },
+    { selector: "#renderCanvas", label: "3", name: "Canvas" },
+    { selector: "#gizmoButtons", label: "4", name: "Gizmos" },
+    { selector: "#resizer", label: "5", pad: -3, name: "Resizer" },
+    { selector: ".blocklyToolbox", label: "6", name: "Toolbox" },
+    { selector: "svg.blocklySvg", label: "7", name: "Code editor" },
   ],
 
   init() {
@@ -24,6 +24,10 @@ const AreaManager = {
     div.id = "area-menu-overlay";
     div.className = "hidden";
     div.classList.add("hidden");
+    div.setAttribute("role", "dialog");
+    div.setAttribute("aria-modal", "true");
+    div.setAttribute("aria-label", "Area navigation menu");
+    div.tabIndex = -1;
     div.innerHTML = `<div id="area-menu-content"> </div>`;
     document.body.appendChild(div);
     this.overlay = div;
@@ -34,10 +38,7 @@ const AreaManager = {
       if (show) {
         GizmoMenuManager.toggle(false); // Close gizmo menu if open
         this.renderHighlights();
-        setTimeout(
-          () => this.overlay.querySelector(".area-number-badge")?.focus(),
-          0,
-        );
+        setTimeout(() => this.overlay.focus(), 0);
       }
       this.overlay.classList.toggle("hidden", !show);
     }
@@ -117,6 +118,8 @@ const AreaManager = {
 
         const badge = document.createElement("div");
         badge.className = "area-number-badge";
+        badge.setAttribute("role", "button");
+        badge.setAttribute("aria-label", `${area.label}: ${area.name}`);
         badge.tabIndex = 0; // Make badges focusable
         badge.innerText = area.label;
 
