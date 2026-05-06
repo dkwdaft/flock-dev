@@ -1604,28 +1604,24 @@ kbd {
 .shortcuts-panel {
   position: fixed;
   top: 0;
-  left: 0;
-  right: 0;
   bottom: 0;
-  pointer-events: none;
+  width: min(300px, 100%);
+  background-color: var(--color-bg);
+  padding: 1.5em;
+  overflow-y: auto;
   z-index: 10002;
 }
 
-.shortcuts-panel__content {
-  position: absolute;
-  pointer-events: auto;
-  top: 0;
-  bottom: 0;
-  background-color: var(--color-bg);
-  padding: 1.5em;
-  width: min(300px, 100%);
-  overflow-y: auto;
-}
-
-.shortcuts-panel--left .shortcuts-panel__content {
+.shortcuts-panel--left {
   left: 0;
 }
 
-.shortcuts-panel--right .shortcuts-panel__content {
+.shortcuts-panel--right {
   right: 0;
+  left: auto;
+}
+
+.shortcuts-panel:focus {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
 }
