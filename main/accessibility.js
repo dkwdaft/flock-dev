@@ -361,6 +361,7 @@ function formatKeys(keys) {
 const ShortcutsPanel = {
   panel: null,
   dock: "left",
+  previousFocus: null,
 
   init() {
     this.createPanel();
@@ -373,12 +374,12 @@ const ShortcutsPanel = {
     div.className = "shortcuts-panel hidden shortcuts-panel--left";
     div.setAttribute("role", "region");
     div.setAttribute("aria-label", "Keyboard shortcuts");
-    div.innerHTML = `
-      <div class="shortcuts-panel__content">
+    div.tabIndex = 0;
+    div.innerHTML = `      
         <button type="button" class="close-button" id="closeShortcutsPanel" aria-label="Close keyboard shortcuts">&times;</button>
         <h1 id="shortcuts-panel-title">Keyboard shortcuts</h1>
         <table id="shortcuts-table"><tbody></tbody></table>
-      </div>`;
+      `;
     document.body.appendChild(div);
     this.panel = div;
   },
@@ -397,11 +398,15 @@ const ShortcutsPanel = {
     `,
       )
       .join("");
+    this.previousFocus = document.activeElement;
     this.panel.classList.remove("hidden");
+    this.panel.focus();
   },
 
   hide() {
     this.panel.classList.add("hidden");
+    this.previousFocus?.focus();
+    this.previousFocus = null;
   },
 
   toggle() {
@@ -418,39 +423,26 @@ const ShortcutsPanel = {
     document.addEventListener("click", (e) => {
       if (e.target.id === "closeShortcutsPanel") this.hide();
     });
-    document.addEventListener("keydown", (e) => {
-      if (
-        (e.ctrlKey || e.metaKey) &&
-        !this.panel.classList.contains("hidden")
-      ) {
-        const t = e.target;
-        const tag = (t?.tagName || "").toLowerCase();
-        if (
-          t?.isContentEditable ||
-          tag === "input" ||
-          tag === "textarea" ||
-          tag === "select"
-        )
-          return;
-
-        if (e.key === "ArrowLeft") {
-          e.preventDefault();
-          this.setDock("left");
-        }
-        if (e.key === "ArrowRight") {
-          e.preventDefault();
-          this.setDock("right");
-        }
-        if (e.key === "ArrowUp") {
-          e.preventDefault();
-          const content = this.panel.querySelector(".shortcuts-panel__content");
-          content.scrollBy({ top: -100, behavior: "instant" });
-        }
-        if (e.key === "ArrowDown") {
-          e.preventDefault();
-          const content = this.panel.querySelector(".shortcuts-panel__content");
-          content.scrollBy({ top: 100, behavior: "instant" });
-        }
+    this.panel.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        this.setDock("left");
+      }
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        this.setDock("right");
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        this.panel.scrollBy({ top: -100, behavior: "instant" });
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        this.panel.scrollBy({ top: 100, behavior: "instant" });
+      }
+      if (e.key === "Tab") {
+        e.preventDefault();
+        this.hide();
       }
     });
   },
