@@ -1,4 +1,5 @@
 import { flock } from "../flock.js";
+import { InputManager } from "../main/inputmanager.js";
 
 // A generic handler to be used for axis-constrained
 // keyboard movement in various tools (move, scale, etc)
@@ -99,6 +100,7 @@ export function createAxisKeyboardHandler({
       case "Enter":
       case " ": {
         event.preventDefault();
+        event.stopPropagation();
         try {
           onConfirm();
         } finally {
@@ -109,6 +111,7 @@ export function createAxisKeyboardHandler({
 
       case "Escape":
         event.preventDefault();
+        event.stopPropagation();
         try {
           onCancel();
         } finally {
@@ -118,11 +121,11 @@ export function createAxisKeyboardHandler({
     }
   }
 
-  document.addEventListener("keydown", handler, true);
+  InputManager.pushMode(handler, "axis-keyboard");
 
   function stop() {
     axis = null;
-    document.removeEventListener("keydown", handler, true);
+    InputManager.popMode();
   }
 
   return stop;

@@ -49,6 +49,7 @@ import {
   translate,
 } from "./translation.js";
 import { ShortcutsPanel } from "./accessibility.js";
+import "./context.js";
 
 function isEmbedModeEnabled() {
   const embedParam = new URLSearchParams(window.location.search).get("embed");
@@ -548,7 +549,11 @@ function initializeApp() {
         }
       });
 
-      mo.observe(document.body, { childList: true, subtree: true, attributes: true });
+      mo.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+      });
     };
 
     unmuteButton.addEventListener("click", onActivate, { once: true });
@@ -624,7 +629,7 @@ function initializeApp() {
         case "p": // Ctrl+P - Execute code
           e.preventDefault();
           const canvas = document.getElementById("renderCanvas");
-           canvas.focus({ preventScroll: true });
+          canvas.focus({ preventScroll: true });
           break;
 
         case "/": {
