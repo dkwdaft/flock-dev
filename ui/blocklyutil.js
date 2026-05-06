@@ -12,10 +12,11 @@ let lastAddMenuHighlighted = null;
 function trackBlockHighlight(workspace, blockId) {
   lastAddMenuHighlighted = { workspace, blockId };
   const block = workspace.getBlockById(blockId);
-  const previouslyFocused = document.activeElement;
+  block.select();
+  /*const previouslyFocused = document.activeElement;
   Blockly.keyboardNavigationController?.setIsActive?.(true); // Make sure keyboard navigation is active
   Blockly.getFocusManager().focusNode(block);
-  previouslyFocused?.focus();
+  previouslyFocused?.focus();*/
 }
 
 function clearAddMenuHighlight(workspace, newSelectedId) {
