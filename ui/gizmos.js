@@ -31,6 +31,8 @@ import {
   setDefaultCursor,
 } from "./canvas-utils.js";
 import { createAxisKeyboardHandler } from "./axis-keyboard.js";
+import { InputManager } from "../main/inputmanager.js";
+import { GizmoMenuManager } from "../main/accessibility.js";
 export let gizmoManager;
 
 // Enable debug messages
@@ -75,87 +77,49 @@ const cleanupFns = [];
 // Track DO sections and their associated blocks for cleanup
 const gizmoCreatedBlocks = new Map(); // blockId -> { parentId, createdDoSection, timestamp }
 
-document.addEventListener("DOMContentLoaded", function () {
-  const colorButton = document.getElementById("colorPickerButton");
-
-  window.addEventListener(
-    "keydown",
-    (e) => {
-      // If they press Tab while a gizmo button
-      // is active, exit the gizmo state
-      if (e.key === "Tab" && document.querySelector(".gizmo-button.active")) {
-        e.preventDefault();
-        exitGizmoState();
-      }
-
-      // Handle Delete key to delete selected mesh
-      if (e.key === "Delete" && gizmoManager?.attachedMesh) {
-        const t = e.target;
-        const tag = (t?.tagName || "").toLowerCase();
-        if (
-          !t?.isContentEditable &&
-          tag !== "input" &&
-          tag !== "textarea" &&
-          tag !== "select"
-        ) {
-          if (Blockly.getMainWorkspace()?.getInjectionDiv()?.contains(t))
-            return;
-          e.stopPropagation();
-          const blockKey = findParentWithBlockId(gizmoManager.attachedMesh)
-            ?.metadata?.blockKey;
-          deleteBlockWithUndo(meshBlockIdMap[blockKey]);
-          return;
-        }
-      }
-
-      // Only plain Esc (no modifiers)
-      if (e.key !== "Escape" || e.ctrlKey || e.altKey || e.metaKey) return;
-
-      // Don’t hijack when typing
-      const t = e.target;
-      const tag = (t?.tagName || "").toLowerCase();
-      if (
-        t?.isContentEditable ||
-        tag === "input" ||
-        tag === "textarea" ||
-        tag === "select"
-      ) {
-        return;
-      }
-
-      // If gizmos are on, disable them
+// Register input handlers for gizmo actions
+function registerBindings() {
+  const noMod = (fn) => (e) => {
+    if (!e.ctrlKey && !e.altKey && !e.metaKey) fn(e);
+  };
+  // Focus on mesh with V or F key
+  InputManager.on("GIZMO", "KeyF", noMod(focusCameraOnMesh));
+  InputManager.on("GIZMO", "KeyV", noMod(viewMeshWithCamera));
+  // Delete selected mesh with Del key
+  InputManager.on("GIZMO", "Delete", (e) => {
+    if (!gizmoManager?.attachedMesh) return;
+    if (Blockly.getMainWorkspace()?.getInjectionDiv()?.contains(e.target))
+      return;
+    e.stopPropagation();
+    const blockKey = findParentWithBlockId(gizmoManager.attachedMesh)?.metadata
+      ?.blockKey;
+    deleteBlockWithUndo(meshBlockIdMap[blockKey]);
+  });
+  // Exit gizmo with Tab key
+  InputManager.on("GIZMO", "Tab", (e) => {
+    exitGizmoState();
+  });
+  // Exit gizmo with Esc and unselect mesh
+  InputManager.on(
+    "GIZMO",
+    "Escape",
+    noMod(() => {
       try {
         exitGizmoState();
         gizmoManager?.attachToMesh(null);
       } catch {
-        // fail-safe: still attempt to disable
         disableGizmos?.();
       }
-
-      // Broadcast a generic Esc event apps can listen to if they want
       window.dispatchEvent(new CustomEvent("global:escape"));
-    },
-    true,
-  ); // capture=true so we run before scene/camera handlers
+    }),
+  );
+}
 
-  window.addEventListener("keydown", (event) => {
-    if (event.ctrlKey || event.altKey || event.metaKey) return;
-    const t = event.target;
-    const tag = (t?.tagName || "").toLowerCase();
-    if (
-      t?.isContentEditable ||
-      tag === "input" ||
-      tag === "textarea" ||
-      tag === "select"
-    )
-      return;
+document.addEventListener("DOMContentLoaded", function () {
+  const colorButton = document.getElementById("colorPickerButton");
 
-    if (event.code === "KeyF") {
-      focusCameraOnMesh();
-    } else if (event.code === "KeyV") {
-      viewMeshWithCamera();
-    }
-  });
+  // Register input handlers for gizmo actions
+  registerBindings();
 
   // Initialize custom color picker
   if (!colorPicker) {
@@ -619,6 +583,7 @@ export function exitGizmoState() {
     .forEach((btn) => btn.classList.remove("active"));
   disableGizmos();
   document.body.style.cursor = "default";
+  GizmoMenuManager.toggle(false);
 }
 
 // Start the keyboard handler for moving a mesh
@@ -667,7 +632,8 @@ function startRotateKeyboardHandler(mesh) {
     } else {
       const blockKey = mesh?.metadata?.blockKey;
       const creationBlock = blockKey ? meshMap[blockKey] : null;
-      if (creationBlock) highlightBlockById(Blockly.getMainWorkspace(), creationBlock);
+      if (creationBlock)
+        highlightBlockById(Blockly.getMainWorkspace(), creationBlock);
     }
 
     stopAxisKeyboard = createAxisKeyboardHandler({
@@ -679,11 +645,7 @@ function startRotateKeyboardHandler(mesh) {
             mesh.rotation.z,
           );
         }
-        const delta = flock.BABYLON.Quaternion.RotationYawPitchRoll(
-          dy,
-          dx,
-          dz,
-        );
+        const delta = flock.BABYLON.Quaternion.RotationYawPitchRoll(dy, dx, dz);
         mesh.rotationQuaternion.multiplyInPlace(delta).normalize();
         if (mesh.physics) {
           mesh.physics.disablePreStep = false;
@@ -1330,6 +1292,7 @@ export function toggleGizmo(gizmoType) {
     return;
   }
 
+  GizmoMenuManager.toggle(true);
   exitGizmoState(); // Clean up any existing gizmo state
   resetAttachedMeshIfMeshAttached();
 
@@ -1637,7 +1600,11 @@ function handleRotationGizmo() {
 
       // Only update the axis that was dragged; fall back to all axes if unknown
       const axisFilter = draggedAxis
-        ? { x: draggedAxis === "x", y: draggedAxis === "y", z: draggedAxis === "z" }
+        ? {
+            x: draggedAxis === "x",
+            y: draggedAxis === "y",
+            z: draggedAxis === "z",
+          }
         : null;
       draggedAxis = null;
       updateRotationBlock(mesh, axisFilter);
@@ -2151,22 +2118,6 @@ export function setGizmoManager(value) {
       });
     }
   };
-
-  const canvas = flock.scene.getEngine().getRenderingCanvas();
-
-  // Add event listener for keydown events on the canvas
-  canvas.addEventListener("keydown", function (event) {
-    if (event.keyCode === 46) {
-      // KeyCode for 'Delete' key is 46
-      // Handle delete action
-
-      const blockKey = findParentWithBlockId(gizmoManager.attachedMesh)
-        ?.metadata?.blockKey;
-      const blockId = meshBlockIdMap[blockKey];
-
-      deleteBlockWithUndo(blockId);
-    }
-  });
 }
 
 export function disposeGizmoManager() {

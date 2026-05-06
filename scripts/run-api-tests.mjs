@@ -295,10 +295,15 @@ async function startServer() {
     const outputBuffer = [];
     const errorBuffer = [];
 
+    // Run npm directly without a shell. This avoids Node DEP0190
+    // (deprecation of `shell: true` with an args array). On macOS/Linux/CI,
+    // `npm` resolves from PATH; on Windows the launcher is `npm.cmd`.
+    // Alternative if you need shell features (e.g. on Windows): pass the
+    // command as a single string with `shell: true` and no args array, e.g.
+    //   spawn("npm run dev", { cwd: ..., stdio: "pipe", shell: true, env: ... })
     server = spawn("npm", ["run", "dev"], {
       cwd: path.resolve(__dirname, ".."),
       stdio: "pipe",
-      shell: true,
       env: { ...process.env },
     });
 

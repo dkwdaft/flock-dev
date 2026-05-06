@@ -1,4 +1,5 @@
 import { flock } from "../flock.js";
+import { InputManager } from "../main/inputmanager.js";
 
 // Create yellow circle for canvas position indicator
 // One circle selector can be active on the canvas at once
@@ -100,7 +101,7 @@ export function startCanvasKeyboardMode(
   isValidPosition = null,
 ) {
   stopCanvasKeyboardMode(); // Ensure any existing mode is cleared
-  document.addEventListener("keydown", handleKeydown);
+  InputManager.pushMode(handleKeydown, "canvas-cursor");
   document.addEventListener("keyup", handleKeyup);
   previouslyFocusedElement = document.activeElement; // Save current focus
   keyboardCursorActive = true;
@@ -122,7 +123,7 @@ export function stopCanvasKeyboardMode() {
   keyboardCursorActive = false;
   keyboardCursorCallback = null;
   hitChecker = null;
-  document.removeEventListener("keydown", handleKeydown);
+  InputManager.popMode();
   document.removeEventListener("keyup", handleKeyup);
   heldKeys.clear();
   destroyCanvasCircle();
@@ -158,6 +159,7 @@ function ensureCircle() {
 // Deal with key down events for canvas keyboard mode
 function handleKeydown(event) {
   if (!keyboardCursorActive) return;
+  if (event.target?.closest?.(".shortcuts-panel")) return;
 
   // If a button was focused and they pressed enter/space, don't
   // move the circle, interact with the button
@@ -170,7 +172,6 @@ function handleKeydown(event) {
       event.target?.isContentEditable) &&
     (event.key === "Enter" || event.key === " " || event.key === "Spacebar")
   ) {
-    console.log("Button interaction, not moving canvas circle");
     return;
   }
   const moveDistance = event.shiftKey ? 10 : 2;
@@ -180,6 +181,7 @@ function handleKeydown(event) {
     case "ArrowDown":
     case "ArrowUp":
       event.preventDefault();
+      event.stopPropagation();
       heldKeys.add(event.key);
       ensureCircle();
       // Calculate where to move
@@ -195,6 +197,7 @@ function handleKeydown(event) {
     // Tab is assumed to restart keyboard nav mode
     case "Tab":
       event.preventDefault(); // don't actually tab!
+      event.stopPropagation();
       stopCanvasKeyboardMode();
       break;
 
@@ -203,6 +206,7 @@ function handleKeydown(event) {
     case "Spacebar":
     case "Space":
       event.preventDefault();
+      event.stopPropagation();
       ensureCircle(); // It must exist to click it
       // If there's a hitChecker and it returns false
       // show invalid press animation instead of clicking
@@ -228,6 +232,7 @@ function handleKeydown(event) {
 
     case "Escape":
       event.preventDefault();
+      event.stopPropagation();
       stopCanvasKeyboardMode();
       break;
 
@@ -253,7 +258,7 @@ export function setCrosshairCursor() {
 // Restore default cursor
 export function setDefaultCursor() {
   document.body.style.cursor = "default";
- if (flock.scene) {
+  if (flock.scene) {
     flock.scene.hoverCursor = "pointer"; // Babylon.js default
     flock.scene.defaultCursor = ""; // Babylon.js default (inherits from body)
   }
