@@ -4,14 +4,15 @@
   --color-bg: white;
   --color-text: black;
   --color-text-label: var(--color-text);
-  --axis-x-color: #1A9EE0;
-  --axis-y-color: #00CC96;
-  --axis-z-color: #F07020;
+  --axis-x-color: #1a9ee0;
+  --axis-y-color: #00cc96;
+  --axis-z-color: #f07020;
   --color-border-highlight: #ee5d6c;
   --color-search-highlight: #ed808b;
   --color-shadow: grey;
   --color-outline-focus: #fc3;
   --block-outline-focus: #fff200;
+  --color-toolbox-focus: var(--color-outline-focus);
 
   /* Dropdown & menu semantics */
   --color-dropdown-text: var(--color-text);
@@ -55,6 +56,10 @@
   --color-search-highlight: #cfcfcf;
   --color-shadow: rgba(0, 0, 0, 0.6);
   --color-outline-focus: #e0e0e0;
+}
+
+[data-theme="low-vision"] {
+  --color-toolbox-focus: #fc3;
 }
 
 [data-theme="dark-contrast"] .blocklyInsertionMarker path {
@@ -166,7 +171,23 @@ body[data-theme="dark-contrast"] {
 }
 
 textarea.blocklyCommentText.blocklyTextarea.blocklyText {
-  color: black;
+  color: black !important;
+}
+
+textarea.blocklyCommentText::placeholder {
+  color: #999 !important;
+  font-style: italic;
+}
+
+/* Always 2px so border-width never changes on focus (prevents text wiggle) */
+.blocklyComment .blocklyTextarea {
+  border-width: 2px !important;
+}
+
+.blocklyCommentText.blocklyActiveFocus {
+  border-color: #000 !important;
+  background-color: #fff !important;
+  color: #000 !important;
 }
 
 .blocklyTreeRow {
@@ -191,14 +212,13 @@ textarea.blocklyCommentText.blocklyTextarea.blocklyText {
   fill: rgba(255, 255, 255, 0.85) !important;
 }
 
-[data-theme="low-vision"] .blocklyMainWorkspaceScrollbar .blocklyScrollbarHandle {
+[data-theme="low-vision"]
+  .blocklyMainWorkspaceScrollbar
+  .blocklyScrollbarHandle {
   fill: rgba(224, 224, 224, 0.85) !important;
 }
 
 body[data-theme="contrast"] {
-  .blocklyWidgetDiv .blocklyMenuItemContent {
-    color: black !important;
-  }
   .blocklyField text.blocklyText.blocklyFieldText {
     fill: black !important;
   }
@@ -239,9 +259,6 @@ body[data-theme="low-vision"] {
   }
 }
 
-textarea.blocklyCommentText.blocklyTextarea.blocklyText {
-  color: black;
-}
 /* Search Highlight Styles */
 .blockly-ws-search {
   background: var(--color-bg);
@@ -254,12 +271,36 @@ textarea.blocklyCommentText.blocklyTextarea.blocklyText {
   z-index: 70;
 }
 
-path.blocklyPath.blockly-ws-search-highlight {
-  fill: var(--color-search-highlight);
+/* Fade top-level blocks that contain no search matches */
+#blocklyDiv.blockly-search-active .ws-search-fade {
+  opacity: 0.4;
+  transition: opacity 0.15s ease;
 }
 
-path.blocklyPath.blockly-ws-search-highlight.blockly-ws-search-current {
-  fill: var(--color-border-highlight);
+/* Non-current matches get a pale yellow background */
+#blocklyDiv.blockly-search-active
+  .ws-search-match:not(.ws-search-current)
+  > path.blocklyPath {
+  fill: rgba(255, 242, 0, 0.3) !important;
+}
+
+/* Low-vision: replace fill with a dashed white stroke for better contrast */
+[data-theme="low-vision"]
+  #blocklyDiv.blockly-search-active
+  .ws-search-match:not(.ws-search-current)
+  > path.blocklyPath {
+  fill: revert !important;
+  stroke: #ffffff !important;
+  stroke-width: 10px !important;
+  stroke-dasharray: 8 4;
+  paint-order: stroke fill;
+}
+
+/* Current match gets a yellow outline */
+#blocklyDiv.blockly-search-active .ws-search-current > path.blocklyPath {
+  stroke: var(--block-outline-focus) !important;
+  stroke-width: 10px !important;
+  paint-order: stroke fill;
 }
 
 @media (min-width: 769px) {
@@ -334,11 +375,24 @@ path.blocklyPath.blockly-ws-search-highlight.blockly-ws-search-current {
   > .blocklyToolboxCategory,
 .blocklyToolboxCategoryContainer[aria-selected="true"][aria-level="2"]
   > .blocklyToolboxCategory {
-  outline: 2px solid var(--color-outline-focus);
-  outline-offset: -2px;
+  outline: 5px solid var(--color-toolbox-focus);
+  outline-offset: 0px;
   border-radius: 4px;
 }
 
+/* Keyboard-focused toolbox category (Blockly 13 FocusManager active node) */
+.blocklyKeyboardNavigation .blocklyToolbox .blocklyActiveFocus,
+.blocklyKeyboardNavigation
+  .blocklyToolbox
+  .blocklyActiveFocus
+  > .blocklyToolboxCategory {
+  outline: 5px solid var(--color-toolbox-focus) !important;
+  outline-offset: 0px !important;
+  border-radius: 4px;
+}
+
+.blocklyZoomIn,
+.blocklyZoomOut,
 .blocklyZoomReset {
   display: none;
 }
@@ -414,24 +468,19 @@ path.blocklyPath.blockly-ws-search-highlight.blockly-ws-search-current {
   cursor: pointer !important;
 }
 
-/* Search Highlight Styles */
-.blockly-ws-search {
-  background: var(--color-bg);
-  margin-top: 5px;
-  border: solid var(--color-border-highlight) 4px;
-  box-shadow: 0px 10px 20px var(--color-shadow);
-  justify-content: center;
-  padding: 0.25em;
-  position: absolute;
-  z-index: 70;
+[data-theme="dark"] .blockly-ws-search button,
+[data-theme="dark-contrast"] .blockly-ws-search button,
+[data-theme="low-vision"] .blockly-ws-search button,
+[data-theme="contrast"] .blockly-ws-search button {
+  filter: invert(1);
 }
 
-path.blocklyPath.blockly-ws-search-highlight {
-  fill: var(--color-search-highlight);
-}
-
-path.blocklyPath.blockly-ws-search-highlight.blockly-ws-search-current {
-  fill: var(--color-border-highlight);
+[data-theme="dark"] .blockly-ws-search button:focus,
+[data-theme="dark-contrast"] .blockly-ws-search button:focus,
+[data-theme="low-vision"] .blockly-ws-search button:focus,
+[data-theme="contrast"] .blockly-ws-search button:focus {
+  outline: 3px solid #0033cc; /* inverts to #ffcc33 (~#fc3) after filter: invert(1) */
+  outline-offset: 2px;
 }
 
 /* Responsive Styles */
@@ -467,16 +516,6 @@ path.blocklyPath.blockly-ws-search-highlight.blockly-ws-search-current {
   stroke-width: 2.5px !important;
 }
 
-/* Toolbox category selection outline */
-.blocklyToolboxCategoryContainer[aria-selected="true"][aria-level="1"]
-  > .blocklyToolboxCategory,
-.blocklyToolboxCategoryContainer[aria-selected="true"][aria-level="2"]
-  > .blocklyToolboxCategory {
-  outline: 2px solid var(--color-outline-focus);
-  outline-offset: -2px;
-  border-radius: 4px;
-}
-
 /* 2. Default item text color */
 .blocklyDropDownDiv .goog-menuitem-content,
 .blocklyWidgetDiv .goog-menuitem-content,
@@ -488,6 +527,14 @@ path.blocklyPath.blockly-ws-search-highlight.blockly-ws-search-current {
 /* Ensure key labels in field_grid_dropdown are readable on light dropdowns. */
 .blocklyFieldGrid .blocklyFieldGridItem {
   color: #000000 !important;
+}
+
+.blocklyFieldColour .blocklyFieldGrid .blocklyFieldGridItem:focus {
+  box-shadow: 0 0 0 4px #000 !important;
+}
+
+[data-theme="low-vision"] .blocklyFieldColour .blocklyFieldGrid .blocklyFieldGridItem:focus {
+  box-shadow: 0 0 0 4px #fff !important;
 }
 
 body .blocklyHtmlInput {
@@ -571,22 +618,11 @@ body[data-theme="dark"] .blocklyTreeLabel {
   outline: none !important;
 }
 
-.blocklyToolboxCategoryContainer[aria-selected="true"][aria-level="1"]
-  > .blocklyToolboxCategory {
-  outline: 2px solid #fc3;
-  outline-offset: -2px;
-  border-radius: 4px;
-}
-
-
-/* Add custom selection outline for both level 1 and 2 categories */
-.blocklyToolboxCategoryContainer[aria-selected="true"][aria-level="1"]
-  > .blocklyToolboxCategory,
-.blocklyToolboxCategoryContainer[aria-selected="true"][aria-level="2"]
-  > .blocklyToolboxCategory {
-  outline: 2px solid #fc3;
-  outline-offset: -2px;
-  border-radius: 4px;
+.blocklyKeyboardNavigation .blocklyToolbox:has(.blocklyActiveFocus),
+.blocklyKeyboardNavigation .blocklyActiveFocus.blocklyToolbox,
+.blocklyKeyboardNavigation .blocklyFlyout:has(.blocklyActiveFocus),
+.blocklyKeyboardNavigation .blocklyActiveFocus.blocklyFlyout {
+  outline: none !important;
 }
 
 [data-theme="contrast"] .blocklyText {
@@ -623,7 +659,9 @@ body[data-theme="low-vision"]
 }
 
 [data-theme="low-vision"] .blocklyEditableText > rect,
-[data-theme="low-vision"] .blocklyNonEditableText > rect:not(.blocklyDropdownRect) {
+[data-theme="low-vision"]
+  .blocklyNonEditableText
+  > rect:not(.blocklyDropdownRect) {
   fill: #ffffff !important;
   stroke: #cfcfcf !important;
   stroke-width: 1.5px !important;
@@ -779,22 +817,6 @@ body[data-theme="low-vision"]
   }
 }
 
-.blocklyToolboxCategoryContainer[aria-selected="true"][aria-level="1"]
-  > .blocklyToolboxCategory {
-  outline: 2px solid #fc3;
-  outline-offset: -2px;
-  border-radius: 4px;
-}
-
-.blocklyToolboxCategoryContainer[aria-selected="true"][aria-level="1"]
-  > .blocklyToolboxCategory,
-.blocklyToolboxCategoryContainer[aria-selected="true"][aria-level="2"]
-  > .blocklyToolboxCategory {
-  outline: 2px solid #fc3;
-  outline-offset: -2px;
-  border-radius: 4px;
-}
-
 /* Keyboard focus for image BUTTON fields only (e.g. plus/minus/toggle icons) */
 .blocklyKeyboardNavigation .blocklyActiveFocus.blocklyImageField {
   outline: 5px solid var(--block-outline-focus);
@@ -802,14 +824,22 @@ body[data-theme="low-vision"]
 }
 
 /* Keyboard focus for DROPDOWN fields */
-.blocklyKeyboardNavigation .blocklyActiveFocus.blocklyDropdownField .blocklyDropdownRect,
-.blocklyKeyboardNavigation .blocklyActiveFocus.blocklyFieldDropdown .blocklyDropdownRect,
-.blocklyKeyboardNavigation .blocklyActiveFocus.blocklyEditableText .blocklyDropdownRect {
+.blocklyKeyboardNavigation
+  .blocklyActiveFocus.blocklyDropdownField
+  .blocklyDropdownRect,
+.blocklyKeyboardNavigation
+  .blocklyActiveFocus.blocklyFieldDropdown
+  .blocklyDropdownRect,
+.blocklyKeyboardNavigation
+  .blocklyActiveFocus.blocklyEditableText
+  .blocklyDropdownRect {
   stroke: var(--block-outline-focus) !important;
   stroke-width: 3px !important;
 }
 
-.blocklyKeyboardNavigation .blocklyActiveFocus.blocklyImageField image[style*="cursor: pointer"] {
+.blocklyKeyboardNavigation
+  .blocklyActiveFocus.blocklyImageField
+  image[style*="cursor: pointer"] {
   stroke: var(--block-outline-focus);
   stroke-width: 5px;
 }
@@ -821,19 +851,27 @@ body[data-theme="low-vision"]
 }
 
 /* Passive keyboard focus for DROPDOWN fields */
-.blocklyKeyboardNavigation .blocklyPassiveFocus.blocklyDropdownField .blocklyDropdownRect,
-.blocklyKeyboardNavigation .blocklyPassiveFocus.blocklyFieldDropdown .blocklyDropdownRect,
-.blocklyKeyboardNavigation .blocklyPassiveFocus.blocklyEditableText .blocklyDropdownRect {
+.blocklyKeyboardNavigation
+  .blocklyPassiveFocus.blocklyDropdownField
+  .blocklyDropdownRect,
+.blocklyKeyboardNavigation
+  .blocklyPassiveFocus.blocklyFieldDropdown
+  .blocklyDropdownRect,
+.blocklyKeyboardNavigation
+  .blocklyPassiveFocus.blocklyEditableText
+  .blocklyDropdownRect {
   stroke: var(--color-outline-focus) !important;
   stroke-width: 3px !important;
   stroke-dasharray: 4 2;
 }
 
-.blocklyKeyboardNavigation .blocklyPassiveFocus.blocklyImageField image[style*="cursor: pointer"] {
+.blocklyKeyboardNavigation
+  .blocklyPassiveFocus.blocklyImageField
+  image[style*="cursor: pointer"] {
   stroke: var(--color-outline-focus);
   stroke-width: 5px;
-  stroke-dasharray: 4 2;      /* Blockly-style short dash */
-  stroke-linecap: butt;       /* square dash ends */
+  stroke-dasharray: 4 2; /* Blockly-style short dash */
+  stroke-linecap: butt; /* square dash ends */
   vector-effect: non-scaling-stroke;
 }
 
@@ -935,11 +973,6 @@ body[data-theme="low-vision"]
   stroke-width: 2px !important;
 }
 
-/* Wrap long lines inside the workspace-comment editor */
-textarea.blocklyCommentText.blocklyTextarea.blocklyText {
-  color: black;
-}
-
 /* Keep block comment editor constrained to its bubble */
 .blocklyCommentForeignObject > body.blocklyMinimalBody,
 .blocklyCommentForeignObject textarea.blocklyCommentText {
@@ -948,13 +981,21 @@ textarea.blocklyCommentText.blocklyTextarea.blocklyText {
   box-sizing: border-box !important;
 }
 
-
 /* XYZ axis input outlines — survive theme changes via CSS */
 [data-xyz-active] > [data-axis="X"] .blocklyPath,
-[data-axis="X"].blocklySelected .blocklyPath { stroke: var(--axis-x-color) !important; stroke-width: 2px !important; }
+[data-axis="X"].blocklySelected .blocklyPath {
+  stroke: var(--axis-x-color) !important;
+  stroke-width: 2px !important;
+}
 
 [data-xyz-active] > [data-axis="Y"] .blocklyPath,
-[data-axis="Y"].blocklySelected .blocklyPath { stroke: var(--axis-y-color) !important; stroke-width: 2px !important; }
+[data-axis="Y"].blocklySelected .blocklyPath {
+  stroke: var(--axis-y-color) !important;
+  stroke-width: 2px !important;
+}
 
 [data-xyz-active] > [data-axis="Z"] .blocklyPath,
-[data-axis="Z"].blocklySelected .blocklyPath { stroke: var(--axis-z-color) !important; stroke-width: 2px !important; }
+[data-axis="Z"].blocklySelected .blocklyPath {
+  stroke: var(--axis-z-color) !important;
+  stroke-width: 2px !important;
+}

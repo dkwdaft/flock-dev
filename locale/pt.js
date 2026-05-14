@@ -1208,6 +1208,11 @@ export default {
   RightLeg_option: "Canela direita",
   RightFoot_option: "Pé direito",
 
+  // Workspace toolbar
+  toolbar_undo_ui: "Desfazer",
+  toolbar_redo_ui: "Refazer",
+  toolbar_zoom_out_ui: "Reduzir zoom",
+  toolbar_zoom_in_ui: "Aumentar zoom",
   // Keyboard shortcuts panel — title and close button
   shortcut_panel_title: "Atalhos de teclado",
   shortcut_panel_close: "Fechar atalhos de teclado",
@@ -1229,6 +1234,7 @@ export default {
   shortcut_toggle_area: "Alternar área",
   shortcut_select_area: "Selecionar área",
   shortcut_code_editor: "Editor de código",
+  shortcut_toolbox: "Caixa de ferramentas",
   shortcut_add_block_by_name: "Adicionar bloco por nome",
   shortcut_search_block: "Procurar um bloco",
   shortcut_move_through_blocks: "Navegar pelos blocos",

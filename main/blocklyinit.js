@@ -1,5 +1,4 @@
 import * as Blockly from "blockly";
-import { KeyboardNavigation } from "@blockly/keyboard-navigation";
 import { WorkspaceSearch } from "@blockly/plugin-workspace-search";
 import * as BlockDynamicConnection from "@blockly/block-dynamic-connection";
 import { initializeTheme } from "./themes.js";
@@ -648,6 +647,57 @@ export function initializeWorkspace() {
   }
   workspaceSearch.init();
 
+  // Fade non-matching blocks during search
+  const blocklyDiv = document.getElementById("blocklyDiv");
+  const originalOpen = workspaceSearch.open.bind(workspaceSearch);
+  const originalClose = workspaceSearch.close.bind(workspaceSearch);
+  workspaceSearch.open = function () {
+    originalOpen();
+    blocklyDiv?.classList.add("blockly-search-active");
+  };
+  workspaceSearch.close = function () {
+    originalClose();
+    blocklyDiv?.classList.remove("blockly-search-active");
+  };
+
+  // Override highlight methods to work at block-group level so the plugin's
+  // injected fill: #000 rule never applies to matched block paths.
+  workspaceSearch.highlightSearchGroup = function (blocks) {
+    const matchTopIds = new Set();
+    blocks.forEach((block) => {
+      block.getSvgRoot()?.classList.add("ws-search-match");
+      let top = block;
+      while (top.getSurroundParent()) top = top.getSurroundParent();
+      matchTopIds.add(top.id);
+    });
+    workspace.getTopBlocks(false).forEach((block) => {
+      if (!matchTopIds.has(block.id)) {
+        block.getSvgRoot()?.classList.add("ws-search-fade");
+      }
+    });
+  };
+  workspaceSearch.unhighlightSearchGroup = function (blocks) {
+    blocks.forEach((block) =>
+      block.getSvgRoot()?.classList.remove("ws-search-match"),
+    );
+    workspace.getTopBlocks(false).forEach((block) => {
+      block.getSvgRoot()?.classList.remove("ws-search-fade");
+    });
+  };
+  workspaceSearch.highlightCurrentSelection = function (block) {
+    const svg = block.getSvgRoot();
+    if (svg) {
+      svg.classList.add("ws-search-current");
+      let top = block;
+      while (top.getSurroundParent()) top = top.getSurroundParent();
+      const topSvg = top.getSvgRoot();
+      if (topSvg) topSvg.parentNode?.appendChild(topSvg);
+    }
+  };
+  workspaceSearch.unhighlightCurrentSelection = function (block) {
+    block.getSvgRoot()?.classList.remove("ws-search-current");
+  };
+
   // Override the workspace centering for workspace search as it jumps all over the place by default!
   const originalCenter = workspace.centerOnBlock.bind(workspace);
 
@@ -741,8 +791,6 @@ export function createBlocklyWorkspace() {
 
   registerCustomCommentIcon();
 
-  KeyboardNavigation.registerKeyboardNavigationStyles();
-
   // Manually create a navigation-deferring toolbox
   class NavigationDeferringToolbox extends Blockly.Toolbox {
     onKeyDown_() {
@@ -770,25 +818,27 @@ export function createBlocklyWorkspace() {
     if (event.type !== Blockly.Events.SELECTED) return;
 
     if (!event.newElementId) {
-      const widgetDiv = document.querySelector('.blocklyWidgetDiv');
+      const widgetDiv = document.querySelector(".blocklyWidgetDiv");
       if (widgetDiv?.childElementCount > 0) return;
-      activeXyzBlock?.getSvgRoot()?.removeAttribute('data-xyz-active');
+      activeXyzBlock?.getSvgRoot()?.removeAttribute("data-xyz-active");
       activeXyzBlock = null;
       return;
     }
 
     let block = workspace.getBlockById(event.newElementId);
-    while (block && !block.inputList?.some(i => ['X','Y','Z'].includes(i.name))) {
+    while (
+      block &&
+      !block.inputList?.some((i) => ["X", "Y", "Z"].includes(i.name))
+    ) {
       block = block.getParent?.() ?? null;
     }
 
     if (block !== activeXyzBlock) {
-      activeXyzBlock?.getSvgRoot()?.removeAttribute('data-xyz-active');
+      activeXyzBlock?.getSvgRoot()?.removeAttribute("data-xyz-active");
       activeXyzBlock = block ?? null;
-      activeXyzBlock?.getSvgRoot()?.setAttribute('data-xyz-active', '');
+      activeXyzBlock?.getSvgRoot()?.setAttribute("data-xyz-active", "");
     }
   });
-
 
   // Initialize keyboard navigation.
 
@@ -798,7 +848,6 @@ export function createBlocklyWorkspace() {
     shortcutRegistry.removeAllKeyMappings?.("menu");
     shortcutRegistry.unregister?.("menu");
   }
-  new KeyboardNavigation(workspace);
 
   const toolbox = workspace.getToolbox();
   toolbox.onKeyDown_ = function () {
@@ -1453,6 +1502,7 @@ export function createBlocklyWorkspace() {
     }
   };
 
+  // Assuming Blockly 13 has removed toasts, this is not needed
   function copyWithoutToast(block) {
     if (!block) return;
     if (Blockly.Toast?.show) Blockly.Toast.show = () => {};

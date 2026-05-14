@@ -1209,6 +1209,11 @@ export default {
   RightLeg_option: "Rechtes Schienbein",
   RightFoot_option: "Rechter Fuß",
 
+  // Workspace toolbar
+  toolbar_undo_ui: "Rückgängig",
+  toolbar_redo_ui: "Wiederholen",
+  toolbar_zoom_out_ui: "Verkleinern",
+  toolbar_zoom_in_ui: "Vergrößern",
   // Keyboard shortcuts panel — title and close button
   shortcut_panel_title: "Tastaturkürzel",
   shortcut_panel_close: "Tastaturkürzel schließen",
@@ -1230,6 +1235,7 @@ export default {
   shortcut_toggle_area: "Bereich umschalten",
   shortcut_select_area: "Bereich auswählen",
   shortcut_code_editor: "Code-Editor",
+  shortcut_toolbox: "Werkzeugkasten",
   shortcut_add_block_by_name: "Block nach Name hinzufügen",
   shortcut_search_block: "Nach einem Block suchen",
   shortcut_move_through_blocks: "Durch Blöcke navigieren",

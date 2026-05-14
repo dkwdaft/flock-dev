@@ -1211,6 +1211,11 @@ export default {
   RightLeg_option: "Stinco destro",
   RightFoot_option: "Piede destro",
 
+  // Workspace toolbar
+  toolbar_undo_ui: "Annulla",
+  toolbar_redo_ui: "Ripeti",
+  toolbar_zoom_out_ui: "Riduci zoom",
+  toolbar_zoom_in_ui: "Aumenta zoom",
   // Keyboard shortcuts panel — title and close button
   shortcut_panel_title: "Scorciatoie da tastiera",
   shortcut_panel_close: "Chiudi le scorciatoie da tastiera",
@@ -1232,6 +1237,7 @@ export default {
   shortcut_toggle_area: "Cambia area",
   shortcut_select_area: "Seleziona area",
   shortcut_code_editor: "Editor di codice",
+  shortcut_toolbox: "Casella degli strumenti",
   shortcut_add_block_by_name: "Aggiungi blocco per nome",
   shortcut_search_block: "Cerca un blocco",
   shortcut_move_through_blocks: "Navigare tra i blocchi",

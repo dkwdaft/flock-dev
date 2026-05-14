@@ -1220,13 +1220,19 @@ export default {
   RightLeg_option: "Tibia droit",
   RightFoot_option: "Pied droit",
 
+  // Workspace toolbar
+  toolbar_undo_ui: "Annuler",
+  toolbar_redo_ui: "Rétablir",
+  toolbar_zoom_out_ui: "Dézoomer",
+  toolbar_zoom_in_ui: "Zoomer",
   // Keyboard shortcuts panel — title and close button
   shortcut_panel_title: "Raccourcis clavier",
   shortcut_panel_close: "Fermer les raccourcis clavier",
 
   // Keyboard shortcuts panel — labels
   shortcut_show_hide_help: "Afficher/masquer les raccourcis clavier",
-  shortcut_move_between_areas: "Se déplacer entre les menus, le canvas et l'éditeur",
+  shortcut_move_between_areas:
+    "Se déplacer entre les menus, le canvas et l'éditeur",
   shortcut_confirm: "Confirmer",
   shortcut_exit: "Quitter",
   shortcut_play: "Lancer",
@@ -1241,6 +1247,7 @@ export default {
   shortcut_toggle_area: "Changer de zone",
   shortcut_select_area: "Sélectionner une zone",
   shortcut_code_editor: "Éditeur de code",
+  shortcut_toolbox: "Boîte à outils",
   shortcut_add_block_by_name: "Ajouter un bloc par nom",
   shortcut_search_block: "Rechercher un bloc",
   shortcut_move_through_blocks: "Naviguer dans les blocs",

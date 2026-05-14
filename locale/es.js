@@ -1222,6 +1222,11 @@ export default {
   RightLeg_option: "Espinilla derecha", // human
   RightFoot_option: "Pie derecho", // human
 
+  // Workspace toolbar
+  toolbar_undo_ui: "Deshacer",
+  toolbar_redo_ui: "Rehacer",
+  toolbar_zoom_out_ui: "Alejar",
+  toolbar_zoom_in_ui: "Acercar",
   // Keyboard shortcuts panel — title and close button
   shortcut_panel_title: "Atajos de teclado",
   shortcut_panel_close: "Cerrar atajos de teclado",
@@ -1243,6 +1248,7 @@ export default {
   shortcut_toggle_area: "Cambiar área",
   shortcut_select_area: "Seleccionar área",
   shortcut_code_editor: "Editor de código",
+  shortcut_toolbox: "Caja de herramientas",
   shortcut_add_block_by_name: "Añadir bloque por nombre",
   shortcut_search_block: "Buscar un bloque",
   shortcut_move_through_blocks: "Navegar por los bloques",

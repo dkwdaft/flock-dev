@@ -1,7 +1,8 @@
-import { InputManager } from "./inputmanager.js";
-import { ContextManager } from "./context.js";
-import { translate } from "./translation.js";
+import { InputManager } from "../main/inputmanager.js";
+import { ContextManager } from "../main/context.js";
+import { translate } from "../main/translation.js";
 import { SHORTCUTS_HELP_URL } from "../config.js";
+import { stopCanvasKeyboardMode } from "../ui/canvas-utils.js";
 
 // Area menu accessed with Ctrl + B to quickly skip to
 // different areas on the interface
@@ -16,6 +17,12 @@ const AreaManager = {
     { selector: "#resizer", label: "5", pad: -3, name: "Resizer" },
     { selector: ".blocklyToolbox", label: "6", name: "Toolbox" },
     { selector: "svg.blocklySvg", label: "7", name: "Code editor" },
+    {
+      selector: "#blocklyZoomControls",
+      label: "8",
+      name: "Workspace controls",
+      extend: { top: -8 },
+    },
   ],
 
   init() {
@@ -27,7 +34,6 @@ const AreaManager = {
     // Create the element dynamically so you don't have to edit index.html
     const div = document.createElement("div");
     div.id = "area-menu-overlay";
-    div.className = "hidden";
     div.classList.add("hidden");
     div.setAttribute("role", "dialog");
     div.setAttribute("aria-modal", "true");
@@ -41,9 +47,24 @@ const AreaManager = {
   toggle(show) {
     if (this.overlay) {
       if (show) {
+        stopCanvasKeyboardMode(); // Stop canvas keyboard cursor if active
         GizmoMenuManager.toggle(false); // Close gizmo menu if open
         this.renderHighlights();
+        this._previousInertStates = new Map();
+        document
+          .querySelectorAll("body > *:not(#area-menu-overlay)")
+          .forEach((el) => {
+            this._previousInertStates.set(el, el.inert);
+            el.inert = true;
+          });
+        this.previousFocus = document.activeElement;
         setTimeout(() => this.overlay.focus(), 0);
+      } else {
+        this._previousInertStates?.forEach(
+          (wasInert, el) => (el.inert = wasInert),
+        );
+        this._previousInertStates = null;
+        this.previousFocus?.focus();
       }
       this.overlay.classList.toggle("hidden", !show);
     }
@@ -94,6 +115,13 @@ const AreaManager = {
       const area = this.areas.find((a) => a.label === focused.innerText);
       if (area) this.activateArea(area);
     });
+
+    // Re-render if the browser window gets resized
+    window.addEventListener("resize", () => {
+      if (!this.overlay.classList.contains("hidden")) {
+        requestAnimationFrame(() => this.renderHighlights());
+      }
+    });
   },
 
   // Set the focus to this area and close overlay
@@ -133,11 +161,16 @@ const AreaManager = {
 
         const highlight = document.createElement("div");
         const pad = area.pad ?? 1;
+        const ext = area.extend ?? {};
+        const eTop = ext.top ?? 0;
+        const eBottom = ext.bottom ?? 0;
+        const eLeft = ext.left ?? 0;
+        const eRight = ext.right ?? 0;
         highlight.className = "area-outline";
-        highlight.style.top = `${rect.top - pad}px`;
-        highlight.style.left = `${rect.left - pad}px`;
-        highlight.style.width = `${rect.width + pad * 2}px`;
-        highlight.style.height = `${rect.height + pad * 2}px`;
+        highlight.style.top = `${rect.top - pad - eTop}px`;
+        highlight.style.left = `${rect.left - pad - eLeft}px`;
+        highlight.style.width = `${rect.width + pad * 2 + eLeft + eRight}px`;
+        highlight.style.height = `${rect.height + pad * 2 + eTop + eBottom}px`;
         container.appendChild(highlight);
       }
     });
@@ -358,6 +391,11 @@ function getShortcuts() {
       category: translate("shortcut_category_editor"),
     },
     {
+      label: translate("shortcut_toolbox"),
+      keys: `T`,
+      category: translate("shortcut_category_editor"),
+    },
+    {
       label: translate("shortcut_add_block_by_name"),
       keys: `${mod} + ]`,
       category: translate("shortcut_category_editor"),
@@ -475,7 +513,7 @@ const ShortcutsPanel = {
     tbody.innerHTML = Object.entries(groups)
       .map(
         ([cat, items]) => `
-      <tr><th colspan="2">${cat}</th></tr>
+      <tr><th colspan="2" scope="rowgroup">${cat}</th></tr>
       ${items.map(({ label, keys }) => `<tr><td>${label}</td><td>${formatKeys(keys)}</td></tr>`).join("")}
     `,
       )
