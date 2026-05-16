@@ -2,7 +2,6 @@ import * as Blockly from "blockly";
 import { WorkspaceSearch } from "@blockly/plugin-workspace-search";
 import * as BlockDynamicConnection from "@blockly/block-dynamic-connection";
 import { initializeTheme } from "./themes.js";
-import { installHoverHighlight } from "./blockhandling.js";
 import { translate } from "./translation.js";
 import {
   options,
@@ -842,13 +841,6 @@ export function createBlocklyWorkspace() {
 
   // Initialize keyboard navigation.
 
-  const shortcutRegistry = Blockly.ShortcutRegistry.registry;
-  const keyboardShortcuts = shortcutRegistry.getRegistry?.();
-  if (keyboardShortcuts?.menu) {
-    shortcutRegistry.removeAllKeyMappings?.("menu");
-    shortcutRegistry.unregister?.("menu");
-  }
-
   const toolbox = workspace.getToolbox();
   toolbox.onKeyDown_ = function () {
     return false;
@@ -1262,86 +1254,6 @@ export function createBlocklyWorkspace() {
     );
   })();
 
-  // Prevent the toolbox shortcut from opening the toolbox search if there's no current selection, go to the first actual category instead (default behaviour after that to return to previous selection)
-  (function preventToolboxShortcutTextEntry() {
-    const shortcutRegistry = Blockly.ShortcutRegistry.registry;
-    const registry = shortcutRegistry.getRegistry?.();
-    const toolboxShortcut = registry?.toolbox;
-
-    if (!toolboxShortcut) {
-      return;
-    }
-
-    const wrappedShortcut = {
-      ...toolboxShortcut,
-      callback: (ws, event, shortcut, scope) => {
-        const keyboardEvent = event instanceof KeyboardEvent ? event : null;
-        keyboardEvent?.preventDefault();
-
-        const toolbox = ws?.getToolbox?.();
-        if (!toolbox) {
-          return toolboxShortcut.callback
-            ? toolboxShortcut.callback(ws, event, shortcut, scope)
-            : false;
-        }
-
-        const SearchCategory = Blockly.registry.getClass(
-          Blockly.registry.Type.TOOLBOX_ITEM,
-          "search",
-        );
-
-        const isSearchItem = (item) => {
-          if (!item) return false;
-          const def = item.getToolboxItemDef?.() || item.toolboxItemDef;
-          const kind = (def?.kind || "").toLowerCase();
-          return (
-            (SearchCategory && item instanceof SearchCategory) ||
-            kind === "search"
-          );
-        };
-
-        const selected = toolbox.getSelectedItem?.();
-        const previous = toolbox.getPreviouslySelectedItem?.();
-
-        // First use: go to first category (not search)
-        const isFirstUse =
-          previous == null && (!selected || isSearchItem(selected));
-
-        if (isFirstUse) {
-          const firstCategory = (toolbox.getToolboxItems?.() || []).find(
-            (item) => {
-              const def = item.getToolboxItemDef?.() || item.toolboxItemDef;
-              const kind = (def?.kind || "").toLowerCase();
-
-              if (isSearchItem(item) || kind === "sep" || kind === "label") {
-                return false;
-              }
-
-              return typeof item.isSelectable === "function"
-                ? item.isSelectable()
-                : true;
-            },
-          );
-
-          if (firstCategory) {
-            Blockly.getFocusManager()?.focusTree?.(toolbox);
-            toolbox.setSelectedItem(firstCategory);
-            Blockly.getFocusManager()?.focusNode?.(firstCategory);
-            return true;
-          }
-        }
-
-        // After first use, keep default plugin behavior unchanged.
-        return toolboxShortcut.callback
-          ? toolboxShortcut.callback(ws, event, shortcut, scope)
-          : false;
-      },
-    };
-
-    shortcutRegistry.removeAllKeyMappings?.("toolbox");
-    shortcutRegistry.register(wrappedShortcut, true);
-  })();
-
   (function simpleNoBumpTranslate() {
     const ws = Blockly.getMainWorkspace();
     const original = ws.translate.bind(ws);
@@ -1718,7 +1630,6 @@ export function createBlocklyWorkspace() {
   );
 
   initializeTheme();
-  installHoverHighlight(workspace);
 
   // Register comment options for workspace comments
   Blockly.ContextMenuItems.registerCommentOptions();
