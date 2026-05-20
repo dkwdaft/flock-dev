@@ -67,8 +67,16 @@ export function setupInput() {
         .querySelectorAll("#gizmoButtons button, #gizmoButtons input")
         .forEach(pushUnique);
 
-      // 4) Logo link + resizer
+      // 4) Logo link, keyboard tab, shortcuts panel contents (if open), resizer
       pushUnique(document.querySelector("#info-panel-link"));
+      pushUnique(document.querySelector("#info-tab-btn-shortcuts"));
+      const shortcutsTabPanel = document.getElementById("info-tab-panel-shortcuts");
+      if (shortcutsTabPanel && !shortcutsTabPanel.classList.contains("hidden")) {
+        pushUnique(shortcutsTabPanel);
+        shortcutsTabPanel
+          .querySelectorAll("a[href], button:not([disabled])")
+          .forEach(pushUnique);
+      }
       pushUnique(document.querySelector("#resizer"));
 
       // 5) Search inputs (toolbox flyout etc.)
@@ -120,14 +128,35 @@ export function setupInput() {
         pushUnique(workspaceGroup);
       }
 
-      // 6b) Workspace toolbar
-      [
-        "#undoBtn",
-        "#redoBtn",
-        "#zoomOutBtn",
-        "#zoomInBtn",
-        "#shortcutsBtn",
-      ].forEach((sel) => pushUnique(document.querySelector(sel)));
+      // 6a) Workspace comments and block comment icons
+      document.querySelectorAll("g.blocklyComment").forEach((el) => {
+        if (!el.hasAttribute("tabindex") || el.tabIndex < 0)
+          el.setAttribute("tabindex", "0");
+        if (!el.getAttribute("role")) el.setAttribute("role", "group");
+        if (!el.getAttribute("aria-label"))
+          el.setAttribute("aria-label", "Workspace comment");
+        pushUnique(el);
+      });
+      document
+        .querySelectorAll("textarea.blocklyCommentText")
+        .forEach(pushUnique);
+
+     
+      // 6c) Shortcuts panel (when visible), then undo/redo/zoom
+ 
+      const shortcutsPanel = document.getElementById("shortcutsPanel");
+      pushUnique(shortcutsPanel);
+      if (shortcutsPanel) {
+        shortcutsPanel
+          .querySelectorAll("a[href], button:not([disabled])")
+          .forEach(pushUnique);
+      }
+
+      ["#undoBtn", "#redoBtn", "#zoomOutBtn", "#zoomInBtn"].forEach((sel) =>
+        pushUnique(document.querySelector(sel)),
+      );
+
+  
 
       // 7) Main UI controls (in natural order)
       [
