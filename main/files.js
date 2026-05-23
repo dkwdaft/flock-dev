@@ -2,13 +2,20 @@ import * as Blockly from "blockly";
 import { workspace } from "./blocklyinit.js";
 import { translate } from "./translation.js";
 import { getMetadata } from "meta-png";
-import { AUTOSAVE_KEY } from "../config.js";
+import { AUTOSAVE_KEY, AUTOSAVE_TO_FILE_ENABLED } from "../config.js";
 
 // Function to save the current workspace state
 export function saveWorkspace(workspace) {
-  const state = Blockly.serialization.workspaces.save(workspace);
-  const key = AUTOSAVE_KEY;
-  localStorage.setItem(key, JSON.stringify(state));
+  try {
+    if (!workspace || !workspace.getAllBlocks) return;
+    const state = Blockly.serialization.workspaces.save(workspace);
+    // Never overwrite a good autosave with an empty/transient workspace —
+    // the error banner's Reload action restores the project from this entry.
+    if (!state || !state.blocks || !state.blocks.blocks?.length) return;
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(state));
+  } catch (error) {
+    console.warn("Autosave failed; keeping previous saved state.", error);
+  }
 }
 
 function validateBlocklyJson(json) {
@@ -502,7 +509,10 @@ let currentFileHandle = null;
 export function updateSaveButtonState() {
   document
     .getElementById("exportCodeButton")
-    ?.classList.toggle("no-autosave", !currentFileHandle);
+    ?.classList.toggle(
+      "no-autosave",
+      AUTOSAVE_TO_FILE_ENABLED && !currentFileHandle,
+    );
 }
 
 // Clears the stored file handle (call whenever a new project is loaded)

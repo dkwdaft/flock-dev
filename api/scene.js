@@ -396,6 +396,8 @@ export const flockScene = {
               flock.scene,
             );
             body.shape = new flock.BABYLON.PhysicsShapeMesh(gm, flock.scene);
+            gm.physics = body;
+            gm.physicsShape = body.shape;
             if (shouldScaleUVs) scaleGroundUVs(gm);
             applyMaterialToGround(gm, material);
           },
@@ -505,6 +507,9 @@ export const flockScene = {
       if (mesh.material && !mesh.material.metadata?.isManaged) {
         mesh.material.dispose(true, true);
       }
+      if (mesh.physicsShape) {
+        mesh.physicsShape.dispose();
+      }
       mesh.dispose();
       flock.ground = null;
       return;
@@ -596,7 +601,21 @@ export const flockScene = {
 
     meshesToDispose.reverse().forEach((currentMesh) => {
       if (!currentMesh.isDisposed()) {
+        const md = currentMesh.metadata;
+        if (md?.uprightConstraint) {
+          try {
+            md.uprightConstraint.dispose();
+          } catch (e) {
+            console.warn("Error disposing constraint:", e);
+          }
+          md.uprightConstraint = null;
+        }
+        if (md?._uprightStabiliser) {
+          flock.scene.onAfterPhysicsObservable.remove(md._uprightStabiliser);
+          md._uprightStabiliser = null;
+        }
         if (currentMesh.physics) {
+          currentMesh.physics.shape?.dispose(); 
           currentMesh.physics.dispose();
         }
         flock.scene.removeMesh(currentMesh);
