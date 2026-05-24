@@ -344,15 +344,13 @@ export const flockUI = {
 
     const releaseKeys = () => {
       uniqueKeys.forEach((key) => {
-        flock.canvas.pressedButtons.delete(key);
-        flock.gridKeyReleaseObservable.notifyObservers(key);
+        flock._onScreenSource.release(key);
       });
     };
 
     button.onPointerDownObservable.add(() => {
       uniqueKeys.forEach((key) => {
-        flock.canvas.pressedButtons.add(key);
-        flock.gridKeyPressObservable.notifyObservers(key);
+        flock._onScreenSource.press(key);
       });
     });
 
@@ -408,9 +406,9 @@ export const flockUI = {
 
     flock.controlsTexture.addControl(rightGrid);
 
-    const button1 = flock.createSmallButton("①", "e", color);
+    const button1 = flock.createSmallButton("①", ["e", "PageUp"], color);
     const button2 = flock.createSmallButton("②", "r", color);
-    const button3 = flock.createSmallButton("③", "f", color);
+    const button3 = flock.createSmallButton("③", ["f", "PageDown"], color);
     const button4 = flock.createSmallButton("④", " ", color);
 
     rightGrid.addControl(button1, 0, 0);
@@ -451,6 +449,7 @@ export const flockUI = {
       flock.createButtonControls(color);
   },
   canvasControls(setting) {
+    flock._canvasControlsEnabled = !!setting;
     if (setting) {
       flock.scene.activeCamera.attachControl(flock.canvas, false);
     } else {

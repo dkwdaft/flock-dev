@@ -85,6 +85,11 @@ import {
 } from "./api/sensing";
 import { translate } from "./main/translation.js";
 import { handleError, dismissBanner } from "./ui/notifications.js";
+import { InputManager } from "./input/inputManager.js";
+import { KeyboardSource } from "./input/keyboardSource.js";
+import { OnScreenSource } from "./input/onScreenSource.js";
+import { GamepadSource } from "./input/gamepadSource.js";
+import { XRSource } from "./input/xrSource.js";
 
 import {
   enableSceneDescription,
@@ -144,9 +149,8 @@ export const flock = {
   GUI: null,
   EXPORT: null,
   controlsTexture: null,
-  canvas: {
-    pressedKeys: null,
-  },
+  inputManager: null,
+  canvas: null,
   abortController: null,
   _renderLoop: null,
   document: document,
@@ -306,6 +310,7 @@ export const flock = {
 
     const reattach = () => {
       if (!flock.scene || flock.scene.activeCamera !== camera) return;
+      if (flock._canvasControlsEnabled === false) return;
       flock._resetCameraInputState(camera);
       camera.attachControl(flock.canvas, noPreventDefault);
       flock._cameraControlReattachTimer = null;
@@ -1216,14 +1221,8 @@ export const flock = {
     flock.ground = null;
     flock.sky = null;
     flock.engineReady = false;
-    flock.meshLoaders = new Map();
-
-    const gridKeyPressObservable = new flock.BABYLON.Observable();
-    const gridKeyReleaseObservable = new flock.BABYLON.Observable();
-    flock.gridKeyPressObservable = gridKeyPressObservable;
-    flock.gridKeyReleaseObservable = gridKeyReleaseObservable;
-    flock.canvas.pressedButtons = new Set();
-    flock.canvas.pressedKeys = new Set();
+    flock.inputManager = new InputManager();
+    flock._onScreenSource = new OnScreenSource(flock.inputManager, { target: flock.canvas });
     const displayScale = (window.devicePixelRatio || 1) * 0.75; // Get the device pixel ratio, default to 1 if not available
     flock.displayScale = displayScale;
     flock.BABYLON.Database.IDBStorageEnabled = true;
@@ -1267,27 +1266,30 @@ export const flock = {
       { passive: false },
     );
 
-    flock.canvas.addEventListener("keydown", function (event) {
-      flock.canvas.currentKeyPressed = event.key;
-      flock.canvas.pressedKeys.add(event.key);
-    });
+    // Block synthetic on-screen key events from reaching Babylon camera plugins
+    // when an ArcRotateCamera is active — physical arrow keys still work for
+    // keyboard accessibility; only __flockSynthetic events are stopped.
+    const _blockSyntheticForArcRotate = (e) => {
+      if (
+        e.__flockSynthetic &&
+        flock.scene?.activeCamera instanceof flock.BABYLON.ArcRotateCamera
+      ) {
+        e.stopImmediatePropagation();
+      }
+    };
+    flock.canvas.addEventListener("keydown", _blockSyntheticForArcRotate, true);
+    flock.canvas.addEventListener("keyup", _blockSyntheticForArcRotate, true);
 
-    flock.canvas.addEventListener("keyup", function (event) {
-      flock.canvas.pressedKeys.delete(event.key);
-    });
-
-    flock.canvas.addEventListener("blur", () => {
-      // Clear all pressed keys when window loses focus
-      flock.canvas.pressedKeys.clear();
-      flock.canvas.pressedButtons.clear();
-      flock._hardResetCameraControls(flock.scene?.activeCamera);
-    });
+    new KeyboardSource(flock.inputManager, {
+      target: flock.canvas,
+      onBlur: () => flock._hardResetCameraControls(flock.scene?.activeCamera),
+    }).start();
 
     // Hardening for rare pointer/input desync where camera keeps moving
     // after input ends or browser focus changes.
     window.addEventListener("blur", () => {
-      flock.canvas.pressedKeys.clear();
-      flock.canvas.pressedButtons.clear();
+      flock._gamepadSource?.releaseAllKeys();
+      // Babylon.js bug: camera drifts after window blur; force-reset to stop it.
       flock._hardResetCameraControls(flock.scene?.activeCamera);
     });
 
@@ -1302,9 +1304,9 @@ export const flock = {
       return;
     }
 
-    const deadZone = 0.2;
     const yawSpeed = 2.5;
     const pitchSpeed = 2.0;
+    const flySpeed = 3.0;
 
     if (flock._gamepadCameraObserver) {
       flock.scene.onBeforeRenderObservable.remove(flock._gamepadCameraObserver);
@@ -1313,33 +1315,21 @@ export const flock = {
 
     flock._gamepadCameraObserver = flock.scene.onBeforeRenderObservable.add(
       () => {
-        if (!navigator.getGamepads) {
-          return;
-        }
-
-        const gamepads = navigator.getGamepads() || [];
-        const gamepad = gamepads.find((pad) => pad);
-
-        if (!gamepad) {
-          return;
-        }
-
-        const [, , rawRightX = 0, rawRightY = 0] = gamepad.axes || [];
-
-        const rightX = Math.abs(rawRightX) > deadZone ? rawRightX : 0;
-        const rightY = Math.abs(rawRightY) > deadZone ? rawRightY : 0;
-
-        const leftShoulder = gamepad.buttons?.[4];
-        const rightShoulder = gamepad.buttons?.[5];
-        const normalizeShoulder = (button) =>
-          Boolean(button?.pressed || button?.value > 0.5);
-        const shoulderTurn =
-          (normalizeShoulder(rightShoulder) ? 1 : 0) -
-          (normalizeShoulder(leftShoulder) ? 1 : 0);
-
+        const rightX = flock.inputManager.getAxis("LOOK_X");
+        const rightY = flock.inputManager.getAxis("LOOK_Y");
+        const shoulderTurn = flock.inputManager.getAxis("TURN");
         const yawInput = rightX + shoulderTurn;
+        // Left stick analog; fall back to D-pad shim keys for discrete D-pad input.
+        const moveX = flock.inputManager.getAxis("MOVE_X") ||
+          (flock.inputManager.isKeyDown("d") ? 1 : flock.inputManager.isKeyDown("a") ? -1 : 0);
+        const moveY = flock.inputManager.getAxis("MOVE_Y") ||
+          (flock.inputManager.isKeyDown("s") ? 1 : flock.inputManager.isKeyDown("w") ? -1 : 0);
 
-        if (!yawInput && !rightY) {
+        if (!yawInput && !rightY && !moveX && !moveY) {
+          return;
+        }
+
+        if (flock._canvasControlsEnabled === false) {
           return;
         }
 
@@ -1374,126 +1364,14 @@ export const flock = {
             maxPitch,
             Math.max(minPitch, camera.rotation.x),
           );
-        }
-      },
-    );
-  },
-  setupGamepadButtonMapping() {
-    if (!flock.scene) {
-      return;
-    }
 
-    if (flock._gamepadButtonObserver) {
-      flock.scene.onBeforeRenderObservable.remove(flock._gamepadButtonObserver);
-      flock._gamepadButtonObserver = null;
-    }
-    if (flock._gamepadPointerMoveListener) {
-      flock.canvas.removeEventListener(
-        "pointermove",
-        flock._gamepadPointerMoveListener,
-      );
-      flock._gamepadPointerMoveListener = null;
-    }
-
-    const buttonToKeys = {
-      0: [" ", "SPACE"], // Bottom face button (A/Cross) -> Space
-      1: ["e", "E"], // Right face button (B/Circle) -> E
-      2: ["f", "F"], // Left face button (X/Square) -> F
-      3: ["r", "R"], // Top face button (Y/Triangle) -> R
-    };
-
-    const normalizeButtonState = (button) => {
-      if (!button) return false;
-      return Boolean(button.pressed || button.value > 0.5);
-    };
-
-    const trackedGamepadKeys = new Set();
-
-    // Track touchpad button (button 17 on PS4/PS5 controllers)
-    // state to detect press/release transitions.
-    let lastTouchpadPressed = false;
-
-    // Track last pointer position so the touchpad click fires at
-    // the current pointer location.
-    let lastPointerClientX =
-      flock.canvas.getBoundingClientRect().left +
-      flock.canvas.getBoundingClientRect().width / 2;
-    let lastPointerClientY =
-      flock.canvas.getBoundingClientRect().top +
-      flock.canvas.getBoundingClientRect().height / 2;
-
-    const onPointerMove = (e) => {
-      lastPointerClientX = e.clientX;
-      lastPointerClientY = e.clientY;
-    };
-    flock._gamepadPointerMoveListener = onPointerMove;
-    flock.canvas.addEventListener("pointermove", onPointerMove);
-
-    const fireTouchpadPointerEvent = (type) => {
-      flock.canvas.dispatchEvent(
-        new PointerEvent(type, {
-          bubbles: true,
-          cancelable: true,
-          pointerId: 1,
-          pointerType: "mouse",
-          clientX: lastPointerClientX,
-          clientY: lastPointerClientY,
-          button: 0,
-          buttons: type === "pointerdown" ? 1 : 0,
-        }),
-      );
-    };
-
-    flock._gamepadButtonObserver = flock.scene.onBeforeRenderObservable.add(
-      () => {
-        if (!navigator.getGamepads) {
-          return;
-        }
-
-        const pressedButtons = flock.canvas.pressedButtons;
-        const nextGamepadKeys = new Set();
-
-        const gamepads = navigator.getGamepads() || [];
-        const gamepad = gamepads.find((pad) => pad);
-
-        if (gamepad) {
-          Object.entries(buttonToKeys).forEach(([index, keys]) => {
-            const button = gamepad.buttons?.[Number(index)];
-            const isPressed = normalizeButtonState(button);
-
-            if (isPressed) {
-              keys.forEach((k) => nextGamepadKeys.add(k));
-            }
-          });
-
-          // Touchpad click (button 17 on PS4/PS5)
-          // dispatches a synthetic pointer event at
-          // the last pointer position so the existing
-          // Babylon.js pick-trigger pipeline fires naturally.
-          const touchpadButton = gamepad.buttons?.[17];
-          const touchpadPressed = normalizeButtonState(touchpadButton);
-          if (touchpadPressed && !lastTouchpadPressed) {
-            fireTouchpadPointerEvent("pointerdown");
-          } else if (!touchpadPressed && lastTouchpadPressed) {
-            fireTouchpadPointerEvent("pointerup");
+          if (moveX || moveY) {
+            const forward = camera.getDirection(new flock.BABYLON.Vector3(0, 0, 1));
+            const right = camera.getDirection(new flock.BABYLON.Vector3(1, 0, 0));
+            camera.position.addInPlace(forward.scale(-moveY * flySpeed * deltaTime));
+            camera.position.addInPlace(right.scale(moveX * flySpeed * deltaTime));
           }
-          lastTouchpadPressed = touchpadPressed;
         }
-
-        // Remove only the keys that previously came from
-        // the gamepad but are no longer active.
-        trackedGamepadKeys.forEach((key) => {
-          if (!nextGamepadKeys.has(key)) {
-            pressedButtons.delete(key);
-          }
-        });
-
-        // Add the currently active gamepad keys without
-        // disturbing other input sources (e.g. touch).
-        nextGamepadKeys.forEach((key) => pressedButtons.add(key));
-
-        trackedGamepadKeys.clear();
-        nextGamepadKeys.forEach((key) => trackedGamepadKeys.add(key));
       },
     );
   },
@@ -1552,11 +1430,6 @@ export const flock = {
         flock.stopAllSounds();
         flock.engine?.stopRenderLoop();
 
-        if (flock.audioListenerObserver) {
-          flock.scene.onBeforeRenderObservable.remove(flock.audioListenerObserver);
-          flock.audioListenerObserver = null;
-        }
-
         if (flock.ground?.metadata) {
           const md = flock.ground.metadata;
           try {
@@ -1580,7 +1453,18 @@ export const flock = {
         }
 
         flock._cameraControlBindings = null;
-        flock._actionMapOverrides = null;
+        flock._onScreenSource?.releaseAll();
+        flock._gamepadSource?.stop();
+        flock._gamepadSource = null;
+        flock._xrSource?.stop();
+        flock._xrSource = null;
+        try {
+          flock.xrHelper?.dispose?.();
+        } catch (error) {
+          console.warn("Error disposing xrHelper:", error);
+        }
+        flock.xrHelper = null;
+        flock.inputManager.resetActionKeys();
 
         if (flock._gamepadCameraObserver) {
           flock.scene.onBeforeRenderObservable.remove(
@@ -1602,22 +1486,6 @@ export const flock = {
           flock.scene?.detachControl?.();
         } catch {
           /* ignore scene cleanup errors */
-        }
-
-        try {
-          const containers = Array.isArray(flock._assetContainers)
-            ? flock._assetContainers
-            : [];
-          for (const c of containers) {
-            try {
-              c?.dispose?.();
-            } catch {
-              /* ignore asset disposal errors */
-            }
-          }
-          flock._assetContainers = [];
-        } catch {
-          /* ignore asset container cleanup errors */
         }
 
         // Abort any ongoing operations
@@ -1677,10 +1545,6 @@ export const flock = {
           flock.stackPanel.dispose();
           flock.stackPanel = null;
         }
-
-        // Clear observables
-        flock.gridKeyPressObservable?.clear();
-        flock.gridKeyReleaseObservable?.clear();
 
         // Dispose sound tracks
         if (flock.scene.mainSoundTrack) {
@@ -1858,7 +1722,14 @@ export const flock = {
         //flock.engine?.dispose();
         //flock.engine = null;
 
-        // Close audio context
+        // Dispose Babylon audio engine, then close the underlying context
+        try {
+          flock.audioEngine?.dispose?.();
+        } catch (error) {
+          console.warn("Error disposing audioEngine:", error);
+        }
+        flock.audioEngine = null;
+
         if (flock.audioContext && flock.audioContext.state !== "closed") {
           try {
             await flock.audioContext.close();
@@ -2016,6 +1887,7 @@ export const flock = {
 
     // Abort controller for clean-up
     flock.abortController = new AbortController();
+    flock._canvasControlsEnabled = undefined;
 
     // Enable physics 
     if (!flock.havokInstance) {
@@ -2067,8 +1939,12 @@ export const flock = {
 
     // Start the render loop now that a camera exists
     flock.engine.runRenderLoop(flock._renderLoop);
+    flock._gamepadSource = new GamepadSource(flock.inputManager, {
+      scene: flock.scene,
+      canvas: flock.canvas,
+    });
+    flock._gamepadSource.start();
     flock.setupGamepadCameraControls();
-    flock.setupGamepadButtonMapping();
     // Set up lighting
     const hemisphericLight = new flock.BABYLON.HemisphericLight(
       "hemisphericLight",
@@ -2186,9 +2062,16 @@ export const flock = {
       }
     });
 
+    flock._xrSource = new XRSource(flock.inputManager, {
+      xrHelper: flock.xrHelper,
+      scene: flock.scene,
+    });
+    flock._xrSource.start();
+
     // Handle XR state changes
     flock.xrHelper.baseExperience.onStateChangedObservable.add((state) => {
       if (state === flock.BABYLON.WebXRState.ENTERING_XR) {
+        flock._xrSource?.start();
         flock.advancedTexture.removeControl(flock.stackPanel);
         flock.meshTexture.addControl(flock.stackPanel);
         flock.uiPlane.isVisible = true;
@@ -2201,6 +2084,7 @@ export const flock = {
 
         flock.advancedTexture.isVisible = false; // Hide fullscreen UI
       } else if (state === flock.BABYLON.WebXRState.EXITING_XR) {
+        flock._xrSource?.stop();
         flock.meshTexture.removeControl(flock.stackPanel);
         flock.advancedTexture.addControl(flock.stackPanel);
         flock.uiPlane.isVisible = false;
@@ -2216,14 +2100,7 @@ export const flock = {
       }
     });
   },
-  removeEventListeners() {
-    flock.scene.eventListeners?.forEach(({ event, handler }) => {
-      flock.document.removeEventListener(event, handler);
-    });
-
-    if (flock.scene && flock.scene.eventListeners)
-      flock.scene.eventListeners.length = 0; // Clear the array
-  },
+  removeEventListeners() {},
   async *modelReadyGenerator(
     meshId,
     maxAttempts = 100,

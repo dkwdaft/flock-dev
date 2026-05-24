@@ -213,10 +213,7 @@ export function runEventsTests(flock) {
         flock.whenKeyEvent("x", () => {
           called = true;
         });
-        flock.scene.onKeyboardObservable.notifyObservers({
-          type: flock.BABYLON.KeyboardEventTypes.KEYDOWN,
-          event: { key: "x" },
-        });
+        flock.inputManager.onKeyDownObservable.notifyObservers("x");
         expect(called).to.be.true;
       });
 
@@ -225,10 +222,7 @@ export function runEventsTests(flock) {
         flock.whenKeyEvent("x", () => {
           called = true;
         });
-        flock.scene.onKeyboardObservable.notifyObservers({
-          type: flock.BABYLON.KeyboardEventTypes.KEYDOWN,
-          event: { key: "z" },
-        });
+        flock.inputManager.onKeyDownObservable.notifyObservers("z");
         expect(called).to.be.false;
       });
 
@@ -250,17 +244,11 @@ export function runEventsTests(flock) {
           true,
         );
 
-        flock.scene.onKeyboardObservable.notifyObservers({
-          type: flock.BABYLON.KeyboardEventTypes.KEYDOWN,
-          event: { key: "m" },
-        });
+        flock.inputManager.onKeyDownObservable.notifyObservers("m");
         expect(downCalled).to.be.true;
         expect(upCalled).to.be.false;
 
-        flock.scene.onKeyboardObservable.notifyObservers({
-          type: flock.BABYLON.KeyboardEventTypes.KEYUP,
-          event: { key: "m" },
-        });
+        flock.inputManager.onKeyUpObservable.notifyObservers("m");
         expect(upCalled).to.be.true;
       });
 
@@ -280,15 +268,16 @@ export function runEventsTests(flock) {
 
     // -------------------------------------------------------------------------
     describe("whenActionEvent", function () {
+      afterEach(function () {
+        flock.inputManager._clearAllKeys();
+      });
+
       it("triggers callback when FORWARD action key 'w' is pressed", function () {
         let called = false;
         flock.whenActionEvent("FORWARD", () => {
           called = true;
         });
-        flock.scene.onKeyboardObservable.notifyObservers({
-          type: flock.BABYLON.KeyboardEventTypes.KEYDOWN,
-          event: { key: "w" },
-        });
+        flock.inputManager._setKey("w", true);
         expect(called).to.be.true;
       });
 
