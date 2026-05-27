@@ -158,10 +158,10 @@ export function runInputManagerTests() {
         expect(fired).to.include("FORWARD");
       });
 
-      it("pressing 'e' fires onActionDownObservable with 'BUTTON1'", function () {
+      it("pressing 'r' fires onActionDownObservable with 'BUTTON1'", function () {
         const fired = [];
         manager.onActionDownObservable.add((a) => fired.push(a));
-        manager._setKey("e", true);
+        manager._setKey("r", true);
         expect(fired).to.include("BUTTON1");
       });
 
@@ -193,7 +193,7 @@ export function runInputManagerTests() {
       });
 
       it("isActionDown returns true when a key for that action is held", function () {
-        manager._setKey("e", true);
+        manager._setKey("r", true);
         expect(manager.isActionDown("BUTTON1")).to.be.true;
       });
 
@@ -217,6 +217,14 @@ export function runInputManagerTests() {
         manager.setActionKey("BUTTON4", "Spacebar");
         manager._setKey(" ", true);
         expect(manager.isActionDown("BUTTON4")).to.be.true;
+      });
+
+      it('ignores old static keys after an action override', function () {
+        manager.setActionKey('FORWARD', 'i');
+        const fired = [];
+        manager.onActionDownObservable.add((a) => fired.push(a));
+        manager._setKey('w', true);
+        expect(fired).to.not.include('FORWARD');
       });
     });
 

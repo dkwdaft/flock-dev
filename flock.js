@@ -85,11 +85,16 @@ import {
 } from "./api/sensing";
 import { translate } from "./main/translation.js";
 import { handleError, dismissBanner } from "./ui/notifications.js";
+import {
+  attachInteractIndicator,
+  detachInteractIndicator,
+} from "./ui/interactIndicator.js";
 import { InputManager } from "./input/inputManager.js";
 import { KeyboardSource } from "./input/keyboardSource.js";
 import { OnScreenSource } from "./input/onScreenSource.js";
 import { GamepadSource } from "./input/gamepadSource.js";
 import { XRSource } from "./input/xrSource.js";
+import { getBoundKeys } from "./input/bindings.js";
 
 import {
   enableSceneDescription,
@@ -1280,10 +1285,11 @@ export const flock = {
     flock.canvas.addEventListener("keydown", _blockSyntheticForArcRotate, true);
     flock.canvas.addEventListener("keyup", _blockSyntheticForArcRotate, true);
 
-    new KeyboardSource(flock.inputManager, {
+    flock._keyboardSource = new KeyboardSource(flock.inputManager, {
       target: flock.canvas,
       onBlur: () => flock._hardResetCameraControls(flock.scene?.activeCamera),
-    }).start();
+    });
+    flock._keyboardSource.start();
 
     // Hardening for rare pointer/input desync where camera keeps moving
     // after input ends or browser focus changes.
@@ -1320,11 +1326,14 @@ export const flock = {
         const shoulderTurn = flock.inputManager.getAxis("TURN");
         const yawInput = rightX + shoulderTurn;
         // Left stick analog; fall back to D-pad shim keys for discrete D-pad input.
+        // Read keyboard state directly from _keyboardSource so that fly mode
+        // (which blocks WASD from InputManager to prevent user code seeing them)
+        // still drives camera movement.
+        const kb = flock._keyboardSource;
         const moveX = flock.inputManager.getAxis("MOVE_X") ||
-          (flock.inputManager.isKeyDown("d") ? 1 : flock.inputManager.isKeyDown("a") ? -1 : 0);
+          (kb?.isKeyDown("d") ? 1 : kb?.isKeyDown("a") ? -1 : 0);
         const moveY = flock.inputManager.getAxis("MOVE_Y") ||
-          (flock.inputManager.isKeyDown("s") ? 1 : flock.inputManager.isKeyDown("w") ? -1 : 0);
-
+          (kb?.isKeyDown("s") ? 1 : kb?.isKeyDown("w") ? -1 : 0);
         if (!yawInput && !rightY && !moveX && !moveY) {
           return;
         }
@@ -1465,6 +1474,7 @@ export const flock = {
         }
         flock.xrHelper = null;
         flock.inputManager.resetActionKeys();
+        detachInteractIndicator();
 
         if (flock._gamepadCameraObserver) {
           flock.scene.onBeforeRenderObservable.remove(
@@ -1937,6 +1947,20 @@ export const flock = {
     flock.scene.activeCamera = camera;
     camera.attachControl(flock.canvas, false);
 
+    // Extend the fly camera's vertical keyboard bindings to match the
+    // on-screen button layout: BUTTON1 keys + PageUp for up,
+    // BUTTON3 keys + PageDown for down. Babylon's native input handles
+    // these with its built-in inertia/smoothing, keeping it consistent
+    // with gamepad button movement.
+    const KEY_CODE = { PageUp: 33, PageDown: 34, r: 82, 1: 49, f: 70, 3: 51 };
+    const toKeyCodes = (keys) => keys.map((k) => KEY_CODE[k]).filter(Boolean);
+    const kbInput = camera.inputs?.attached?.keyboard;
+    if (kbInput) {
+      kbInput.keysUpward = toKeyCodes([...getBoundKeys("BUTTON1"), "PageUp"]);
+      kbInput.keysDownward = toKeyCodes([...getBoundKeys("BUTTON3"), "PageDown"]);
+    }
+
+
     // Start the render loop now that a camera exists
     flock.engine.runRenderLoop(flock._renderLoop);
     flock._gamepadSource = new GamepadSource(flock.inputManager, {
@@ -2006,6 +2030,8 @@ export const flock = {
         flock.scene.activeCamera,
       );
     });
+
+    attachInteractIndicator(flock.scene);
 
     // Mark scene as ready
     flock.flockNotReady = false;
