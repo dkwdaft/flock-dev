@@ -1123,6 +1123,9 @@ export default {
   design_tool_label: "Design tool",
   focused_element_suffix: "{name} focused",
   search_toolbox_focused: "Search toolbox focused",
+  workspace_search_placeholder: "Find in workspace",
+  toolbox_search_placeholder: "Search",
+  search_no_matching: "No matching blocks found",
   code_workspace_focused: "Code workspace focused",
   interactive_element_label: "Interactive element",
   panel_resizer_focused:
@@ -1171,6 +1174,7 @@ export default {
   select_mesh_delete_prompt: "ℹ️ Click an object to delete it.",
   select_mesh_duplicate_prompt:
     "ℹ️ Select an object to duplicate, then click to place copies.",
+  place_object_prompt: "ℹ️ Click on a surface to place the object.",
   position_readout: "Position: {position}",
   eyedropper_not_supported_alert:
     "Color picker tool is not supported in this browser. Try using Chrome or Edge.",
@@ -1318,11 +1322,19 @@ export default {
   shortcut_open_gizmos: "Gizmos",
   shortcut_select_gizmo: "Select gizmo",
   shortcut_keyboard_cursor_gizmos: "Keyboard cursor for gizmos",
+  shortcut_slow_cursor_gizmos: "Slow cursor movement",
+  shortcut_uniform_scale: "Uniform scale (all axes)",
   shortcut_lock_transform: "Lock transform to axis",
   shortcut_transform_3d: "Transform in 3D",
   shortcut_focus_camera: "Focus camera on object",
   shortcut_quick_colour: "Quick use colour in colour picker",
   shortcut_delete_object: "Delete object",
+
+  axis_x: "X axis",
+  axis_y: "Y axis",
+  axis_z: "Z axis",
+  axis_free: "Free",
+  axis_all: "Uniform (all axes)",
 
   // Keyboard shortcuts panel — category names
   shortcut_category_main: "Main",

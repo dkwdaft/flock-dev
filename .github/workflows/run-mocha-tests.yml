@@ -5,29 +5,47 @@ name: Run mocha tests
 
 on:
   push:
-    branches: ["main", "testable"]
+    branches: ["testable"]
   pull_request:
-    branches: ["main", "testable"]
+    branches: ["testable"]
 
 jobs:
   build:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
 
     strategy:
       matrix:
         os: [ubuntu-latest, windows-2022]
-        node-version: [20.x, 22.x, 24.x]
+        node-version: [24.x]
         # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: testable
       - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node-version }}
           cache: "npm"
       - run: npm ci
-      - run: npx playwright install --with-deps
+      - name: Get installed Playwright version
+        id: playwright-version
+        shell: bash
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> $GITHUB_OUTPUT
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/AppData/Local/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install chromium
+      - name: Install Playwright system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: npx playwright install-deps chromium
       - run: npm run test:api babylon

@@ -1127,6 +1127,9 @@ export default {
   design_tool_label: "Narzędzie projektowe",
   focused_element_suffix: "{name} w fokuse",
   search_toolbox_focused: "Skupiono wyszukiwanie w toolboxie",
+  toolbox_search_placeholder: "Szukaj",
+  search_no_matching: "Nie znaleziono pasujących bloków",
+  workspace_search_placeholder: "Znajdź w obszarze",
   code_workspace_focused: "Skupiono przestrzeń kodu",
   interactive_element_label: "Element interaktywny",
   panel_resizer_focused:
@@ -1168,6 +1171,7 @@ export default {
   select_mesh_delete_prompt: "ℹ️ Kliknij obiekt, aby go usunąć.",
   select_mesh_duplicate_prompt:
     "ℹ️ Wybierz obiekt do powielenia, a następnie kliknij, aby umieścić kopie.",
+  place_object_prompt: "ℹ️ Kliknij na powierzchnię, aby umieścić obiekt.",
   position_readout: "Pozycja: {position}",
   eyedropper_not_supported_alert:
     "Narzędzie próbnika kolorów nie jest obsługiwane w tej przeglądarce. Spróbuj użyć Chrome lub Edge.",
@@ -1267,11 +1271,19 @@ export default {
   shortcut_open_gizmos: "Gizmos",
   shortcut_select_gizmo: "Wybierz gizmo",
   shortcut_keyboard_cursor_gizmos: "Kursor klawiatury dla gizmos",
+  shortcut_slow_cursor_gizmos: "Wolny ruch kursora",
+  shortcut_uniform_scale: "Jednolite skalowanie (wszystkie osie)",
   shortcut_lock_transform: "Zablokuj transformację na osi",
   shortcut_transform_3d: "Transformuj w 3D",
   shortcut_focus_camera: "Skieruj kamerę na obiekt",
   shortcut_quick_colour: "Szybkie użycie koloru w selektorze kolorów",
   shortcut_delete_object: "Usuń obiekt",
+
+  axis_x: "Oś X",
+  axis_y: "Oś Y",
+  axis_z: "Oś Z",
+  axis_free: "Swobodnie",
+  axis_all: "Jednolicie (wszystkie osie)",
 
   // Keyboard shortcuts panel — category names
   shortcut_category_main: "Ogólne",

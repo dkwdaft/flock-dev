@@ -1119,6 +1119,9 @@ export default {
   design_tool_label: "Ferramenta de design",
   focused_element_suffix: "{name} focado",
   search_toolbox_focused: "Pesquisa da caixa de ferramentas focada",
+  toolbox_search_placeholder: "Pesquisar",
+  search_no_matching: "Nenhum bloco encontrado",
+  workspace_search_placeholder: "Localizar no espaço",
   code_workspace_focused: "Área de trabalho de código focada",
   interactive_element_label: "Elemento interativo",
   panel_resizer_focused:
@@ -1160,6 +1163,7 @@ export default {
   select_mesh_delete_prompt: "ℹ️ Clique em um objeto para excluí-lo.",
   select_mesh_duplicate_prompt:
     "ℹ️ Selecione um objeto para duplicar, depois clique para posicionar as cópias.",
+  place_object_prompt: "ℹ️ Clique em uma superfície para posicionar o objeto.",
   position_readout: "Posição: {position}",
   eyedropper_not_supported_alert:
     "A ferramenta conta-gotas não é suportada neste navegador. Tente usar o Chrome ou Edge.",
@@ -1259,11 +1263,19 @@ export default {
   shortcut_open_gizmos: "Gizmos",
   shortcut_select_gizmo: "Selecionar gizmo",
   shortcut_keyboard_cursor_gizmos: "Cursor de teclado para gizmos",
+  shortcut_slow_cursor_gizmos: "Movimento lento do cursor",
+  shortcut_uniform_scale: "Escala uniforme (todos os eixos)",
   shortcut_lock_transform: "Bloquear transformação no eixo",
   shortcut_transform_3d: "Transformar em 3D",
   shortcut_focus_camera: "Focar câmara no objeto",
   shortcut_quick_colour: "Uso rápido de cor no seletor de cores",
   shortcut_delete_object: "Eliminar objeto",
+
+  axis_x: "Eixo X",
+  axis_y: "Eixo Y",
+  axis_z: "Eixo Z",
+  axis_free: "Livre",
+  axis_all: "Uniforme (todos os eixos)",
 
   // Keyboard shortcuts panel — category names
   shortcut_category_main: "Geral",

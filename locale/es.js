@@ -1133,6 +1133,9 @@ export default {
   design_tool_label: "Herramienta de diseño", // human
   focused_element_suffix: "{nombre} enfocado", // human
   search_toolbox_focused: "Búsqueda de la caja de herramientas enfocada", // human
+  toolbox_search_placeholder: "Buscar",
+  workspace_search_placeholder: "Buscar en el espacio",
+  search_no_matching: "No se encontraron bloques",
   code_workspace_focused: "Espacio de trabajo de código enfocado", // human
   interactive_element_label: "Elemento interactivo", // human
   panel_resizer_focused:
@@ -1183,6 +1186,7 @@ export default {
   select_mesh_delete_prompt: "ℹ️ Haz clic en un objeto para eliminarlo.", // Google translate
   select_mesh_duplicate_prompt:
     "ℹ️ Selecciona un objeto para duplicar, luego haz clic para colocar las copias.", // Google (had to update it)
+  place_object_prompt: "ℹ️ Haz clic en una superficie para colocar el objeto.", // ai
   position_readout: "Posición: {Posición}", // human
   eyedropper_not_supported_alert:
     "El selector de colores no es compatible con este navegador. Prueba con Chrome o Edge.", // human
@@ -1282,11 +1286,19 @@ export default {
   shortcut_open_gizmos: "Gizmos",
   shortcut_select_gizmo: "Seleccionar gizmo",
   shortcut_keyboard_cursor_gizmos: "Cursor de teclado para gizmos",
+  shortcut_slow_cursor_gizmos: "Movimiento lento del cursor",
+  shortcut_uniform_scale: "Escala uniforme (todos los ejes)",
   shortcut_lock_transform: "Bloquear transformación en eje",
   shortcut_transform_3d: "Transformar en 3D",
   shortcut_focus_camera: "Enfocar cámara en objeto",
   shortcut_quick_colour: "Usar color rápido en el selector de color",
   shortcut_delete_object: "Eliminar objeto",
+
+  axis_x: "Eje X",
+  axis_y: "Eje Y",
+  axis_z: "Eje Z",
+  axis_free: "Libre",
+  axis_all: "Uniforme (todos los ejes)",
 
   // Keyboard shortcuts panel — category names
   shortcut_category_main: "General",

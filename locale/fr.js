@@ -1128,6 +1128,9 @@ export default {
   design_tool_label: "Outil de conception",
   focused_element_suffix: "{name} focalisé",
   search_toolbox_focused: "Recherche de la boîte à outils focalisée",
+  toolbox_search_placeholder: "Rechercher",
+  search_no_matching: "Aucun bloc correspondant",
+  workspace_search_placeholder: "Chercher dans l'espace",
   code_workspace_focused: "Espace de travail du code focalisé",
   interactive_element_label: "Élément interactif",
   panel_resizer_focused:
@@ -1171,6 +1174,7 @@ export default {
   select_mesh_delete_prompt: "ℹ️ Cliquez sur un objet pour le supprimer.",
   select_mesh_duplicate_prompt:
     "ℹ️ Sélectionnez un objet à dupliquer, puis cliquez pour placer les copies.",
+  place_object_prompt: "ℹ️ Cliquez sur une surface pour placer l'objet.",
   position_readout: "Position: {position}",
   eyedropper_not_supported_alert:
     "L'outil pipette n'est pas pris en charge dans ce navigateur. Essayez d'utiliser Chrome ou Edge.",
@@ -1272,11 +1276,19 @@ export default {
   shortcut_open_gizmos: "Gizmos",
   shortcut_select_gizmo: "Sélectionner un gizmo",
   shortcut_keyboard_cursor_gizmos: "Curseur clavier pour les gizmos",
+  shortcut_slow_cursor_gizmos: "Mouvement lent du curseur",
+  shortcut_uniform_scale: "Mise à l'échelle uniforme (tous les axes)",
   shortcut_lock_transform: "Verrouiller la transformation sur un axe",
   shortcut_transform_3d: "Transformer en 3D",
   shortcut_focus_camera: "Centrer la caméra sur l'objet",
   shortcut_quick_colour: "Utiliser rapidement une couleur dans le sélecteur",
   shortcut_delete_object: "Supprimer l'objet",
+
+  axis_x: "Axe X",
+  axis_y: "Axe Y",
+  axis_z: "Axe Z",
+  axis_free: "Libre",
+  axis_all: "Uniforme (tous les axes)",
 
   // Keyboard shortcuts panel — category names
   shortcut_category_main: "Général",

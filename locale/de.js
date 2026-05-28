@@ -1113,6 +1113,9 @@ export default {
   design_tool_label: "Designwerkzeug",
   focused_element_suffix: "{name} fokussiert",
   search_toolbox_focused: "Toolbox-Suche fokussiert",
+  toolbox_search_placeholder: "Suchen",
+  search_no_matching: "Keine passenden Blöcke gefunden",
+  workspace_search_placeholder: "Im Bereich suchen",
   code_workspace_focused: "Code-Arbeitsbereich fokussiert",
   interactive_element_label: "Interaktives Element",
   panel_resizer_focused:
@@ -1154,6 +1157,7 @@ export default {
   select_mesh_delete_prompt: "ℹ️ Klicke auf ein Objekt, um es zu löschen.",
   select_mesh_duplicate_prompt:
     "ℹ️ Wähle ein Objekt zum Duplizieren aus und klicke dann, um Kopien zu platzieren.",
+  place_object_prompt: "ℹ️ Klicke auf eine Fläche, um das Objekt zu platzieren.",
   position_readout: "Position: {position}",
   eyedropper_not_supported_alert:
     "Das Pipettenwerkzeug wird in diesem Browser nicht unterstützt. Versuche es mit Chrome oder Edge.",
@@ -1260,11 +1264,19 @@ export default {
   shortcut_open_gizmos: "Gizmos",
   shortcut_select_gizmo: "Gizmo auswählen",
   shortcut_keyboard_cursor_gizmos: "Tastaturcursor für Gizmos",
+  shortcut_slow_cursor_gizmos: "Langsame Cursorbewegung",
+  shortcut_uniform_scale: "Gleichmäßig skalieren (alle Achsen)",
   shortcut_lock_transform: "Transformation auf Achse einschränken",
   shortcut_transform_3d: "In 3D transformieren",
   shortcut_focus_camera: "Kamera auf Objekt ausrichten",
   shortcut_quick_colour: "Schnellfarbauswahl im Farbwähler",
   shortcut_delete_object: "Objekt löschen",
+
+  axis_x: "X-Achse",
+  axis_y: "Y-Achse",
+  axis_z: "Z-Achse",
+  axis_free: "Frei",
+  axis_all: "Gleichmäßig (alle Achsen)",
 
   // Keyboard shortcuts panel — category names
   shortcut_category_main: "Allgemein",
