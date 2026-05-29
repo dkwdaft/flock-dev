@@ -1196,6 +1196,42 @@ export function createBlocklyWorkspace() {
   );
 
   workspace = Blockly.inject('blocklyDiv', options);
+
+  if (navigator.maxTouchPoints > 0 && window.innerWidth < 768) {
+    // Make it harder to accidentally drag blocks on mobile.
+    Blockly.config.dragRadius = 20;
+    Blockly.config.flyoutDragRadius = 20;
+
+    const blocklyDiv = document.getElementById('blocklyDiv');
+
+    let selectedBlock = null;
+
+    blocklyDiv.addEventListener(
+      'pointerdown',
+      (e) => {
+        if (e.pointerType !== 'touch') return;
+        const blockRoot = e.target.closest('.blocklyDraggable');
+
+        if (blockRoot && !blockRoot.classList.contains('blocklySelected')) {
+          e.stopPropagation();
+          const blockId = blockRoot.getAttribute('data-id');
+          if (blockId) {
+            const block = workspace.getBlockById(blockId);
+            if (block) {
+              selectedBlock?.unselect();
+              block.select();
+              selectedBlock = block;
+            }
+          }
+        } else if (!blockRoot) {
+          selectedBlock?.unselect();
+          selectedBlock = null;
+        }
+      },
+      true
+    );
+  }
+
   installWorkspaceJumpDebug(workspace);
 
   let activeXyzBlock = null;
@@ -1719,6 +1755,14 @@ export function createBlocklyWorkspace() {
 
     const deleteItem = registry.getItem?.('blockDelete');
     if (deleteItem) deleteItem.weight = 20;
+  })();
+
+  // Remove undo/redo from the workspace context menu — toolbar buttons cover this.
+  (function removeUndoRedoFromContextMenu() {
+    const registry = Blockly.ContextMenuRegistry.registry;
+    ['undoWorkspace', 'redoWorkspace'].forEach((id) => {
+      try { registry.unregister(id); } catch (_) {}
+    });
   })();
 
   // Override the keyboard-navigation plugin's paste context menu item so it
