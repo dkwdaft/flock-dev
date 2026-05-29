@@ -101,6 +101,9 @@ export const flockMovement = {
         currentRotationConjugate: new B.Quaternion(),
         deltaRotation: new B.Quaternion(),
       };
+      c.groundQuery.ignoredBodies.push(model.physics);
+      c.stepLowQuery.ignoredBodies.push(model.physics);
+      c.stepHighQuery.ignoredBodies.push(model.physics);
     }
 
     // Ground query shape — cached, recreated only when dimensions change.
@@ -274,47 +277,65 @@ export const flockMovement = {
 
     flock.ensureVerticalConstraint(model);
 
-    const sidewaysSpeed = speed;
+    const B = flock.BABYLON;
 
-    // Get the camera's right direction vector (perpendicular to the forward direction)
-    const cameraRight = flock.scene.activeCamera
-      .getDirection(flock.BABYLON.Vector3.Right())
-      .normalize();
+    let c = model._moveSidewaysCache;
+    if (!c) {
+      c = model._moveSidewaysCache = {
+        rightLocal: B.Vector3.Right(),
+        cameraRight: new B.Vector3(),
+        moveDirection: new B.Vector3(),
+        currentVelocity: new B.Vector3(),
+        finalVelocity: new B.Vector3(),
+        facingDirection: new B.Vector3(),
+        targetRotation: new B.Quaternion(),
+        currentRotationConjugate: new B.Quaternion(),
+        deltaRotation: new B.Quaternion(),
+        deltaEuler: new B.Vector3(),
+        angularVelocity: new B.Vector3(),
+      };
+      model.onDisposeObservable.addOnce(() => {
+        model._moveSidewaysCache = null;
+      });
+    }
 
-    const moveDirection = cameraRight.scale(sidewaysSpeed);
-    const currentVelocity = model.physics.getLinearVelocity();
+    // Camera right direction — no alloc
+    flock.scene.activeCamera.getDirectionToRef(c.rightLocal, c.cameraRight);
+    c.cameraRight.normalize();
+    c.cameraRight.scaleToRef(speed, c.moveDirection);
 
-    // Set linear velocity in the sideways direction
-    model.physics.setLinearVelocity(
-      new flock.BABYLON.Vector3(
-        moveDirection.x,
-        currentVelocity.y, // Keep Y velocity (no vertical movement)
-        moveDirection.z
-      )
+    model.physics.getLinearVelocityToRef(c.currentVelocity);
+    c.finalVelocity.set(c.moveDirection.x, c.currentVelocity.y, c.moveDirection.z);
+    model.physics.setLinearVelocity(c.finalVelocity);
+
+    // Face the direction of travel: positive speed = right, negative speed = left
+    const sign = speed > 0 ? 1 : -1;
+    c.facingDirection.set(sign * c.cameraRight.x, 0, sign * c.cameraRight.z);
+    c.facingDirection.normalize();
+
+    B.Quaternion.FromLookDirectionLHToRef(
+      c.facingDirection,
+      B.Vector3.UpReadOnly,
+      c.targetRotation
     );
 
-    // Rotate the model to face the direction of movement
-    const facingDirection =
-      sidewaysSpeed <= 0
-        ? new flock.BABYLON.Vector3(-cameraRight.x, 0, -cameraRight.z).normalize() // Right
-        : new flock.BABYLON.Vector3(cameraRight.x, 0, cameraRight.z).normalize(); // Left
+    if (model.rotationQuaternion) {
+      c.currentRotationConjugate.copyFrom(model.rotationQuaternion);
+    } else {
+      c.currentRotationConjugate.copyFromFloats(0, 0, 0, 1);
+    }
+    c.currentRotationConjugate.conjugateInPlace();
+    c.targetRotation.multiplyToRef(c.currentRotationConjugate, c.deltaRotation);
+    c.deltaRotation.toEulerAnglesToRef(c.deltaEuler);
+    c.angularVelocity.set(0, c.deltaEuler.y * 5, 0);
+    model.physics.setAngularVelocity(c.angularVelocity);
 
-    const targetRotation = flock.BABYLON.Quaternion.FromLookDirectionLH(
-      facingDirection,
-      flock.BABYLON.Vector3.Up()
-    );
-
-    const currentRotation = model.rotationQuaternion;
-    const deltaRotation = targetRotation.multiply(currentRotation.conjugate());
-    const deltaEuler = deltaRotation.toEulerAngles();
-
-    // Apply angular velocity to smoothly rotate the player
-    model.physics.setAngularVelocity(new flock.BABYLON.Vector3(0, deltaEuler.y * 5, 0));
-
-    // Normalize the model's rotation to avoid drift
-    model.rotationQuaternion.x = 0;
-    model.rotationQuaternion.z = 0;
-    model.rotationQuaternion.normalize();
+    // Prevent pitch/roll drift
+    if (model.rotationQuaternion) {
+      model.rotationQuaternion.x = 0;
+      model.rotationQuaternion.z = 0;
+      model.rotationQuaternion.normalize();
+    }
   },
   strafe(modelName, speed) {
     if (speed === 0) return;
@@ -324,72 +345,30 @@ export const flockMovement = {
     if (!model.physics) return;
 
     flock.ensureVerticalConstraint(model);
-    const sidewaysSpeed = -speed;
 
-    // Get the camera's right direction vector (perpendicular to the forward direction)
-    const cameraRight = flock.scene.activeCamera
-      .getForwardRay()
-      .direction.cross(flock.BABYLON.Vector3.Up())
-      .normalize();
+    const B = flock.BABYLON;
 
-    const moveDirection = cameraRight.scale(sidewaysSpeed);
-    const currentVelocity = model.physics.getLinearVelocity();
-
-    // Set linear velocity in the sideways direction (left or right)
-    model.physics.setLinearVelocity(
-      new flock.BABYLON.Vector3(moveDirection.x, currentVelocity.y, moveDirection.z)
-    );
-  },
-  updateDynamicMeshPositions(scene, dynamicMeshes) {
-    dynamicMeshes.forEach((mesh) => {
-      mesh.physics.setCollisionCallbackEnabled(true);
-      const observable = mesh.physics.getCollisionObservable();
-      observable.add((collisionEvent) => {
-        const penetration = Math.abs(collisionEvent.distance);
-        // If the penetration is extremely small (indicating minor clipping)
-        if (penetration < 0.001) {
-          // Read the current vertical velocity.
-          const currentVel = mesh.physics.getLinearVelocity();
-          // If there is an upward impulse being applied by the solver,
-          // override it by setting the vertical velocity to zero.
-          if (currentVel.y > 0) {
-            mesh.physics.setLinearVelocity(
-              new flock.BABYLON.Vector3(currentVel.x, 0, currentVel.z)
-            );
-            /*console.log(
-              "Collision callback: small penetration detected. Overriding upward velocity.",
-            );*/
-          }
-
-          dynamicMeshes.forEach((mesh) => {
-            // Use a downward ray to determine the gap to the ground.
-            const capsuleHalfHeight = 1; // adjust as needed
-            const rayOrigin = mesh.position
-              .clone()
-              .add(new flock.BABYLON.Vector3(0, -capsuleHalfHeight, 0));
-            const downRay = new flock.BABYLON.Ray(
-              rayOrigin,
-              new flock.BABYLON.Vector3(0, -1, 0),
-              3
-            );
-            const hit = scene.pickWithRay(downRay, (m) => m.name.toLowerCase().includes('ground'));
-            if (hit && hit.pickedMesh) {
-              const groundY = hit.pickedPoint.y;
-              const capsuleBottomY = mesh.position.y - capsuleHalfHeight;
-              const gap = capsuleBottomY - groundY;
-              // If the gap is very small (i.e. the capsule is on or nearly on the ground)
-              // and the vertical velocity is upward, override it.
-              const currentVel = mesh.physics.getLinearVelocity();
-              if (Math.abs(gap) < 0.1 && currentVel.y > 0) {
-                mesh.physics.setLinearVelocity(
-                  new flock.BABYLON.Vector3(currentVel.x, 0, currentVel.z)
-                );
-                //console.log("After-render: resetting upward velocity");
-              }
-            }
-          });
-        }
+    let c = model._strafeCache;
+    if (!c) {
+      c = model._strafeCache = {
+        rightLocal: B.Vector3.Right(),
+        cameraRight: new B.Vector3(),
+        moveDirection: new B.Vector3(),
+        currentVelocity: new B.Vector3(),
+        finalVelocity: new B.Vector3(),
+      };
+      model.onDisposeObservable.addOnce(() => {
+        model._strafeCache = null;
       });
-    });
+    }
+
+    // Camera right direction — same approach as moveSideways, no alloc
+    flock.scene.activeCamera.getDirectionToRef(c.rightLocal, c.cameraRight);
+    c.cameraRight.normalize();
+    c.cameraRight.scaleToRef(speed, c.moveDirection);
+
+    model.physics.getLinearVelocityToRef(c.currentVelocity);
+    c.finalVelocity.set(c.moveDirection.x, c.currentVelocity.y, c.moveDirection.z);
+    model.physics.setLinearVelocity(c.finalVelocity);
   },
 };
