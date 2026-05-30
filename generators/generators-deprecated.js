@@ -99,6 +99,15 @@ export function registerDeprecatedGenerators(javascriptGenerator) {
       true,
     );
 
+    const callbackVar2Name = block.callbackVar2Id
+      ? javascriptGenerator.nameDB_.getName(
+          block.callbackVar2Id,
+          Blockly.Names.NameType.VARIABLE,
+          true,
+        )
+      : null;
+    const param2 = callbackVar2Name ?? otherModelName;
+
     const trigger = block.getFieldValue("TRIGGER");
     const doCode = javascriptGenerator.statementToCode(block, "DO");
 
@@ -106,11 +115,12 @@ export function registerDeprecatedGenerators(javascriptGenerator) {
       trigger === "OnIntersectionEnterTrigger" ||
       trigger === "OnIntersectionExitTrigger"
     ) {
+      const groupLine = block.callbackVar2Id ? ",\n          applyToGroupSelf: true" : "";
       return `onIntersect(${modelName}, ${otherModelName}, {
           trigger: "${trigger}",
-          callback: async function(${modelName}, ${otherModelName}) {
+          callback: async function(${modelName}, ${param2}) {
         ${doCode}
-          }
+          }${groupLine}
         });\n`;
     } else {
       console.error("Invalid trigger type for 'when_touches' block:", trigger);
