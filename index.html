@@ -172,8 +172,8 @@
     </style>
   </head>
 
-  <body class="loading">
-    <script>
+  <body class="loading" aria-busy="true">
+<script>
       (function () {
         if (!new URLSearchParams(window.location.search).has("touchDebug"))
           return;
@@ -250,12 +250,7 @@
     <div
       id="loadingScreen"
       class="loading-screen"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Loading Flock XR"
-      data-i18n="loading_title"
-      data-i18n-attrs="aria-label"
-      aria-describedby="loading-description"
+      aria-hidden="true"
     >
       <div class="loading-content">
         <img
@@ -270,16 +265,11 @@
           alt="Flock XR Logo"
           class="loading-logo"
         />
-        <div
-          class="loading-spinner"
-          role="img"
-          aria-label="Loading animation"
-        ></div>
+        <div class="loading-spinner"></div>
         <h2
           id="loading-description"
           data-i18n="loading"
           class="loading-text"
-          aria-live="polite"
         >
           Loading Flock XR...
         </h2>
@@ -287,7 +277,7 @@
     </div>
 
     <h1 class="sr-only">FlockXR</h1>
-    <label for="importFile" class="sr-only" data-i18n="import_project_file"
+    <label for="importFile" class="sr-only" aria-hidden="true" data-i18n="import_project_file"
       >Import project file</label
     >
     <input
@@ -990,6 +980,9 @@
               id="renderCanvas"
               touch-action="none"
               tabindex="-1"
+              aria-label="3D scene"
+              data-i18n="canvas_accessible_name"
+              data-i18n-attrs="aria-label"
               aria-describedby="canvas-desc canvas-controls-desc"
             ></canvas>
             <div id="canvas-desc" class="sr-only">
