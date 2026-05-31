@@ -2,6 +2,8 @@
 
 [Flock XR](https://flockxr.com/) is a free, open-source tool for creating and exploring 3D worlds in the browser, designed for education and accessible on low-cost devices.
 
+![3D animation of the three women who created Flock XR](docs/images/flock-xr-animation.gif)
+
 It enables educators, students, and families to build interactive 3D experiences without downloads or logins, making it easy to use in classrooms, clubs, and at home.
 
 ## Key features
@@ -13,17 +15,25 @@ It enables educators, students, and families to build interactive 3D experiences
 
 ### What can you do with Flock XR?
 
-Flock XR has been designed as a bridge between Scratch and professional 3D tools, such as Babylon JS, UEFN, Unity and Godot. 
-
-- Build and explore interactive 3D environments  
+- Build and explore interactive 3D environments 
 - Create worlds using visual gizmos and block-based coding  
 - Teach coding, game design, and digital storytelling through hands-on projects  
-- Run engaging learning activities without installing software  
+- Run engaging learning activities without installing software
+- Use games engine concepts such as aniamtions, particle effects and physics. 
+
+Flock XR has been designed to start with younger children aged 7+, often using tablets. Then take them through upper primary, middle school and high school right through to professional 3D tools, such as Babylon JS, UEFN, Unity and Godot. 
+
+### Why 3D and XR?
+3D is engaging and age appropriate for young people and can lead to careers across a range of industries. Technology that originated in games is now used in many sectors. XR and spatial computing are changing how humans interact with technology, bridging the physical and digital worlds. 
+
+- Young people love 3D games and social platforms such as Minecraft, Roblox, Fortnite and more. Flock XR brings that knowledge into the classroom.
+- The real world is 3D. It turns out that some things are just easier when you don't have the complexity of having to map to 3D.
+- 3D is the basis for eXtended Reality and spatial computing, the metaverse and immersive tech which are growing dramatically across industries. 
 
 ### Who is it for?
 
+- Young people age 7-14+ (primary through secondary education, K-12)
 - Teachers and educators worldwide  
-- Students (primary through secondary education)  
 - Clubs, coding groups, and informal learning communities  
 - Parents and home educators supporting creative learning 
 
@@ -61,37 +71,5 @@ Flock XR is based on Blockly, the Babylon JS library and the Havok physics engin
 - Mocha & Chai - Unit testing framework
 - Playwright - End-to-end testing framework
 
-### Project Statistics
-
-[![CodeQL](https://github.com/flipcomputing/flock/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/flipcomputing/flock/actions/workflows/github-code-scanning/codeql)
-[![Mocha tests](https://github.com/flipcomputing/flock/actions/workflows/run-mocha-tests.yml/badge.svg)](https://github.com/flipcomputing/flock/actions/workflows/run-mocha-tests.yml)
-
-### API Quality Tools
-
-This project includes automated tools for tracking and improving API documentation and test coverage.
-
 **📚 Documentation:**
-
-- **[API Quality Tools Guide](docs/API_QUALITY_TOOLS.md)** ⭐ - Complete guide to using the tools
 - [Getting Started](docs/GETTING_STARTED.md) - Quick start for improving API quality
-- [API Strategy](docs/API_RECONCILIATION_PLAN.md) - Overall approach and goals
-- [Current Status](docs/IMPLEMENTATION_STATUS.md) - Metrics and progress tracking
-
-**🔧 Key Commands:**
-
-```bash
-# Check API documentation and test coverage
-npm run docs:coverage
-
-# Run API tests (automated, headless)
-npm run test:api @notslow    # All fast tests (100 tests)
-npm run test:api babylon     # Specific test suite
-npm run test:api @onlyslow   # All slow tests (94 tests)
-```
-
-**📊 Current Metrics:**
-
-- 108 total API methods
-- 48% documented in API.md (52 methods)
-- 49% tested (53 methods)
-- 226 total tests across 15 test files
