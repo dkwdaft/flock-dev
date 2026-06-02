@@ -1128,6 +1128,7 @@ export default {
   toolbox_search_placeholder: "Pesquisar",
   search_no_matching: "Nenhum bloco encontrado",
   workspace_search_placeholder: "Localizar no espaço",
+  close: "Fechar",
   code_workspace_focused: "Área de trabalho de código focada",
   interactive_element_label: "Elemento interativo",
   panel_resizer_focused:
@@ -1164,6 +1165,7 @@ export default {
   physics_out_of_memory_banner_ui:
     "O motor de física ficou sem memória. Tente reduzir o número de objetos físicos ou recarregar o projeto.", // AI-generated; needs validation
   runtime_error_message: "Erro: {message}",
+  error_audio: "O som não está disponível neste dispositivo. O seu projeto será executado sem áudio.", // Google translate
   xr_mode_message: "Modo XR!",
   fly_camera_instructions: "ℹ️ Câmera de voo, use as setas e Page Up/Down",
   select_mesh_delete_prompt: "ℹ️ Clique em um objeto para excluí-lo.",

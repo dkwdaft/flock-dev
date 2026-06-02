@@ -292,27 +292,15 @@ export { currentView, switchView, codeMode, showCodeView };
 
 const container = document.getElementById("maincontent");
 const bottomBar = document.getElementById("bottomBar");
-const switchViewsBtn = document.getElementById("switchViews");
+const canvasToggleBtn = document.getElementById("canvasToggleBtn");
+const codeToggleBtn = document.getElementById("codeToggleBtn");
 
 let savedView = "canvas";
+let savedShortcutsVisible = false;
 
-// Function to add the button event listener (narrow screens only)
 function addButtonListener() {
-  // Only add button listener on narrow screens
-  if (!isNarrowScreen()) {
-    return;
-  }
-  if (!switchViewsBtn) return;
-
-  switchViewsBtn.addEventListener("click", togglePanels);
-  switchViewsBtn.addEventListener(
-    "touchend",
-    (e) => {
-      e.preventDefault();
-      togglePanels();
-    },
-    { passive: false },
-  );
+  if (canvasToggleBtn) canvasToggleBtn.addEventListener("click", showCanvasView);
+  if (codeToggleBtn) codeToggleBtn.addEventListener("click", showCodeView);
 }
 
 // Alternative approach: Instead of CSS transforms, actually reposition elements in DOM
@@ -335,7 +323,8 @@ function showCodeView() {
     blocklyArea.style.width = "100%";
     blocklyArea.style.flex = "1 1 100%";
 
-    if (switchViewsBtn) switchViewsBtn.textContent = "<< Canvas";
+    if (canvasToggleBtn) canvasToggleBtn.setAttribute("aria-pressed", "false");
+    if (codeToggleBtn) codeToggleBtn.setAttribute("aria-pressed", "true");
 
     // Blockly resize after DOM changes
     requestAnimationFrame(() => {
@@ -349,6 +338,8 @@ function showCodeView() {
 }
 
 export function showCanvasView() {
+  window.flockWorkspaceSearch?.close();
+
   const gizmoButtons = document.getElementById("gizmoButtons");
   const flockLink = document.getElementById("flocklink");
   if (!gizmoButtons || !flockLink) return;
@@ -369,7 +360,8 @@ export function showCanvasView() {
     canvasArea.style.width = "100%";
     canvasArea.style.flex = "1 1 100%";
 
-    if (switchViewsBtn) switchViewsBtn.textContent = "Code >>";
+    if (canvasToggleBtn) canvasToggleBtn.setAttribute("aria-pressed", "true");
+    if (codeToggleBtn) codeToggleBtn.setAttribute("aria-pressed", "false");
   }
 
   onResize();
@@ -377,9 +369,6 @@ export function showCanvasView() {
 
 // Updated swipe handling to work with DOM-based switching
 function addSwipeListeners() {
-  if (!isNarrowScreen()) {
-    return;
-  }
   if (!bottomBar) return;
 
   let startX = 0;
@@ -474,15 +463,33 @@ export function initializeUI() {
   }
 }
 
+// Handle transitions between narrow and wide layouts on resize
+window.matchMedia("(max-width: 1024px)").addEventListener("change", (e) => {
+  const blocklyArea = document.getElementById("codePanel");
+  const canvasArea = document.getElementById("canvasArea");
+  if (!blocklyArea || !canvasArea) return;
+
+  if (e.matches) {
+    // Crossed into narrow: set up single-panel view
+    showCanvasView();
+  } else {
+    // Crossed into wide: restore both panels, clear inline styles set by mobile view
+    blocklyArea.style.display = "block";
+    blocklyArea.style.width = "";
+    blocklyArea.style.flex = "";
+    canvasArea.style.display = "";
+    canvasArea.style.width = "";
+    canvasArea.style.flex = "";
+    onResize();
+  }
+});
+
 // Modified toggle function to work with new approach
 function togglePanels() {
   if (!isNarrowScreen()) {
     return;
   }
-  if (!switchViewsBtn) return;
-
-  // Check button text instead of currentView to avoid state mismatch
-  if (switchViewsBtn.textContent === "Code >>") {
+  if (currentView === "canvas") {
     showCodeView();
   } else {
     showCanvasView();
@@ -496,6 +503,7 @@ export function togglePlayMode() {
   const gizmoButtons = document.getElementById("gizmoButtons");
   const bottomBar = document.getElementById("bottomBar");
   const flockLink = document.getElementById("flocklink");
+  const infoPanel = document.getElementById("info-panel");
   const resizer = document.getElementById("resizer");
   if (!blocklyArea || !canvasArea || !gizmoButtons || !bottomBar || !flockLink) {
     return;
@@ -516,10 +524,13 @@ export function togglePlayMode() {
 
     showCanvasView();
     if (flock.scene) flock.scene.debugLayer.hide();
+    savedShortcutsVisible = !(window.flockShortcutsPanel?.panel?.classList.contains("hidden") ?? true);
+    window.flockShortcutsPanel?.hide();
     blocklyArea.style.display = "none";
     gizmoButtons.style.display = "none";
     bottomBar.style.display = "none";
     flockLink.style.display = "none";
+    if (infoPanel) infoPanel.style.display = "none";
     if (resizer) resizer.style.display = "none";
     document.documentElement.style.setProperty("--dynamic-offset", "40px");
   } else {
@@ -527,9 +538,14 @@ export function togglePlayMode() {
     blocklyArea.style.display = "block";
     canvasArea.style.display = "";
     gizmoButtons.style.display = "block";
-    bottomBar.style.display = "block";
+    bottomBar.style.display = "";
     flockLink.style.display = "block";
+    if (infoPanel) infoPanel.style.display = "";
     if (resizer) resizer.style.display = "block";
+    if (savedShortcutsVisible) {
+      window.flockShortcutsPanel?.show();
+      savedShortcutsVisible = false;
+    }
     document.documentElement.style.setProperty("--dynamic-offset", "65px");
 
     // On narrow screens, restore the saved view

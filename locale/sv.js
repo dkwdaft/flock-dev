@@ -1117,6 +1117,7 @@ export default {
   toolbox_search_placeholder: "Sök",
   search_no_matching: "Inga matchande block hittades",
   workspace_search_placeholder: "Sök i arbetsytan",
+  close: "Stäng",
   code_workspace_focused: "Kodarbetsytan har fokus",
   interactive_element_label: "Interaktivt element",
   panel_resizer_focused:
@@ -1153,6 +1154,7 @@ export default {
   physics_out_of_memory_banner_ui:
     "Fysikmotorn fick slut på minne. Försök minska antalet fysikobjekt eller ladda om projektet.", // AI-generated; needs validation
   runtime_error_message: "Fel: {message}",
+  error_audio: "Ljud är inte tillgängligt på den här enheten. Ditt projekt körs utan ljud.", // Google translate
   xr_mode_message: "XR-läge!",
   fly_camera_instructions:
     "ℹ️ Flygkamera, använd piltangenterna och Page Up/Down",

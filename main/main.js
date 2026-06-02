@@ -821,6 +821,9 @@ function initializeApp() {
     zoomInBtn.addEventListener("click", () => workspace.zoomCenter(1));
   if (zoomOutBtn)
     zoomOutBtn.addEventListener("click", () => workspace.zoomCenter(-1));
+  const workspaceSearchBtn = document.getElementById("workspaceSearchBtn");
+  if (workspaceSearchBtn)
+    workspaceSearchBtn.addEventListener("click", () => window.flockWorkspaceSearch?.open());
   if (undoBtn) undoBtn.addEventListener("click", () => workspace.undo(false));
   if (redoBtn) redoBtn.addEventListener("click", () => workspace.undo(true));
   const shortcutsBtn = document.getElementById("shortcutsBtn");
@@ -1017,7 +1020,18 @@ function initializeApp() {
   runCodeButton.removeAttribute("disabled");
   if (exampleSelect) exampleSelect.removeAttribute("disabled");
 
-  if (fullscreenToggle) fullscreenToggle.removeAttribute("disabled");
+  if (fullscreenToggle) {
+    const fullscreenSupported =
+      document.documentElement.requestFullscreen ||
+      document.documentElement.mozRequestFullScreen ||
+      document.documentElement.webkitRequestFullscreen ||
+      document.documentElement.msRequestFullscreen;
+    if (fullscreenSupported) {
+      fullscreenToggle.removeAttribute("disabled");
+    } else {
+      fullscreenToggle.style.display = "none";
+    }
+  }
 
   // Add event listeners for buttons and controls
   /*toolboxControl.addEventListener("mouseover", function () {

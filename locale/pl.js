@@ -1136,6 +1136,7 @@ export default {
   toolbox_search_placeholder: "Szukaj",
   search_no_matching: "Nie znaleziono pasujących bloków",
   workspace_search_placeholder: "Znajdź w obszarze",
+  close: "Zamknij",
   code_workspace_focused: "Skupiono przestrzeń kodu",
   interactive_element_label: "Element interaktywny",
   panel_resizer_focused:
@@ -1171,6 +1172,7 @@ export default {
   physics_out_of_memory_banner_ui:
     "Silnik fizyczny zabrakło pamięci. Spróbuj zmniejszyć liczbę obiektów fizycznych lub ponownie wczytać projekt.", // AI-generated; needs validation
   runtime_error_message: "Błąd: {message}",
+  error_audio: "Dźwięk nie jest dostępny na tym urządzeniu. Twój projekt uruchomi się bez dźwięku.", // Google translate
   xr_mode_message: "Tryb XR!",
   fly_camera_instructions:
     "ℹ️ Kamera lotu, użyj klawiszy strzałek i Page Up/Down",

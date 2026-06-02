@@ -1122,6 +1122,7 @@ export default {
   toolbox_search_placeholder: "Suchen",
   search_no_matching: "Keine passenden Blöcke gefunden",
   workspace_search_placeholder: "Im Bereich suchen",
+  close: "Schließen",
   code_workspace_focused: "Code-Arbeitsbereich fokussiert",
   interactive_element_label: "Interaktives Element",
   panel_resizer_focused:
@@ -1158,6 +1159,7 @@ export default {
   physics_out_of_memory_banner_ui:
     "Der Physik-Engine ging der Speicher aus. Reduziere die Anzahl der Physikobjekte oder lade dein Projekt neu.", // AI-generated; needs validation
   runtime_error_message: "Fehler: {message}",
+  error_audio: "Sound ist auf diesem Gerät nicht verfügbar. Dein Projekt wird ohne Audio ausgeführt.", // Google translate
   xr_mode_message: "XR-Modus!",
   fly_camera_instructions: "ℹ️ Flugkamera, nutze Pfeiltasten und Bild auf/ab",
   select_mesh_delete_prompt: "ℹ️ Klicke auf ein Objekt, um es zu löschen.",

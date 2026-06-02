@@ -1141,6 +1141,7 @@ export default {
   search_toolbox_focused: "Búsqueda de la caja de herramientas enfocada", // human
   toolbox_search_placeholder: "Buscar",
   workspace_search_placeholder: "Buscar en el espacio",
+  close: "Cerrar",
   search_no_matching: "No se encontraron bloques",
   code_workspace_focused: "Espacio de trabajo de código enfocado", // human
   interactive_element_label: "Elemento interactivo", // human
@@ -1178,6 +1179,7 @@ export default {
   physics_out_of_memory_banner_ui:
     "El motor de física se quedó sin memoria. Intenta reducir el número de objetos físicos o recargar el proyecto.", // human
   runtime_error_message: "Error: {mensaje}", // human
+  error_audio: "El sonido no está disponible en este dispositivo. Tu proyecto se ejecutará sin audio.", // Google translate
   error_startup: "Flock no se pudo iniciar. Intenta recargar la página.", // human
   error_project_crash:
     "Tu proyecto tuvo un problema. Pulsa Detener, revisa tus bloques y pulsa Reproducir otra vez.", // human
