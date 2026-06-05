@@ -1,5 +1,6 @@
 // flock/accessibility/accessibility.js
 import { translate } from "../main/translation.js";
+import { onInteractObservable } from "../ui/interactIndicator.js";
 
 let speechMuted = false;
 let currentScene = null;
@@ -18,6 +19,11 @@ let lastAnnouncedAt = 0;
 // Helps avoid repeating the same click announcement too many times in a row
 let lastInteractionKey = "";
 let lastInteractionTime = 0;
+
+// Two persistent assertive regions that alternate so each announce writes to whichever
+// was previously empty — guarantees the reader sees a genuine "" → text change every time.
+let _interactRegions = null;
+let _interactRegionIdx = 0;
 
 // Track whether initial intro has been announced for the current scene
 let lastIntroScene = null;
@@ -68,7 +74,7 @@ export function createLiveRegion() {
 }
 
 export function announce(message, options = {}) {
-  const { force = false } = options;
+  const { force = false, noDedup = false } = options;
   if (speechMuted && !force) return;
 
   const text = String(message ?? "").trim();
@@ -77,9 +83,32 @@ export function announce(message, options = {}) {
   const now = Date.now();
 
   // Tiny dedupe to prevent noisy repeats
-  if (text === lastAnnouncedText && now - lastAnnouncedAt < 2000) return;
+  if (!noDedup && text === lastAnnouncedText && now - lastAnnouncedAt < 2000) return;
   lastAnnouncedText = text;
   lastAnnouncedAt = now;
+
+  if (noDedup) {
+    // Alternate between two pre-registered assertive regions. Each press writes to the
+    // one that was previously empty, so the reader always sees a genuine "" → text change.
+    // Freshly-created assertive elements have a registration delay; pre-registered ones don't.
+    if (!_interactRegions) {
+      const root = createA11yRoot();
+      _interactRegions = [0, 1].map(() => {
+        const el = document.createElement("div");
+        el.setAttribute("aria-live", "assertive");
+        el.setAttribute("aria-atomic", "true");
+        el.style.cssText = "position:absolute;left:-9999px;top:0;width:1px;height:1px;overflow:hidden";
+        root.appendChild(el);
+        return el;
+      });
+    }
+    _interactRegionIdx = 1 - _interactRegionIdx;
+    const next = _interactRegions[_interactRegionIdx];
+    const prev = _interactRegions[1 - _interactRegionIdx];
+    prev.textContent = "";
+    setTimeout(() => { next.textContent = text; }, 0);
+    return;
+  }
 
   const region = createLiveRegion();
   const mySeq = ++announceSeq;
@@ -312,7 +341,7 @@ function getHorizontalLabel(dot, cross) {
 
   let leftRight = "";
   if (Math.abs(cross) > 0.3) {
-    leftRight = cross > 0 ? "to your right" : "to your left";
+    leftRight = cross > 0 ? "to your left" : "to your right";
   }
 
   if (frontBack === "beside you" && leftRight) return leftRight;
@@ -408,6 +437,47 @@ function getInteractionHint(mesh) {
   );
 
 
+}
+
+function closestBoundingBoxDistance(mesh, point) {
+  try {
+    mesh.computeWorldMatrix?.(true);
+    const bb = mesh.getBoundingInfo?.()?.boundingBox;
+    if (!bb) return null;
+    const cx = Math.max(bb.minimumWorld.x, Math.min(point.x, bb.maximumWorld.x));
+    const cy = Math.max(bb.minimumWorld.y, Math.min(point.y, bb.maximumWorld.y));
+    const cz = Math.max(bb.minimumWorld.z, Math.min(point.z, bb.maximumWorld.z));
+    const dx = cx - point.x, dy = cy - point.y, dz = cz - point.z;
+    return Math.sqrt(dx * dx + dy * dy + dz * dz);
+  } catch (_) {
+    return null;
+  }
+}
+
+function isInsideBoundingBox(mesh, point) {
+  try {
+    mesh.computeWorldMatrix?.(true);
+    const bb = mesh.getBoundingInfo?.()?.boundingBox;
+    if (!bb) return false;
+    return point.x > bb.minimumWorld.x && point.x < bb.maximumWorld.x &&
+           point.y > bb.minimumWorld.y && point.y < bb.maximumWorld.y &&
+           point.z > bb.minimumWorld.z && point.z < bb.maximumWorld.z;
+  } catch (_) {
+    return false;
+  }
+}
+
+function isUnderfootOf(mesh, playerPos) {
+  try {
+    mesh.computeWorldMatrix?.(true);
+    const bb = mesh.getBoundingInfo?.()?.boundingBox;
+    if (!bb || bb.maximumWorld.y === bb.minimumWorld.y) return false;
+    const withinXZ = playerPos.x > bb.minimumWorld.x && playerPos.x < bb.maximumWorld.x &&
+                     playerPos.z > bb.minimumWorld.z && playerPos.z < bb.maximumWorld.z;
+    return withinXZ && Math.abs(playerPos.y - bb.maximumWorld.y) < 2.0;
+  } catch (_) {
+    return false;
+  }
 }
 
 function getRepresentativePosition(root, fallbackMesh) {
@@ -532,6 +602,16 @@ function getReferenceAnchor(scene) {
 
   const playerMesh = getPlayerMesh(scene);
   if (playerMesh) {
+    try {
+      playerMesh.computeWorldMatrix?.(true);
+      const bb = playerMesh.getBoundingInfo?.()?.boundingBox;
+      if (bb) {
+        // Use feet position (bottom of bounding box) so ground-level objects
+        // measure correctly — using the centre inflates distance to flat surfaces.
+        const pos = { x: bb.centerWorld.x, y: bb.minimumWorld.y, z: bb.centerWorld.z };
+        return { kind: "character", mesh: playerMesh, position: pos };
+      }
+    } catch (_) {}
     const pos = getRepresentativePosition(playerMesh, playerMesh);
     if (pos) {
       return { kind: "character", mesh: playerMesh, position: pos };
@@ -584,6 +664,21 @@ function getSceneObjects(scene, options = {}) {
   const fwd = getCameraForward(scene);
   const anchor = options.anchor || getReferenceAnchor(scene);
 
+  // Pre-pass: find entity roots the player is inside or standing on. Uses individual
+  // mesh bounding boxes (not root) since roots are often TransformNodes with no geometry.
+  const anchorPos = anchor?.position;
+  // Inside check uses camera (head level): standing on a flat garden puts your
+  // head above it, but being inside a hut puts your head inside it.
+  // Underfoot check uses feet (anchorPos) for the same reason.
+  const excludedRoots = new Set();
+  for (const mesh of scene.meshes || []) {
+    if (!mesh || !mesh.isVisible || !mesh.name) continue;
+    if (looksLikeInternalMeshName(mesh.name)) continue;
+    if (isInsideBoundingBox(mesh, cameraPos) || (anchorPos && isUnderfootOf(mesh, anchorPos))) {
+      excludedRoots.add(getEntityRoot(mesh));
+    }
+  }
+
   const byEntityName = new Map();
 
   for (const mesh of scene.meshes || []) {
@@ -592,6 +687,7 @@ function getSceneObjects(scene, options = {}) {
 
     const root = getEntityRoot(mesh);
     if (!root || !root.isVisible) continue;
+    if (excludedRoots.has(root)) continue;
 
     const p = getRepresentativePosition(root, mesh);
     if (!p) continue;
@@ -618,14 +714,17 @@ function getSceneObjects(scene, options = {}) {
     const horizontal = getHorizontalLabel(dot, cross);
     const vertical = getVerticalLabel(dyCam);
 
-    // Distance wording is relative to the character/player anchor
-    let distFromAnchor = distFromCamera;
-    if (anchor?.position) {
-      const ax = p.x - anchor.position.x;
-      const ay = p.y - anchor.position.y;
-      const az = p.z - anchor.position.z;
-      distFromAnchor = Math.sqrt(ax * ax + ay * ay + az * az);
-    }
+    // Distance wording is relative to the character/player anchor, measured to
+    // the nearest surface of the bounding box so large objects read as close
+    // when you're standing next to them.
+    const anchorPos = anchor?.position;
+
+    // Skip objects the player is inside or standing on — they're acting as
+    // environment from the player's perspective, not things to navigate toward.
+
+    const distFromAnchor = anchorPos
+      ? (closestBoundingBoxDistance(root, anchorPos) ?? distFromCamera)
+      : distFromCamera;
 
     const distanceLabel = getDistanceLabel(distFromAnchor);
 
@@ -918,6 +1017,130 @@ export function describeNearestObject(scene) {
   })}`;
 }
 
+export function describeFacingObject(scene) {
+  if (!scene) return "No scene loaded.";
+  const camera = scene?.activeCamera;
+  if (!camera) return "No active camera is available.";
+
+  const cameraPos = camera.globalPosition || camera.position;
+  if (!cameraPos) return "No active camera is available.";
+
+  // Full 3D forward direction from the camera (where the player is looking).
+  let fwdX = 0, fwdY = 0, fwdZ = 1;
+  try {
+    const dir = camera.getForwardRay?.(1)?.direction;
+    if (dir && Number.isFinite(dir.x) && Number.isFinite(dir.y) && Number.isFinite(dir.z)) {
+      const len = Math.sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z) || 1;
+      fwdX = dir.x / len;
+      fwdY = dir.y / len;
+      fwdZ = dir.z / len;
+    }
+  } catch (_) { /* fall through to default forward */ }
+
+  const anchor = getReferenceAnchor(scene);
+
+  // Cast the ray from the player's position when available, not the camera's.
+  // The camera may be offset behind/above in third-person; the player is what moves forward.
+  const rayOrigin = (anchor?.kind === "character" && anchor.position) ? anchor.position : cameraPos;
+
+  // Tube test is XZ-only: the player moves on the ground plane, so vertical offset
+  // (e.g. a tall tree whose bounding-box centre is several metres up) is irrelevant.
+  const fwdXZLen = Math.sqrt(fwdX * fwdX + fwdZ * fwdZ) || 1;
+  const fwdXZ_x = fwdX / fwdXZLen;
+  const fwdXZ_z = fwdZ / fwdXZLen;
+
+  // Build the set of entity roots whose bounding box contains the player.
+  // Objects inside a container the player is NOT in are occluded (e.g. items
+  // inside a hut when the player is standing outside behind it).
+  const playerContainers = new Set();
+  const underfootRoots = new Set();
+  for (const mesh of scene.meshes || []) {
+    if (!mesh.isVisible || !mesh.name || looksLikeInternalMeshName(mesh.name)) continue;
+    const root = getEntityRoot(mesh);
+    if (!root || !root.isVisible) continue;
+    if (isInsideBoundingBox(mesh, cameraPos)) playerContainers.add(root);
+    if (isUnderfootOf(mesh, rayOrigin)) underfootRoots.add(root);
+  }
+
+  let bestRoot = null;
+  let bestLabel = null;
+  let bestForward = 0;
+  let bestRawDist = Infinity;
+  let bestSigned = 0;
+  let bestScore = Infinity;
+
+  const seen = new Set();
+
+  for (const mesh of scene.meshes || []) {
+    if (!mesh || !mesh.isVisible || !mesh.name) continue;
+    if (looksLikeInternalMeshName(mesh.name)) continue;
+
+    const root = getEntityRoot(mesh);
+    if (!root || !root.isVisible) continue;
+    if (anchor?.mesh && root === anchor.mesh) continue;
+    if (underfootRoots.has(root)) continue;
+
+    const p = getRepresentativePosition(root, mesh);
+    if (!p) continue;
+
+    const label = getObjectLabel(root);
+    if (isEnvironmentObject(label)) continue;
+
+    // Skip objects inside a container the player is not in (e.g. items in a hut
+    // when the player is outside — they're occluded by the container's walls).
+    let occluded = false;
+    for (const mesh2 of scene.meshes || []) {
+      if (!mesh2.isVisible || !mesh2.name || looksLikeInternalMeshName(mesh2.name)) continue;
+      const container = getEntityRoot(mesh2);
+      if (!container || container === root || playerContainers.has(container)) continue;
+      if (isInsideBoundingBox(container, p) && !isInsideBoundingBox(container, rayOrigin)) {
+        occluded = true;
+        break;
+      }
+    }
+    if (occluded) continue;
+
+    const dedupeKey = `${label.toLowerCase()}|${Math.round(p.x)}|${Math.round(p.y)}|${Math.round(p.z)}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+
+    const dx = p.x - rayOrigin.x;
+    const dz = p.z - rayOrigin.z;
+    const distXZ = Math.sqrt(dx * dx + dz * dz);
+    if (distXZ < 0.2) continue;
+
+    const forward = fwdXZ_x * dx + fwdXZ_z * dz;
+    if (forward <= 0) continue;
+
+    // Signed lateral: positive = left, negative = right (Babylon left-handed convention)
+    const signed = fwdXZ_x * dz - fwdXZ_z * dx;
+
+    // Cone check: angle between camera forward and direction to object must be ≤ 45°
+    if (Math.abs(signed) > forward * Math.tan(Math.PI / 4)) continue;
+
+    const score = distXZ + Math.abs(signed);
+    if (score < bestScore) {
+      bestScore = score;
+      bestForward = forward;
+      bestRawDist = distXZ;
+      bestSigned = signed;
+      bestRoot = root;
+      bestLabel = label;
+    }
+  }
+
+  if (!bestLabel) return "Nothing ahead.";
+
+  const reportDist = anchor?.position
+    ? (closestBoundingBoxDistance(bestRoot, anchor.position) ?? bestRawDist)
+    : bestRawDist;
+
+  const dir = Math.abs(bestSigned) < 1.0 ? "Forward"
+            : bestSigned > 0 ? "Left"
+            : "Right";
+  return `${dir}: ${bestLabel}, ${getDistanceLabel(reportDist)}.`;
+}
+
 function describeInitialWorld(scene) {
   const charIntro = describeCharacterIntro(scene);
   const sceneIntro = describeScene(scene);
@@ -935,7 +1158,7 @@ export function getHelpText(scene) {
     : "Use keyboard controls to navigate and interact with objects. Canvas keyboard controls: Arrow keys or WASD to move camera, Mouse to look around, Space for actions, Tab to navigate to other interface elements.";
 
   const ctrlInstructions =
-    " Press Control plus I to hear a scene summary. Press Control plus J to hear the nearest object. Press Control plus H to repeat these instructions.";
+    " Press Control plus I to hear a scene summary. Press Control plus J to hear the nearest object. Press Control plus K to hear the object directly ahead. Press Control plus H to repeat these instructions.";
 
   return `${baseInstructions}${ctrlInstructions}`;
 }
@@ -943,9 +1166,10 @@ export function announceHelp(scene) {
   announce(getHelpText(scene));
 }
 
-function announceInteraction(mesh, actionWord = "interacted with") {
+function announceInteraction(mesh, actionWord = "interacted with", options = {}) {
   if (!mesh) return;
 
+  const { noDedup = false } = options;
   const root = getEntityRoot(mesh);
   const label = getObjectLabel(root);
   const hint = getInteractionHint(root);
@@ -957,6 +1181,7 @@ function announceInteraction(mesh, actionWord = "interacted with") {
   const now = Date.now();
   const interactionKey = `${actionWord}:${label}:${hint}:${(textLabels || []).join("|")}`;
   if (
+    !noDedup &&
     interactionKey === lastInteractionKey &&
     now - lastInteractionTime < 400
   ) {
@@ -973,7 +1198,35 @@ function announceInteraction(mesh, actionWord = "interacted with") {
     msg += ` ${hint}`;
   }
 
-  announce(msg);
+  announce(msg, options);
+}
+
+function announceMeshAction(mesh, actionWord, options = {}) {
+  const root = getEntityRoot(mesh);
+  const pos = getRepresentativePosition(root, mesh);
+  const label = getObjectLabel(root);
+  const sayText = getCachedSayTextForMesh(root);
+  const promptText = getCachedPromptTextForMesh(root);
+  const textLabels = currentScene
+    ? collectNearbyTextForObject(currentScene, pos, root)
+    : [];
+
+  if (sayText) {
+    announce(`${label} says: ${sayText}`, options);
+    return;
+  }
+
+  if (promptText) {
+    announce(`${label}. ${promptText}`, options);
+    return;
+  }
+
+  if (textLabels.length) {
+    announce(`${label}. ${textLabels.join(". ")}`, options);
+    return;
+  }
+
+  announceInteraction(mesh, actionWord, options);
 }
 
 function attachPointerAnnouncements(scene) {
@@ -982,7 +1235,7 @@ function attachPointerAnnouncements(scene) {
   if (pointerObserverScene && pointerObserverRef) {
     try {
       pointerObserverScene.onPointerObservable.remove(pointerObserverRef);
-    } catch {}
+    } catch { /* observer already removed */ }
     pointerObserverRef = null;
     pointerObserverScene = null;
   }
@@ -1020,36 +1273,17 @@ function attachPointerAnnouncements(scene) {
 
       if (introInProgress || Date.now() < suppressPointerUntil) return;
 
-      const root = getEntityRoot(pickedMesh);
-      const pos = getRepresentativePosition(root, pickedMesh);
-      const label = getObjectLabel(root);
-      const sayText = getCachedSayTextForMesh(root);
-      const promptText = getCachedPromptTextForMesh(root);
-      const textLabels = currentScene
-        ? collectNearbyTextForObject(currentScene, pos, root)
-        : [];
-
-      if (sayText) {
-        announce(`${label} says: ${sayText}`);
-        return;
-      }
-
-      if (promptText) {
-        announce(`${label}. ${promptText}`);
-        return;
-      }
-
-      if (textLabels.length) {
-        announce(`${label}. ${textLabels.join(". ")}`);
-        return;
-      }
-
-      announceInteraction(pickedMesh, "selected");
+      announceMeshAction(pickedMesh, "selected");
     } catch {
       // fail silently
     }
   });
 }
+
+onInteractObservable.add((mesh) => {
+  if (introInProgress || Date.now() < suppressPointerUntil) return;
+  announceMeshAction(mesh, "interacted with", { noDedup: true });
+});
 
 export function recordObjectPromptText(targetName, text) {
   const key = String(targetName || "").trim().toLowerCase();
@@ -1176,7 +1410,7 @@ function scheduleInitialIntro(scene) {
   }
 }
 
-export function enableSceneDescription(scene) {
+export function enableSceneDescription(scene, inputManager) {
   currentScene = scene;
   resetWorldInstructionTexts();
   // Ensure live region exists early
@@ -1230,10 +1464,25 @@ export function enableSceneDescription(scene) {
         e.preventDefault();
         e.stopPropagation();
         announceHelp(currentScene);
+        return;
+      }
+
+      if (key === "k") {
+        e.preventDefault();
+        e.stopPropagation();
+        announce(describeFacingObject(currentScene), { noDedup: true });
       }
     },
     true
   );
+
+  if (inputManager) {
+    inputManager.onActionDownObservable.add((action) => {
+      if (action === "A11Y_I") announce(describeScene(currentScene));
+      else if (action === "A11Y_J") announce(describeNearestObject(currentScene));
+      else if (action === "A11Y_K") announce(describeFacingObject(currentScene), { noDedup: true });
+    });
+  }
 }
 
 /**
