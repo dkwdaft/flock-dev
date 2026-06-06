@@ -72,9 +72,13 @@ import { getBoundKeys } from './input/bindings.js';
 
 import {
   enableSceneDescription,
+  announce,
   announceSayText,
+  announceObjectSay,
+  getObjectLabel,
   recordObjectPromptText,
   recordObjectSayText,
+  setTransientSayText,
   recordWorldInstructionText,
 } from './accessibility/accessibility.js';
 import { initUIAccessibility, clearUIControls } from './accessibility/uiA11y.js';
@@ -882,7 +886,9 @@ export const flock = {
       playSound: this.playSound?.bind(this),
       stopAllSounds: this.stopAllSounds?.bind(this),
       playNotes: this.playNotes?.bind(this),
+      playMusic: this.playMusic?.bind(this),
       setBPM: this.setBPM?.bind(this),
+      setMusicSpeed: this.setMusicSpeed?.bind(this),
       createInstrument: this.createInstrument?.bind(this),
       speak: this.speak?.bind(this),
       switchAnimation: this.switchAnimation?.bind(this),
@@ -1775,13 +1781,21 @@ export const flock = {
           const targetName = args?.[0];
           const options = args?.[1];
           const text = options && typeof options.text === 'string' ? options.text : '';
+          const rawDuration = options?.duration;
+          const duration = isFinite(Number(rawDuration)) && Number(rawDuration) > 0 ? Number(rawDuration) : 0;
 
           if (text.trim()) {
-            // Keep the first prompt text, e.g. "Click or tap me"
-            recordObjectPromptText(targetName, text);
-
-            // Keep general say text too
-            recordObjectSayText(targetName, text);
+            if (duration > 0) {
+              // Transient say: announce immediately and show in Ctrl+J while visible
+              const mesh = flock.scene?.getMeshByName(targetName);
+              const label = mesh ? getObjectLabel(mesh) : targetName;
+              announceObjectSay(`${label} says: ${text}`);
+              setTransientSayText(targetName, text, duration);
+            } else {
+              // Persistent say: store for Ctrl+J nearest-object reading
+              recordObjectPromptText(targetName, text);
+              recordObjectSayText(targetName, text);
+            }
           }
 
           return result;
