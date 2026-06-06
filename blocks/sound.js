@@ -235,29 +235,21 @@ export function defineSoundBlocks() {
       this.jsonInit({
         type: "rest",
         message0: translate("rest"),
-        args0: [
-          {
-            type: "input_value",
-            name: "DURATION",
-            check: "Number",
-          },
-        ],
         inputsInline: true,
-        output: "NoteEvent",
+        output: "Number",
         colour: categoryColours["Sound"],
         tooltip: getTooltip("rest"),
       });
       this.setHelpUrl(getHelpUrlFor(this.type));
       this.setStyle("sound_blocks");
-      this.getInput("DURATION").setAriaLabelProvider("duration");
     },
   };
 
-  Blockly.Blocks["play_music"] = {
+  Blockly.Blocks["play_tune_notes"] = {
     init: function () {
       this.jsonInit({
-        type: "play_music",
-        message0: translate("play_music"),
+        type: "play_tune_notes",
+        message0: translate("play_tune_notes"),
         args0: [
           {
             type: "input_dummy",
@@ -278,7 +270,7 @@ export function defineSoundBlocks() {
         previousStatement: null,
         nextStatement: null,
         colour: categoryColours["Sound"],
-        tooltip: getTooltip("play_music"),
+        tooltip: getTooltip("play_tune_notes"),
         extensions: ["dynamic_mesh_dropdown"],
       });
       this.setHelpUrl(getHelpUrlFor(this.type));
@@ -286,8 +278,19 @@ export function defineSoundBlocks() {
 
       this.setOnChange(function (changeEvent) {
         if (this.workspace?.isFlyout) return;
+        if (changeEvent.type !== Blockly.Events.BLOCK_MOVE) return;
+
+        // When a bar (inner list) is connected to the outer tune list, make it inline.
+        const outerList = this.getInputTargetBlock("NOTES");
+        if (outerList && changeEvent.newParentId === outerList.id) {
+          const movedBlock = this.workspace.getBlockById(changeEvent.blockId);
+          if (movedBlock?.type === "lists_create_with") {
+            movedBlock.setInputsInline(true);
+          }
+        }
+
+        // Restore the default bar structure when NOTES is disconnected.
         if (
-          changeEvent.type !== Blockly.Events.BLOCK_MOVE ||
           changeEvent.oldParentId !== this.id ||
           changeEvent.oldInputName !== "NOTES"
         )
@@ -302,13 +305,22 @@ export function defineSoundBlocks() {
             inputs: {
               ADD0: {
                 block: {
-                  type: "note",
+                  type: "lists_create_with",
+                  extraState: { itemCount: 1 },
+                  inline: true,
                   inputs: {
-                    PITCH: {
-                      shadow: { type: "math_number", fields: { NUM: 60 } },
-                    },
-                    DURATION: {
-                      shadow: { type: "math_number", fields: { NUM: 0.5 } },
+                    ADD0: {
+                      block: {
+                        type: "note",
+                        inputs: {
+                          PITCH: {
+                            shadow: { type: "math_number", fields: { NUM: 60 } },
+                          },
+                          DURATION: {
+                            shadow: { type: "math_number", fields: { NUM: 0.5 } },
+                          },
+                        },
+                      },
                     },
                   },
                 },

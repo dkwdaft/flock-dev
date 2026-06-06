@@ -130,6 +130,7 @@ export const flockSound = {
     }
   },
   stopAllSounds() {
+    if (!flock?.globalSounds) return;
     flock.globalSounds.forEach((sound) => {
       try {
         const mesh = sound._attachedMesh;
@@ -145,17 +146,26 @@ export const flockSound = {
 
     flock.globalSounds = [];
 
-    if (!flock.audioContext || flock.audioContext.state === "closed") return;
-
-    // Close the audio context
-    if (flock.audioContext) {
-      flock.audioContext
-        .close()
-        .then(() => {})
-        .catch((error) => {
-          console.error("Error closing audio context:", error);
-        });
+    // Immediately disconnect the __everywhere__ gain — context.close() is async and
+    // a brief window exists where the old gain can still feed the destination.
+    if (flock._everywhereGain) {
+      try { flock._everywhereGain.disconnect(); } catch { /* already detached */ }
+      flock._everywhereGain = null;
     }
+
+    // Null immediately so any lingering playNotes calls see no context and bail
+    flock._audioStopped = true;
+    const ctx = flock.audioContext;
+    flock.audioContext = null;
+
+    if (!ctx || ctx.state === "closed") return;
+
+    ctx
+      .close()
+      .then(() => {})
+      .catch((error) => {
+        console.error("Error closing audio context:", error);
+      });
   },
   getAudioContext() {
     if (!flock.audioContext) {
@@ -177,6 +187,7 @@ export const flockSound = {
       instrument = flock.createInstrument("square"),
     } = {},
   ) {
+    if (flock._audioStopped) return;
     notes = notes.map((note) => (note === "_" ? null : note));
     durations = durations.map(Number);
 
@@ -205,6 +216,7 @@ export const flockSound = {
         return;
       }
     }
+    if (flock._audioStopped) return;
 
     const scheduleNotes = (mesh, outputNode, observer) => {
       return new Promise((resolve) => {
@@ -237,37 +249,59 @@ export const flockSound = {
           offsetTime += flock.durationInSeconds(duration, bpm);
         }
 
+        const audioTail =
+          (instrument?.attack ?? 0.01) +
+          (instrument?.decay ?? 0.1) +
+          (instrument?.release ?? 0.2);
         setTimeout(
           () => {
-            if (observer) flock.scene.onBeforeRenderObservable.remove(observer);
+            if (observer) flock.scene?.onBeforeRenderObservable?.remove(observer);
             resolve();
           },
-          (offsetTime + 1) * 1000,
+          (offsetTime + audioTail + 0.1) * 1000,
         );
       });
     };
 
     if (meshName === "__everywhere__") {
+      // Disconnect any lingering gain from a prior __everywhere__ call immediately.
+      // context.close() is async; an old gain can still feed the destination for a
+      // brief window, producing a comb-filter offset that sounds like echo.
+      if (flock._everywhereGain) {
+        try { flock._everywhereGain.disconnect(); } catch { /* already detached */ }
+        flock._everywhereGain = null;
+      }
       const gain = context.createGain();
+      flock._everywhereGain = gain;
       gain.connect(context.destination);
-      return scheduleNotes(null, gain, null);
+      return scheduleNotes(null, gain, null).then(() => {
+        if (flock._everywhereGain === gain) flock._everywhereGain = null;
+        try { gain.disconnect(); } catch { /* already detached */ }
+      });
     }
 
     return new Promise((resolve) => {
       flock.whenModelReady(meshName, async function (mesh) {
+        if (flock._audioStopped || !flock.scene) {
+          resolve();
+          return;
+        }
         if (!mesh?.position) {
           console.error("Mesh does not have a position property:", mesh);
           resolve();
           return;
         }
 
-        if (!mesh.metadata.panner) {
+        if (!mesh.metadata.panner || mesh.metadata.panner.context !== context) {
+          if (mesh.metadata.panner) {
+            try { mesh.metadata.panner.disconnect(); } catch (e) {}
+          }
           const panner = context.createPanner();
           mesh.metadata.panner = panner;
-          panner.panningModel = "HRTF";
+          panner.panningModel = "equalpower";
           panner.distanceModel = "linear";
           panner.refDistance = 1;
-          panner.maxDistance = 10;
+          panner.maxDistance = 20;
           panner.rolloffFactor = 1;
           panner.connect(context.destination);
         }
@@ -275,6 +309,7 @@ export const flockSound = {
         const panner = mesh.metadata.panner;
 
         const updatePositions = () => {
+          if (!flock.scene || mesh.isDisposed?.()) return;
           const { x, y, z } = mesh.position;
           panner.positionX.value = x;
           panner.positionY.value = y;
@@ -348,9 +383,9 @@ export const flockSound = {
     }
 
     // Connect the oscillator to the gain node and panner
+    // (panner is already connected to destination by the caller)
     osc.connect(gainNode);
     gainNode.connect(panner);
-    panner.connect(context.destination);
 
     const gap = Math.min(0.05, (60 / bpm) * 0.05); // Slightly larger gap
 
@@ -369,7 +404,11 @@ export const flockSound = {
       decayEnd,
       startTime + noteDuration - gap - release,
     );
-    const stopTime = releaseStart + release;
+    // Cap the release so a short note can't ring for longer than the note itself.
+    // Without this, a 0.5s note with release=1.0 would extend 1.4s and audibly
+    // bleed over the next notes, especially at full volume (__everywhere__ / inside mesh).
+    const effectiveRelease = Math.min(release, noteDuration);
+    const stopTime = releaseStart + effectiveRelease;
 
     gainNode.gain.cancelScheduledValues(startTime);
     gainNode.gain.setValueAtTime(0, startTime);
@@ -397,6 +436,7 @@ export const flockSound = {
     };
 
     // Fallback clean-up in case osc.onended is not triggered
+    const cleanupDelay = Math.max(100, (stopTime - context.currentTime + 0.5) * 1000);
     setTimeout(
       () => {
         osc.disconnect();
@@ -404,7 +444,7 @@ export const flockSound = {
         if (lfo) lfo.disconnect();
         if (lfoGain) lfoGain.disconnect();
       },
-      (playTime + duration) * 1000,
+      cleanupDelay,
     );
   },
   midiToFrequency(note) {
@@ -490,8 +530,12 @@ export const flockSound = {
   },
   async playMusic(meshName, { notes = [], instrument = null } = {}) {
     const effectiveInstrument = instrument ?? flock.createInstrument("sine");
-    const pitches = notes.map((n) => n?.pitch ?? null);
-    const baseDurations = notes.map((n) => n?.duration ?? 0.5);
+    const flatNotes =
+      notes.length > 0 && Array.isArray(notes[0])
+        ? notes.flat()
+        : notes;
+    const pitches = flatNotes.map((n) => n?.pitch ?? null);
+    const baseDurations = flatNotes.map((n) => n?.duration ?? 0.5);
 
     const getSpeed = (mesh) =>
       Math.max(
