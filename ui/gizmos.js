@@ -30,6 +30,7 @@ import { createAxisKeyboardHandler } from './axis-keyboard.js';
 import { createGizmoMobileHud } from './gizmo-mobile-hud.js';
 import { KeyboardDispatcher } from '../main/keyboardDispatcher.js';
 import { GizmoMenuManager } from '../accessibility/keyboardui.js';
+import { isBodyAlive } from '../api/physics.js';
 export let gizmoManager;
 
 // Enable debug messages
@@ -108,11 +109,15 @@ function createAdaptiveInput({ onMove, onConfirm, onCancel, stepNormal, stepFast
   }
 
   function onRawKey(e) {
+    if (e.cancelBubble) return;
+    if (e.target?.closest?.("#shapes-dropdown, .custom-color-picker")) return;
     if (AXIS_SWITCH_KEYS.has(e.key)) switchToKeyboard();
   }
 
   canvas.addEventListener("pointerdown", onCanvasPointer);
   const rawKeyObserver = flock.inputManager.onRawKeyDownObservable.add(onRawKey);
+
+  if (navigator.maxTouchPoints > 0) switchToTouch();
 
   return function stop() {
     canvas.removeEventListener("pointerdown", onCanvasPointer);
@@ -215,6 +220,7 @@ document.addEventListener('DOMContentLoaded', function () {
     colorButton.addEventListener('click', (event) => {
       event.preventDefault();
       if (colorPicker) {
+        KeyboardDispatcher.clearModes();
         GizmoMenuManager.toggle(false);
         colorPicker.open(window.selectedColor);
       }
@@ -570,7 +576,7 @@ function viewMeshWithCamera() {
   player.position.copyFrom(chosenPlayerPos);
   player.rotationQuaternion = playerRotation;
 
-  if (player.physics) {
+  if (isBodyAlive(player.physics)) {
     player.physics.setTargetTransform(chosenPlayerPos, playerRotation);
   }
 
@@ -643,7 +649,7 @@ function startMoveKeyboardHandler(mesh) {
     mesh.position.z += dz;
     mesh.computeWorldMatrix(true);
     const block = meshMap[mesh?.metadata?.blockKey];
-    if (block) {
+    if (block && !block.disposed) {
       const pos = flock.getBlockPositionFromMesh(mesh);
       setBlockXYZ(block, pos.x, pos.y, pos.z);
     }
@@ -697,11 +703,11 @@ function startRotateKeyboardHandler(mesh) {
     }
     const delta = flock.BABYLON.Quaternion.RotationYawPitchRoll(dy, dx, dz);
     mesh.rotationQuaternion.multiplyInPlace(delta).normalize();
-    if (mesh.physics) {
+    if (isBodyAlive(mesh.physics)) {
       mesh.physics.disablePreStep = false;
       mesh.physics.setTargetTransform(mesh.absolutePosition, mesh.rotationQuaternion);
     }
-    if (rotateBlock) {
+    if (rotateBlock && !rotateBlock.disposed) {
       const rot = getMeshRotationInDegrees(mesh);
       setBlockXYZ(rotateBlock, rot.x, rot.y, rot.z);
     }
@@ -1514,10 +1520,10 @@ function handleScaleGizmo() {
     textOrigScaleZ = mesh.scaling.z;
     textScaleAxis = null;
 
-    const motionType = mesh.physics?.getMotionType();
+    const motionType = isBodyAlive(mesh.physics) ? mesh.physics.getMotionType() : undefined;
     mesh.savedMotionType = motionType;
 
-    if (mesh.physics && mesh.physics.getMotionType() !== flock.BABYLON.PhysicsMotionType.ANIMATED) {
+    if (motionType != null && motionType !== flock.BABYLON.PhysicsMotionType.ANIMATED) {
       mesh.physics.setMotionType(flock.BABYLON.PhysicsMotionType.ANIMATED);
       mesh.physics.disablePreStep = false;
     }
@@ -1543,7 +1549,7 @@ function handleScaleGizmo() {
     const mesh = gizmoManager.attachedMesh;
     textScaleAxis = null;
 
-    if (mesh.savedMotionType != null) {
+    if (mesh.savedMotionType != null && isBodyAlive(mesh.physics)) {
       mesh.physics.setMotionType(mesh.savedMotionType);
     }
     updateScaleBlock(mesh, originalBottomY);
@@ -1600,25 +1606,6 @@ function handleRotationGizmo() {
 
   onExit(() => gizmoManager.onAttachedToMeshObservable.remove(rotateObs));
 
-  // Track which axis ring is being dragged so only that axis is written to the block
-  let draggedAxis = null;
-  const rg = gizmoManager.gizmos.rotationGizmo;
-  const axisDragObservers = [];
-  [
-    { gizmo: rg?.xGizmo, axis: 'x' },
-    { gizmo: rg?.yGizmo, axis: 'y' },
-    { gizmo: rg?.zGizmo, axis: 'z' },
-  ].forEach(({ gizmo, axis }) => {
-    if (!gizmo?.dragBehavior) return;
-    const obs = gizmo.dragBehavior.onDragStartObservable.add(() => {
-      draggedAxis = axis;
-    });
-    axisDragObservers.push({ behavior: gizmo.dragBehavior, obs });
-  });
-  onExit(() => {
-    axisDragObservers.forEach(({ behavior, obs }) => behavior.onDragStartObservable.remove(obs));
-  });
-
   const rotDragStart = gizmoManager.gizmos.rotationGizmo.onDragStartObservable.add(() => {
     let mesh = gizmoManager.attachedMesh;
     if (!mesh) return;
@@ -1628,15 +1615,12 @@ function handleRotationGizmo() {
       highlightBlockById(Blockly.getMainWorkspace(), rotateBlock);
     }
 
-    if (!mesh.physics) return;
+    if (!isBodyAlive(mesh.physics)) return;
 
-    const motionType = mesh.physics?.getMotionType?.() ?? flock.BABYLON.PhysicsMotionType.STATIC;
+    const motionType = mesh.physics.getMotionType();
     mesh.savedMotionType = motionType;
 
-    if (
-      mesh.physics &&
-      mesh.physics.getMotionType?.() !== flock.BABYLON.PhysicsMotionType.ANIMATED
-    ) {
+    if (motionType !== flock.BABYLON.PhysicsMotionType.ANIMATED) {
       mesh.physics.setMotionType(flock.BABYLON.PhysicsMotionType.ANIMATED);
       mesh.physics.disablePreStep = false;
     }
@@ -1651,20 +1635,11 @@ function handleRotationGizmo() {
     }
 
     // Is there any physics to restore?
-    if (mesh?.physics && mesh.savedMotionType != null) {
+    if (isBodyAlive(mesh?.physics) && mesh.savedMotionType != null) {
       mesh.physics.setMotionType(mesh.savedMotionType);
     }
 
-    // Only update the axis that was dragged; fall back to all axes if unknown
-    const axisFilter = draggedAxis
-      ? {
-          x: draggedAxis === 'x',
-          y: draggedAxis === 'y',
-          z: draggedAxis === 'z',
-        }
-      : null;
-    draggedAxis = null;
-    updateRotationBlock(mesh, axisFilter);
+    updateRotationBlock(mesh);
   });
 
   onExit(() => gizmoManager.gizmos.rotationGizmo.onDragEndObservable.remove(rotDragEnd));
@@ -1723,10 +1698,10 @@ function handlePositionGizmo() {
     const mesh = gizmoManager.attachedMesh;
     if (!mesh) return;
 
-    const motionType = mesh.physics?.getMotionType?.();
+    const motionType = isBodyAlive(mesh.physics) ? mesh.physics.getMotionType() : undefined;
     mesh.savedMotionType = motionType;
 
-    if (mesh.physics && motionType && motionType !== flock.BABYLON.PhysicsMotionType.ANIMATED) {
+    if (motionType != null && motionType !== flock.BABYLON.PhysicsMotionType.ANIMATED) {
       mesh.physics.setMotionType(flock.BABYLON.PhysicsMotionType.ANIMATED);
       mesh.physics.disablePreStep = false;
     }
@@ -1737,14 +1712,14 @@ function handlePositionGizmo() {
   const posDragEnd = gizmoManager.gizmos.positionGizmo.onDragEndObservable.add(function () {
     const mesh = gizmoManager.attachedMesh;
 
-    if (mesh.savedMotionType != null && mesh.physics) {
+    if (mesh.savedMotionType != null && isBodyAlive(mesh.physics)) {
       mesh.physics.setMotionType(mesh.savedMotionType);
     }
     mesh.computeWorldMatrix(true);
 
     const block = meshMap[mesh?.metadata?.blockKey];
 
-    if (block) {
+    if (block && !block.disposed) {
       const blockPosition = flock.getBlockPositionFromMesh(mesh);
       setBlockXYZ(block, blockPosition.x, blockPosition.y, blockPosition.z);
     }
@@ -1760,16 +1735,12 @@ function handleBoundsGizmo() {
   gizmoManager.boundingBoxDragBehavior.onDragStartObservable.add(function () {
     const mesh = gizmoManager.attachedMesh;
 
-    if (!mesh?.physics) return;
+    if (!isBodyAlive(mesh?.physics)) return;
 
-    const motionType = mesh.physics.getMotionType?.();
+    const motionType = mesh.physics.getMotionType();
     mesh.savedMotionType = motionType;
 
-    if (
-      mesh.physics &&
-      motionType != null &&
-      motionType !== flock.BABYLON.PhysicsMotionType.STATIC
-    ) {
+    if (motionType != null && motionType !== flock.BABYLON.PhysicsMotionType.STATIC) {
       mesh.physics.setMotionType(flock.BABYLON.PhysicsMotionType.STATIC);
       mesh.physics.disablePreStep = false;
     }
@@ -1781,7 +1752,7 @@ function handleBoundsGizmo() {
   gizmoManager.boundingBoxDragBehavior.onDragEndObservable.add(function () {
     const mesh = gizmoManager.attachedMesh;
 
-    if (mesh.savedMotionType != null && mesh.physics) {
+    if (mesh.savedMotionType != null && isBodyAlive(mesh.physics)) {
       mesh.physics.setMotionType(mesh.savedMotionType);
     }
 
@@ -1789,7 +1760,7 @@ function handleBoundsGizmo() {
 
     const block = meshMap[mesh?.metadata?.blockKey];
 
-    if (block) {
+    if (block && !block.disposed) {
       const blockPosition = flock.getBlockPositionFromMesh(mesh);
       setBlockXYZ(block, blockPosition.x, blockPosition.y, blockPosition.z);
     }

@@ -63,6 +63,23 @@ export function appendWithUndo(spec, ws, groupId) {
   return block;
 }
 
+export function getLastHighlightedBlockId(workspace) {
+  return lastAddMenuHighlighted?.workspace === workspace
+    ? lastAddMenuHighlighted.blockId
+    : null;
+}
+
+export function restoreBlockFocus(workspace, blockId) {
+  if (!workspace || !blockId) return;
+  const block = workspace.getBlockById(blockId);
+  if (!block) return;
+
+  ensureAddMenuSelectionCleanup(workspace);
+  clearAddMenuHighlight(workspace, blockId);
+  trackBlockHighlight(workspace, blockId);
+  scrollToBlockTopParentLeft(workspace, blockId);
+}
+
 export function highlightBlockById(workspace, block) {
   if (!workspace || !block || block.workspace !== workspace) return;
 
@@ -96,7 +113,7 @@ function ensureAddMenuSelectionCleanup(workspace) {
   workspace.__addMenuSelectionCleanupAttached = true;
 }
 
-function scrollToBlockTopParentLeft(workspace, blockId) {
+export function scrollToBlockTopParentLeft(workspace, blockId) {
   if (!workspace.isMovable()) {
     console.warn("Tried to move a non-movable workspace.");
     return;
@@ -334,6 +351,7 @@ const roundToOneDecimal = (value) => Math.round(value * 10) / 10;
 export function setBlockXYZ(block, x, y, z) {
   const setInputValue = (inputName, value) => {
     const input = block.getInput(inputName);
+    if (!input?.connection) return;
     const connectedBlock = input.connection.targetBlock();
 
     if (connectedBlock?.getField?.("NUM")) {

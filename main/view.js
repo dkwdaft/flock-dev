@@ -1,6 +1,7 @@
 import * as Blockly from 'blockly';
 import { workspace } from './blocklyinit.js';
 import { flock } from '../flock.js';
+import { restoreBlockFocus, getLastHighlightedBlockId } from '../ui/blocklyutil.js';
 
 export const isNarrowScreen = () => {
   return window.innerWidth <= 1024;
@@ -9,6 +10,8 @@ export const isNarrowScreen = () => {
 const isMobile = () => {
   return /Mobi|Android|iPad/i.test(navigator.userAgent);
 };
+
+let pendingScrollBlockId = null;
 
 export function onResize(mode) {
   // First handle canvas and engine
@@ -29,6 +32,13 @@ export function onResize(mode) {
     if (workspace) {
       Blockly.svgResize(workspace);
       if (mode === 'reset') workspace.scroll(scrollX, scrollY);
+      if (mode === 'reset' && pendingScrollBlockId) {
+        const blockId = pendingScrollBlockId;
+        pendingScrollBlockId = null;
+        requestAnimationFrame(() => {
+          restoreBlockFocus(workspace, blockId);
+        });
+      }
     }
   });
 }
@@ -320,12 +330,6 @@ function showCodeView() {
     if (canvasToggleBtn) canvasToggleBtn.setAttribute('aria-pressed', 'false');
     if (codeToggleBtn) codeToggleBtn.setAttribute('aria-pressed', 'true');
 
-    // Blockly resize after DOM changes
-    requestAnimationFrame(() => {
-      if (workspace) {
-        Blockly.svgResize(workspace);
-      }
-    });
   }
 
   onResize('reset');
@@ -343,6 +347,14 @@ export function showCanvasView() {
   currentView = 'canvas';
 
   if (isNarrowScreen()) {
+    // Blockly.common.getSelected() is synchronous — reflects the click before the SELECTED
+    // event fires. window.currentBlock lags by one async event tick, so use getSelected() first.
+    // getSelected() may return non-Block selectables; verify via getBlockById before using .id.
+    const selected = Blockly.common.getSelected();
+    const selectedBlock = selected ? workspace.getBlockById(selected.id) : null;
+    const blockToRestore = selectedBlock ?? window.currentBlock;
+    pendingScrollBlockId = blockToRestore?.id || getLastHighlightedBlockId(workspace) || null;
+
     // Instead of CSS transform, change the layout directly
     const canvasArea = document.getElementById('canvasArea');
     const blocklyArea = document.getElementById('codePanel');
