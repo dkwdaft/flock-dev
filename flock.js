@@ -1347,8 +1347,6 @@ export const flock = {
       preserveDrawingBuffer: true,
       stencil: true,
       powerPreference: 'default',
-      deterministicLockstep: true,
-      lockstepMaxSteps: 4,
     });
 
     // Call preventDefault() on the raw event so the browser is willing to restore.
