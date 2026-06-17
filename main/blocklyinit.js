@@ -95,16 +95,11 @@ import { toolbox as toolboxDef } from '../toolbox.js';
   // whatever provider the parent input carries.
   const parentSlotLabel = (field) => {
     const block = field.getSourceBlock?.();
-    if (
-      !block ||
-      !block.isSimpleReporter?.() ||
-      block.getFullBlockField?.() !== field
-    ) {
+    if (!block || !block.isSimpleReporter?.() || block.getFullBlockField?.() !== field) {
       return null;
     }
     const conn =
-      block.outputConnection?.targetConnection ??
-      block.previousConnection?.targetConnection;
+      block.outputConnection?.targetConnection ?? block.previousConnection?.targetConnection;
     return conn?.getParentInput?.()?.getAriaLabelText?.() ?? null;
   };
   // Several field types define their own recomputeAriaContext, each calling
@@ -121,11 +116,7 @@ import { toolbox as toolboxDef } from '../toolbox.js';
     Blockly.FieldCheckbox?.prototype,
   ];
   const ariaProtos = [
-    ...new Set(
-      candidateProtos.filter(
-        (p) => p && Object.hasOwn(p, "recomputeAriaContext"),
-      ),
-    ),
+    ...new Set(candidateProtos.filter((p) => p && Object.hasOwn(p, 'recomputeAriaContext'))),
   ];
   for (const proto of ariaProtos) {
     const original = proto.recomputeAriaContext;
@@ -137,9 +128,9 @@ import { toolbox as toolboxDef } from '../toolbox.js';
         const slot = parentSlotLabel(this);
         if (inTree && slot) {
           const el = this.getFocusableElement?.();
-          const current = el?.getAttribute?.("aria-label");
+          const current = el?.getAttribute?.('aria-label');
           if (el && current) {
-            el.setAttribute("aria-label", `${slot}, ${current}`);
+            el.setAttribute('aria-label', `${slot}, ${current}`);
           }
         }
         return inTree;
@@ -1348,16 +1339,36 @@ export function initializeWorkspace() {
   return workspace;
 }
 
-// Patch the workspace Navigator so keyboard navigation skips shadow value
-// blocks (e.g. the " " text block inside print_text's TEXT input) and lands
-// directly on their editable field.
+// Patch the workspace Navigator so keyboard navigation skips redundant stops
+// on value blocks whose only interactive content is a text-input field.
 //
-// Right-arrow skips the shadow block and focuses the field.
-// Left/up/down from that field act as if the shadow block itself were focused,
-// so the rest of the parent block's inputs remain reachable.
+// Applies to two cases:
+//   Shadow blocks  — e.g. the " " text block inside print_text's TEXT input.
+//   Standalone text-input reporters — e.g. `text` and `colour_from_string`.
+//
+// In all cases: right-arrow and left-arrow skip the block entirely and land
+// on the field (right) or the parent (left). Up/down navigate as if standing
+// on the block itself.
 function installShadowNavigationPatch(ws) {
   const nav = ws.getNavigator?.();
   if (!nav) return;
+
+  // First field in a block that a keyboard user can interact with.
+  const getPrimaryEditableField = (block) => {
+    for (const input of block.inputList) {
+      for (const field of input.fieldRow) {
+        if (
+          field.canBeFocused?.() &&
+          field.isVisible?.() &&
+          (field.isClickable?.() || field.isCurrentlyEditable?.()) &&
+          field.getParentInput?.()?.isVisible?.()
+        ) {
+          return field;
+        }
+      }
+    }
+    return null;
+  };
 
   // A shadow value block whose primary field is *separately* navigable, which
   // creates a redundant block+field double-stop during keyboard navigation
@@ -1374,38 +1385,37 @@ function installShadowNavigationPatch(ws) {
     !!node.outputConnection &&
     !(typeof node.isSimpleReporter === 'function' && node.isSimpleReporter());
 
-  // First field in a block that a keyboard user can interact with.
-  const getPrimaryEditableField = (block) => {
-    for (const input of block.inputList) {
-      for (const field of input.fieldRow) {
-        if (field.canBeFocused?.() &&
-            field.isVisible?.() &&
-            (field.isClickable?.() || field.isCurrentlyEditable?.()) &&
-            field.getParentInput?.()?.isVisible?.()) {
-          return field;
-        }
-      }
-    }
-    return null;
-  };
+  // A standalone (non-shadow) reporter block whose sole interactive content is
+  // a text-input field, e.g. `text` (" ") or `colour_from_string` (# hex).
+  // These create the same redundant block+field double-stop as skippable shadows.
+  //
+  // Variable/dropdown reporters are excluded because their primary field is a
+  // FieldDropdown/FieldVariable, not a FieldTextInput.
+  // Simple reporters are excluded for the same reason as isSkippableShadow.
+  const isSkippableStandalone = (node) =>
+    !!node?.outputConnection &&
+    !node.isShadow?.() &&
+    !(typeof node.isSimpleReporter === 'function' && node.isSimpleReporter()) &&
+    getPrimaryEditableField(node) != null;
 
-  // If node is a skippable shadow block, return its primary field instead.
-  const skipShadow = (node) => {
-    if (!isSkippableShadow(node)) return node;
+  // If node is a skippable block (shadow or standalone), return its primary
+  // field instead.
+  const skipBlock = (node) => {
+    if (!isSkippableShadow(node) && !isSkippableStandalone(node)) return node;
     return getPrimaryEditableField(node) ?? node;
   };
 
   // The shortcut handler calls getInNode/getOutNode/getNextNode/getPreviousNode
-  // with no arguments, relying on the focused node. A skippable shadow's
+  // with no arguments, relying on the focused node. A skippable block's
   // full-block field resolves back to its block via getFocusedNode(), so we
   // read document.activeElement to recover the field that actually owns focus.
-  const getFocusedShadowField = () => {
+  const getFocusedSkippableField = () => {
     const el = document.activeElement;
     if (!el?.id) return null;
     const sep = el.id.indexOf('_field_');
     if (sep === -1) return null;
     const block = ws.getBlockById(el.id.substring(0, sep));
-    if (!isSkippableShadow(block)) return null;
+    if (!isSkippableShadow(block) && !isSkippableStandalone(block)) return null;
     for (const input of block.inputList) {
       for (const field of input.fieldRow) {
         if (field.getFocusableElement?.()?.id === el.id) return field;
@@ -1414,42 +1424,110 @@ function installShadowNavigationPatch(ws) {
     return null;
   };
 
-  const origIn   = nav.getInNode.bind(nav);
-  const origOut  = nav.getOutNode.bind(nav);
+  const origIn = nav.getInNode.bind(nav);
+  const origOut = nav.getOutNode.bind(nav);
   const origNext = nav.getNextNode.bind(nav);
   const origPrev = nav.getPreviousNode.bind(nav);
 
-  // Right-arrow (getInNode moves to the next element in the same visual row).
-  //  - On a normal block: if the target is a skippable shadow, land on its
-  //    field instead of the redundant shadow block.
-  //  - On a shadow block's field: pass the field explicitly so the traversal
-  //    bubbles up to the next inline sibling (text field -> next input).
+  // Right-arrow: if the target is a skippable block, land on its field instead
+  // of the redundant block stop. From a skippable field, pass the field
+  // explicitly so the traversal bubbles up to the next inline sibling.
   nav.getInNode = function(node) {
-    const field = getFocusedShadowField();
-    return skipShadow(field ? origIn(field) : origIn(node));
+    const field = getFocusedSkippableField();
+    return skipBlock(field ? origIn(field) : origIn(node));
   };
 
-  // Left-arrow: from a skipped shadow field, go to the shadow block's parent
-  // (skip the shadow block itself).
+  // Left-arrow: from a skippable block's field, go to the block's parent
+  // (skip the block itself in both the shadow and standalone cases).
   nav.getOutNode = function(node) {
-    const field = getFocusedShadowField();
-    if (field) return skipShadow(origOut(field.getSourceBlock()));
+    const field = getFocusedSkippableField();
+    if (field) return skipBlock(origOut(field.getSourceBlock()));
     return origOut(node);
   };
 
-  // Down-arrow: navigate as if standing on the shadow block itself.
+  // Down-arrow: navigate as if standing on the skippable block itself.
   nav.getNextNode = function(node) {
-    const field = getFocusedShadowField();
-    if (field) return skipShadow(origNext(field.getSourceBlock()));
-    return skipShadow(origNext(node));
+    const field = getFocusedSkippableField();
+    if (field) return skipBlock(origNext(field.getSourceBlock()));
+    return skipBlock(origNext(node));
   };
 
   // Up-arrow: same idea.
   nav.getPreviousNode = function(node) {
-    const field = getFocusedShadowField();
-    if (field) return skipShadow(origPrev(field.getSourceBlock()));
-    return skipShadow(origPrev(node));
+    const field = getFocusedSkippableField();
+    if (field) return skipBlock(origPrev(field.getSourceBlock()));
+    return skipBlock(origPrev(node));
   };
+
+  // The built-in DISCONNECT shortcut (X key) checks that the focused node is
+  // a Block instance, which fails when focus is on a skippable block's field
+  // (because we skip the block stop). Register an additional shortcut for the
+  // same key that fires only when a skippable field is focused.
+  // The built-in DISCONNECT (X), DUPLICATE (D), and DELETE shortcuts check
+  // that the focused node is a Block instance, which fails when focus is on a
+  // skippable block's field. Register additional shortcuts for the same keys
+  // that fire only when a skippable field is focused.
+  const shortcutRegistry = Blockly.ShortcutRegistry.registry;
+
+  const skippableFieldBlock = () => {
+    const field = getFocusedSkippableField();
+    return field ? field.getSourceBlock() : null;
+  };
+
+  // Registers a shortcut that fires only when a skippable field is focused.
+  // canRun(workspace, block) → extra conditions beyond the common workspace checks.
+  // run(workspace, event, block) → performs the action, returns true on success.
+  const registerSkippableFieldShortcut = (name, keyCode, canRun, run) => {
+    shortcutRegistry.register({
+      name,
+      allowCollision: true,
+      keyCodes: [shortcutRegistry.createSerializedKey(keyCode)],
+      preconditionFn: (workspace) => {
+        const block = skippableFieldBlock();
+        return !!block && !workspace.isDragging() && !workspace.isReadOnly() &&
+               canRun(workspace, block);
+      },
+      callback: (workspace, event) => {
+        const block = skippableFieldBlock();
+        return !!block && run(workspace, event, block);
+      },
+    });
+  };
+
+  registerSkippableFieldShortcut(
+    'disconnect_from_skippable_field',
+    Blockly.utils.KeyCodes.X,
+    (_ws, block) => !block.isShadow?.(),
+    (_ws, event, block) => {
+      block.unplug(!(event instanceof KeyboardEvent && event.shiftKey));
+      return true;
+    },
+  );
+
+  registerSkippableFieldShortcut(
+    'duplicate_from_skippable_field',
+    Blockly.utils.KeyCodes.D,
+    (ws, block) => !ws.isFlyout && !block.isShadow?.() && !!block.isDuplicatable?.(),
+    (ws, _event, block) => {
+      const copyData = block.toCopyData?.();
+      if (!copyData) return false;
+      Blockly.clipboard.paste(copyData, ws);
+      return true;
+    },
+  );
+
+  // Delete key is safe to bind here — Del doesn't conflict with text editing
+  // (users use Backspace for that). Backspace is intentionally excluded.
+  registerSkippableFieldShortcut(
+    'delete_from_skippable_field',
+    Blockly.utils.KeyCodes.DELETE,
+    (_ws, block) => !block.isShadow?.() && !!block.isDeletable?.(),
+    (_ws, event, block) => {
+      event.preventDefault();
+      block.checkAndDelete();
+      return true;
+    },
+  );
 }
 
 export function createBlocklyWorkspace() {
@@ -1534,6 +1612,93 @@ export function createBlocklyWorkspace() {
   );
 
   workspace = Blockly.inject('blocklyDiv', options);
+
+  // Stop trashcan flyout from covering the whole workspace on small screens when it has wide blocks in it
+  // The trashcan flyout is as wide as its widest deleted block, so a wide block
+  // can make it cover the whole workspace with nothing left to click to dismiss
+  // it. Cap its rendered width to the visible workspace minus a small gap.
+  // Blockly keeps the flyout right-aligned, so the right edge (and its vertical
+  // scrollbar) stay pinned to the workspace edge while the left edge can never
+  // cross the gap; wider blocks overflow to the right. Recomputed from live
+  // metrics on every position() call, so it tracks the panel resizer; the gap
+  // is capped to a fraction of the visible workspace so it stays sensible on
+  // narrow panels.
+  const trashcan = workspace.trashcan;
+  const trashcanFlyout = trashcan?.flyout;
+  if (trashcan && trashcanFlyout) {
+    const TRASHCAN_FLYOUT_LEFT_GAP = 48;
+    trashcanFlyout.getWidth = function () {
+      if (!this.isVisible()) return this.width_;
+      const viewWidth = this.targetWorkspace.getMetricsManager().getViewMetrics().width;
+      const gap = Math.min(TRASHCAN_FLYOUT_LEFT_GAP, Math.max(0, viewWidth * 0.25));
+      return Math.min(this.width_, viewWidth - gap);
+    };
+
+    // The flyout is a separate, higher z-index SVG that would otherwise hide the
+    // trashcan icon. While the flyout is open, lift the icon into an overlay SVG
+    // that shares the workspace's coordinate space, so it stays in place but
+    // The flyout is a separate, higher z-index SVG that would otherwise hide the
+    // trashcan icon. While the flyout is open, lift the icon into an overlay SVG
+    // that shares the workspace's coordinate space, so it stays in place but
+    // renders on top; clicking the lifted icon then closes the flyout.
+    const injectionDiv = workspace.getInjectionDiv();
+    let trashIcon = null;
+    try {
+      trashIcon = trashcan.getFocusableElement();
+    } catch {
+      trashIcon = null;
+    }
+    const iconHome = trashIcon?.parentNode;
+    if (injectionDiv && trashIcon && iconHome) {
+      const iconOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      iconOverlay.setAttribute('class', 'blocklyTrashcanIconOverlay');
+      Object.assign(iconOverlay.style, {
+        position: 'absolute',
+        top: '0',
+        left: '0',
+        width: '100%',
+        height: '100%',
+        overflow: 'visible',
+        pointerEvents: 'none',
+        zIndex: '21',
+      });
+      injectionDiv.appendChild(iconOverlay);
+
+      // pointer-events is inherited, so the overlay's `none` (which lets clicks
+      // pass through its empty area to the flyout) would also disable the icon.
+      // Force the icon itself back to clickable so it can close the flyout.
+      trashIcon.style.pointerEvents = 'auto';
+
+      // Clicking the lifted icon closes the flyout. The icon's own pointerup
+      // still calls openFlyout(), so swallow that one reopen for a moment.
+      let suppressOpenUntil = 0;
+      const originalOpenFlyout = trashcan.openFlyout.bind(trashcan);
+      trashcan.openFlyout = function () {
+        if (Date.now() < suppressOpenUntil) return;
+        originalOpenFlyout();
+      };
+      trashIcon.addEventListener(
+        'pointerdown',
+        (e) => {
+          if (!trashcan.contentsIsOpen()) return;
+          e.preventDefault();
+          e.stopPropagation();
+          suppressOpenUntil = Date.now() + 400;
+          trashcan.closeFlyout();
+        },
+        true,
+      );
+
+      workspace.addChangeListener((e) => {
+        if (e.type !== Blockly.Events.TRASHCAN_OPEN) return;
+        if (e.isOpen) {
+          if (trashIcon.parentNode !== iconOverlay) iconOverlay.appendChild(trashIcon);
+        } else if (trashIcon.parentNode !== iconHome) {
+          iconHome.appendChild(trashIcon);
+        }
+      });
+    }
+  }
 
   if (navigator.maxTouchPoints > 0 && window.innerWidth < 768) {
     // Make it harder to accidentally drag blocks on mobile.
@@ -2119,8 +2284,13 @@ export function createBlocklyWorkspace() {
   // Also remove the separate collapse/expand workspace items — replaced by a single toggle below.
   (function removeRedundantContextMenuItems() {
     const registry = Blockly.ContextMenuRegistry.registry;
-    ['undoWorkspace', 'redoWorkspace', 'cleanWorkspace',
-     'collapseWorkspace', 'expandWorkspace'].forEach((id) => {
+    [
+      'undoWorkspace',
+      'redoWorkspace',
+      'cleanWorkspace',
+      'collapseWorkspace',
+      'expandWorkspace',
+    ].forEach((id) => {
       try {
         registry.unregister(id);
       } catch (_) {}
@@ -2148,9 +2318,10 @@ export function createBlocklyWorkspace() {
       id: 'flockCollapseExpandWorkspace',
       weight: 4,
       scopeType: WORKSPACE,
-      displayText: (scope) => hasAnyExpanded(scope.workspace)
-        ? translate('context_collapse_all_option')
-        : translate('context_expand_all_option'),
+      displayText: (scope) =>
+        hasAnyExpanded(scope.workspace)
+          ? translate('context_collapse_all_option')
+          : translate('context_expand_all_option'),
       preconditionFn: (scope) => {
         if (!scope.workspace?.options?.collapse) return 'hidden';
         return scope.workspace.getTopBlocks(false).length ? 'enabled' : 'hidden';
@@ -2250,12 +2421,13 @@ export function createBlocklyWorkspace() {
   })();
 
   // Add separators to the block context menu to group related items.
-  // Weights: clipboard(1-3) | 5 | block-ops(9-14) | 18 | delete(20) | 50 | export(100-200) | 500 | help(999)
+  // Weights: clipboard(1-3) | 5 | block-ops(9-10) | 10.5 | comment(11-14) | 18 | delete(20) | 50 | export(100-200) | 500 | help(999)
   (function registerBlockContextMenuSeparators() {
     const registry = Blockly.ContextMenuRegistry.registry;
     const BLOCK = Blockly.ContextMenuRegistry.ScopeType.BLOCK;
     const separators = [
       { id: 'flock_sep_after_clipboard', weight: 5 },
+      { id: 'flock_sep_before_comment', weight: 10.5 },
       { id: 'flock_sep_before_delete', weight: 18 },
       { id: 'flock_sep_before_export', weight: 50 },
       { id: 'flock_sep_before_help', weight: 500 },
