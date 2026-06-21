@@ -58,6 +58,7 @@ export default {
   palette_pastel: 'Pastelowy',
   palette_neon: 'Neonowy',
   palette_sunset: 'Zachód słońca',
+  palette_okabeito: 'Okabe-Ito',
 
   // Color names
   color_red: 'Czerwony',
@@ -121,6 +122,10 @@ export default {
   color_dim_gray: 'Ciemnoszary',
   color_saddle_brown: 'Brązowy siodłowy',
   color_light_coral: 'Jasny koralowy',
+  color_bluish_green: 'Zielononiebieski',
+  color_vermillion: 'Cynober',
+  color_reddish_purple: 'Czerwonawy fiolet',
+  color_gray: 'Szary',
 
   // Custom block translations - Scene blocks
   set_sky_color: 'niebo %1',
@@ -1012,6 +1017,7 @@ export default {
 
   run_code_button_ui: "Uruchom kod",
   stop_code_button_ui: "Zatrzymaj kod",
+  canvas_overlay_play_ui: "Naciśnij Play, aby rozpocząć", // ai
   open_button_ui: "Otwórz projekt z pliku na komputerze",
   open_file_input_label_ui: "Wybierz plik projektu do otwarcia",
   export_code_button_ui: "Zapisz projekt do pliku na komputerze",

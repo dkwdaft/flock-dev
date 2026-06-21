@@ -58,6 +58,7 @@ export default {
   palette_pastel: 'Pastel', // human
   palette_neon: 'Neón', // human
   palette_sunset: 'Atardecer', // human
+  palette_okabeito: 'Okabe-Ito',
 
   // Color names
   color_red: 'Rojo', // human
@@ -121,6 +122,10 @@ export default {
   color_dim_gray: 'Gris tenue', // human
   color_saddle_brown: 'Marrón silla', // human
   color_light_coral: 'Coral claro', // human
+  color_bluish_green: 'Verde azulado',
+  color_vermillion: 'Bermellón',
+  color_reddish_purple: 'Púrpura rojizo',
+  color_gray: 'Gris',
 
   // Custom block translations - Scene blocks
   set_sky_color: 'cielo %1', // human
@@ -1028,6 +1033,7 @@ export default {
 
   run_code_button_ui: "Ejecutar tu código", // human
   stop_code_button_ui: "Detener tu código", // human
+  canvas_overlay_play_ui: "Pulsa Play para empezar", // ai
   open_button_ui: "Abrir un proyecto desde un archivo en tu computadora", // human
   open_file_input_label_ui: "Selecciona el archivo de proyecto para abrir", // human
   export_code_button_ui:

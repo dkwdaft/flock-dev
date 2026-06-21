@@ -58,6 +58,7 @@ export default {
   palette_pastel: 'Pastell',
   palette_neon: 'Neon',
   palette_sunset: 'Solnedgång',
+  palette_okabeito: 'Okabe-Ito',
 
   // Color names
   color_red: 'Röd',
@@ -121,6 +122,10 @@ export default {
   color_dim_gray: 'Mörk grå',
   color_saddle_brown: 'Sadelbrun',
   color_light_coral: 'Ljus korall',
+  color_bluish_green: 'Blågrön',
+  color_vermillion: 'Cinnober',
+  color_reddish_purple: 'Rödaktig lila',
+  color_gray: 'Grå',
 
   // Custom block translations - Scene blocks
   set_sky_color: 'himmel %1',
@@ -1001,6 +1006,7 @@ export default {
 
   run_code_button_ui: "Kör din kod",
   stop_code_button_ui: "Stoppa din kod",
+  canvas_overlay_play_ui: "Tryck på Spela för att börja", // ai
   open_button_ui: "Öppna ett projekt från en fil på din dator",
   open_file_input_label_ui: "Välj projektfil att öppna",
   export_code_button_ui: "Spara detta projekt till en fil på din dator.",

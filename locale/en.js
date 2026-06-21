@@ -58,6 +58,7 @@ export default {
   palette_pastel: 'Pastel',
   palette_neon: 'Neon',
   palette_sunset: 'Sunset',
+  palette_okabeito: 'Okabe-Ito',
 
   // Color names
   color_red: 'Red',
@@ -121,6 +122,10 @@ export default {
   color_dim_gray: 'Dim Gray',
   color_saddle_brown: 'Saddle Brown',
   color_light_coral: 'Light Coral',
+  color_bluish_green: 'Bluish Green',
+  color_vermillion: 'Vermillion',
+  color_reddish_purple: 'Reddish Purple',
+  color_gray: 'Gray',
 
   // Color block translations
   colour_rgb: 'red %1 green %2 blue %3',
@@ -1029,6 +1034,7 @@ export default {
 
   run_code_button_ui: "Run your code",
   stop_code_button_ui: "Stop your code",
+  canvas_overlay_play_ui: "Press Play to start",
   open_button_ui: "Open a project from a file on your computer",
   open_file_input_label_ui: "Select project file to open",
   export_code_button_ui: "Save this project to a file on your computer.",
