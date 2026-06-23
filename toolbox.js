@@ -722,6 +722,11 @@ const toolboxSceneLights = {
     },
     {
       kind: "block",
+      type: "enable_shadows",
+      keyword: "shadows",
+    },
+    {
+      kind: "block",
       type: "create_particle_effect",
       keyword: "particle",
       inputs: {
@@ -1172,6 +1177,21 @@ const toolboxTransformPhysics = {
             type: "math_number",
             fields: {
               NUM: 0,
+            },
+          },
+        },
+      },
+    },
+    {
+      kind: "block",
+      type: "set_speed",
+      keyword: "speed",
+      inputs: {
+        SPEED: {
+          shadow: {
+            type: "math_number",
+            fields: {
+              NUM: 5,
             },
           },
         },
@@ -3104,6 +3124,11 @@ const toolboxMaterials = {
       kind: "block",
       type: "glow",
       keyword: "glow",
+    },
+    {
+      kind: "block",
+      type: "set_shadow",
+      keyword: "shadow",
     },
     {
       kind: "block",

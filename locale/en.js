@@ -230,6 +230,8 @@ export default {
     'decal on %1 from x: %2 y: %3 z: %4 \nangle x: %5 y: %6 z: %7\nsize x: %8 y: %9 z: %10 material: %11',
   highlight: 'highlight %1 %2',
   glow: 'glow %1',
+  set_shadow: 'cast shadow from %1 %2',
+  enable_shadows: 'enable shadows %1',
   tint: 'tint %1 %2',
   set_alpha: 'set alpha of %1 to %2',
   clear_effects: 'clear effects %1',
@@ -246,6 +248,7 @@ export default {
   add_physics: 'add physics %1 type %2',
   add_physics_shape: 'add physics shape %1 type %2',
   apply_force: 'apply force to %1 x: %2 y: %3 z: %4',
+  set_speed: 'set speed of %1 %2 to %3',
   show_physics: 'show physics shapes %1',
 
   // Custom block translations - Sensing blocks
@@ -481,6 +484,9 @@ export default {
   decal_tooltip: 'Create a decal on an object with position, normal, size, and material.',
   highlight_tooltip: 'Highlight the selected object.\nKeyword: highlight',
   glow_tooltip: 'Adds a glow effect to the selected object.\nKeyword: glow',
+  set_shadow_tooltip:
+    'Toggle whether an object casts a shadow.\nKeyword: shadow',
+  enable_shadows_tooltip: 'Turn scene shadows on or off.\nKeyword: shadows',
   tint_tooltip: 'Add color tint effect.\nKeyword: tint',
   set_alpha_tooltip:
     'Set the alpha (transparency) of the material(s) on a specified object. Values should be 0 to 1.\nKeyword:alpha',
@@ -499,6 +505,8 @@ export default {
   add_physics_shape_tooltip:
     'Add a physics shape to the object. Options are object or capsule.\nKeyword:physics',
   apply_force_tooltip: 'Apply a force to an object in XYZ directions.\nKeyword: force',
+  set_speed_tooltip:
+    'Keep an object moving at a set speed in a direction. It moves just like a player does with "move" — riding up slopes, stepping over small ledges and stopping at walls, staying upright — but relative to the object or the world instead of the camera. It holds that speed until you change it. Pick a direction relative to the object (forward, sideways, up) or a world axis (x, y, z); use "look at" to aim, then drive forward. Choose "all" and 0 to stop.\nKeyword: speed',
   show_physics_tooltip:
     'Show or hide physics colliders for debugging. Check to show, uncheck to hide.\nKeyword: debug physics collider',
 
@@ -698,6 +706,7 @@ export default {
   forward_option: 'forward',
   sideways_option: 'sideways',
   strafe_option: 'strafe',
+  up_option: 'up',
   MIN_option: 'min',
   MAX_option: 'max',
   user_option: 'front',
@@ -817,6 +826,10 @@ export default {
   SIZE_X_option: 'size x',
   SIZE_Y_option: 'size y',
   SIZE_Z_option: 'size z',
+  SPEED_X_option: 'speed x',
+  SPEED_Y_option: 'speed y',
+  SPEED_Z_option: 'speed z',
+  SPEED_option: 'speed',
   VISIBLE_option: 'visible',
   ALPHA_option: 'alpha',
   COLOUR_option: 'color',
