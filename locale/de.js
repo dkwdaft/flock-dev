@@ -1066,6 +1066,7 @@ export default {
   duplicate_button_ui: "Duplizieren",
   delete_button_ui: "Löschen",
   camera_button_ui: "Kamera-Steuerung",
+  eye_button_ui: "Um ausgewähltes Objekt kreisen",
   info_panel_link_ui: "Flock XR Webseite (neuer Tab)",
   project_name_ui: "Projektname",
   keyboard_controls_ui: "Tastatursteuerung [Ctrl + /]",
@@ -1142,6 +1143,7 @@ export default {
   select_mesh_delete_prompt: 'ℹ️ Klicke auf ein Objekt, um es zu löschen.',
   select_mesh_duplicate_prompt:
     'ℹ️ Wähle ein Objekt zum Duplizieren aus und klicke dann, um Kopien zu platzieren.',
+  select_mesh_eye_prompt: 'ℹ️ Klicke auf ein Objekt, um es zu umkreisen.',
   place_object_prompt: 'ℹ️ Klicke auf eine Fläche, um das Objekt zu platzieren.',
   position_readout: 'Position: {position}',
   eyedropper_not_supported_alert:
@@ -1238,6 +1240,8 @@ export default {
   shortcut_context_menu: 'Kontextmenü öffnen',
   shortcut_duplicate_block: 'Block duplizieren',
   shortcut_detach_block: 'Block trennen',
+  shortcut_comment_block: 'Kommentar ein-/ausblenden',
+  shortcut_delete_comment: 'Kommentar löschen',
   shortcut_start_move_block: 'Block verschieben',
   shortcut_move_arrows: 'Verschieben: zur Verbindung',
   shortcut_move_anywhere: 'Verschieben: überall',
