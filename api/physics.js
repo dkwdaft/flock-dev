@@ -2,6 +2,21 @@ let flock;
 
 export const isBodyAlive = (body) => !!body?._pluginData?.hpBodyId;
 
+// Restitution lives on the shape material, not mass properties. Reads
+// metadata.bounciness (default 0), so it survives shape/body rebuilds. Combine
+// is MAXIMUM (bounciest surface wins) and must match on every material — objects
+// and grounds — or a zeroing combine lets a ground at 0 cancel a bouncy object.
+// Call after the body's shape is assigned.
+export const applyBounciness = (physicsBody, mesh) => {
+  if (!physicsBody?.shape) return;
+  const restitution = mesh?.metadata?.bounciness ?? 0;
+  physicsBody.shape.material = {
+    ...physicsBody.shape.material,
+    restitution,
+    restitutionCombine: flock.BABYLON.PhysicsMaterialCombineMode.MAXIMUM,
+  };
+};
+
 // Returns the mesh's normalised local basis vectors in world space, so velocity
 // magnitudes stay correct regardless of mesh scale.
 const localBasis = (mesh) => {
@@ -199,7 +214,8 @@ const applyPhysicsShape = (
     flock.scene
   );
   physicsBody.shape = physicsShape;
-  physicsBody.setMassProperties({ mass: 1, restitution: 0.5 });
+  physicsBody.setMassProperties({ mass: 1 });
+  applyBounciness(physicsBody, targetMesh);
   physicsBody.disablePreStep = disablePreStep;
   targetMesh.physics = physicsBody;
   if (normalizedShapeType === 'CAPSULE') physicsBody.setMotionType(motionType);
@@ -239,7 +255,8 @@ export const flockPhysics = {
   createPhysicsBody(mesh, shape, motionType = flock.BABYLON.PhysicsMotionType.STATIC) {
     const physicsBody = new flock.BABYLON.PhysicsBody(mesh, motionType, false, flock.scene);
     physicsBody.shape = shape;
-    physicsBody.setMassProperties({ mass: 1, restitution: 0.5 });
+    physicsBody.setMassProperties({ mass: 1 });
+    applyBounciness(physicsBody, mesh);
     mesh.physics = physicsBody;
   },
   applyPhysics(geometry, physicsShape) {
@@ -250,7 +267,8 @@ export const flockPhysics = {
       flock.scene
     );
     physicsBody.shape = physicsShape;
-    physicsBody.setMassProperties({ mass: 1, restitution: 0.5 });
+    physicsBody.setMassProperties({ mass: 1 });
+    applyBounciness(physicsBody, geometry);
     physicsBody.disablePreStep = true;
 
     geometry.physics = physicsBody;
@@ -332,7 +350,8 @@ export const flockPhysics = {
       flock.scene
     );
     physicsBody.shape = newShape;
-    physicsBody.setMassProperties({ mass: 1, restitution: 0.5 });
+    physicsBody.setMassProperties({ mass: 1 });
+    applyBounciness(physicsBody, parent);
     physicsBody.disablePreStep = disablePreStep ?? false;
     parent.physics = physicsBody;
     if (isCapsule) physicsBody.setMotionType(motionType ?? flock.BABYLON.PhysicsMotionType.STATIC);
@@ -361,6 +380,19 @@ export const flockPhysics = {
       );
     } else {
       console.log('Model not loaded (up):', meshName);
+    }
+  },
+  // Set how bouncy an object is (0 = no bounce, 1 = very bouncy). Stored in
+  // metadata so it survives physics rebuilds; see applyBounciness.
+  applyBounciness,
+  setBounciness(meshName, bounciness = 0.5) {
+    const mesh = flock.scene.getMeshByName(meshName);
+    if (mesh && isBodyAlive(mesh.physics) && mesh.physics.shape) {
+      mesh.metadata = mesh.metadata || {};
+      mesh.metadata.bounciness = Math.max(0, Math.min(1, bounciness));
+      applyBounciness(mesh.physics, mesh);
+    } else {
+      console.error(`Model '${meshName}' not loaded or missing physics (setBounciness)`);
     }
   },
   applyForce(meshName, { forceX = 0, forceY = 0, forceZ = 0 } = {}) {
@@ -538,7 +570,8 @@ export const flockPhysics = {
             flock.scene
           );
           physicsBody.shape = physicsShape;
-          physicsBody.setMassProperties({ mass: 1, restitution: 0.5 });
+          physicsBody.setMassProperties({ mass: 1 });
+          applyBounciness(physicsBody, targetMesh);
           physicsBody.disablePreStep = disablePreStep ?? false;
 
           targetMesh.physics = physicsBody;
@@ -573,7 +606,8 @@ export const flockPhysics = {
             flock.scene
           );
           physicsBody.shape = physicsShape;
-          physicsBody.setMassProperties({ mass: 1, restitution: 0.5 }); // unchanged
+          physicsBody.setMassProperties({ mass: 1 });
+          applyBounciness(physicsBody, targetMesh);
           physicsBody.disablePreStep = disablePreStep ?? false;
 
           targetMesh.physics = physicsBody;

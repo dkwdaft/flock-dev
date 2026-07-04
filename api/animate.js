@@ -69,6 +69,8 @@ const updateCapsuleShapeForAnimation = (physicsMesh, animationName) => {
 
   physicsMesh.physics.setMotionType(motionType);
   physicsMesh.physics.setMassProperties(massProps);
+  // New capsule shape has a default material — re-apply the mesh's bounciness.
+  flock.applyBounciness(physicsMesh.physics, physicsMesh);
   physicsMesh.physics.disablePreStep = disablePreStep;
 
   // Correct transform so bottom Y stays unchanged after shape swap

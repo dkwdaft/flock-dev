@@ -242,6 +242,7 @@ export default {
   add_physics: 'añadir física a %1 tipo %2', // human
   add_physics_shape: 'añadir física forma  %1 tipo %2', // human
   apply_force: 'aplicar fuerza a %1 x: %2 y: %3 z: %4', // human
+  jump: 'saltar %1 altura %2', // ai
   set_speed: 'establecer velocidad de %1 %2 a %3', // ai
   set_speed_tooltip:
     'Mantiene un objeto moviéndose a una velocidad establecida en una dirección. Se mueve igual que un personaje con "mover" — sube rampas, salva pequeños escalones, se detiene en las paredes y se mantiene erguido — pero relativo al objeto o al mundo en lugar de a la cámara. Mantiene esa velocidad hasta que la cambies. Elige una dirección relativa al objeto (adelante, al lado, arriba) o un eje del mundo (x, y, z); usa "mirar a" para apuntar y luego avanza. Elige "todos" y 0 para detener.\nPalabra clave: speed', // ai
@@ -266,6 +267,21 @@ export default {
   on_screen_controls:
     'controles en pantalla  movimiento: %1  acciones: %2  habilitado: %3  color: %4', // ai
   microbit_input: 'cuando evento micro:bit %1', // human
+  add_microbit: 'añadir micro:bit %1 canal de radio %2', // ai
+  microbit_any_option: 'cualquiera', // ai
+  microbit_duplicate_warning:
+    'Otro bloque "añadir micro:bit" ya usa esta variable. El primer bloque tiene prioridad.', // ai
+  microbit_no_listener_warning:
+    'Ningún micro:bit conectado por USB está escuchando en el canal %1. Conecta un micro:bit con este canal para retransmitir los eventos de radio.', // ai
+  microbit_status_unbound: 'ningún micro:bit conectado — haz clic para conectar uno', // ai
+  microbit_status_busy: 'conectando con el micro:bit…', // ai
+  microbit_status_tethered: 'micro:bit conectado por USB', // ai
+  microbit_status_radio: 'micro:bit recibido por radio', // ai
+  microbit_channel_retether_tip:
+    'micro:bit recibido por radio. Para cambiar su canal, conéctalo de nuevo por USB.', // ai
+  microbit_connect_failed: 'No se pudo conectar con el micro:bit: %1', // ai
+  microbit_usb_unsupported:
+    'Este navegador no es compatible con WebUSB. Prueba Chrome o Edge para conectar un micro:bit.', // ai
   ui_slider:
     'control deslizante UI %1 de %2 a %3 por defecto %4 en x: %5 y: %6\ncolor: %7 fondo: %8 %9', // human
 
@@ -508,6 +524,8 @@ export default {
   add_physics_shape_tooltip:
     'Añade una forma física al objeto. Opciones: objeto o cápsula.\nPalabra clave: física', // human
   apply_force_tooltip: 'Aplica una fuerza a un objeto en direcciones XYZ.\nPalabra clave: fuerza', // human
+  jump_tooltip:
+    'Hace que un personaje salte a una altura (en bloques). Mantiene tu velocidad de carrera actual, así que saltas hacia adelante con impulso como en los juegos de plataformas. Necesita física.\nPalabra clave: saltar brincar', // ai
   show_physics_tooltip:
     'Mostrar u ocultar colisionadores físicos para depuración. Marque para mostrar, desmarque para ocultar.\nPalabra clave: depuración de coliionador de física', // human
 
@@ -537,6 +555,8 @@ export default {
   on_screen_controls_tooltip: 'Configura los controles en pantalla.\nPalabra clave: onscreen', // ai
   microbit_input_tooltip:
     'Ejecuta los bloques dentro cuando se desencadena un evento micro:bit especificado.', // human
+  add_microbit_tooltip:
+    'Conecta un micro:bit y haz referencia a él con esta variable. Haz clic en el icono de estado para conectar un micro:bit por USB. Los micro:bit desenchufados envían eventos por radio a través de cualquier micro:bit enchufado en el mismo canal.', // ai
   ui_slider_tooltip:
     'Añade un control deslizante 2D en la UI y almacena su referencia en una variable.', // human
 

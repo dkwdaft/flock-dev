@@ -496,17 +496,8 @@ export function runPhysicsTests(flock) {
 
     it("maintains the speed on a ground instead of friction stopping it", async function () {
       this.timeout(10000);
-      const ground = "velGround";
-      await flock.createBox(ground, { width: 100, height: 1, depth: 100, position: [0, -0.5, 0] });
-      await flock.setPhysics(ground, "STATIC");
-      boxIds.push(ground);
-
       const id = "velDriver";
-      await flock.createBox(id, { width: 1, height: 1, depth: 1, position: [0, 0.5, 0] });
-      await flock.setPhysics(id, "DYNAMIC");
-      boxIds.push(id);
-
-      const mesh = flock.scene.getMeshByName(id);
+      const mesh = await makeGroundAndBox("velGround", id);
       flock.setSpeed(id, "forward", 5);
 
       // After well over a second on the ground, a one-shot would have stopped.
@@ -522,17 +513,8 @@ export function runPhysicsTests(flock) {
 
     it("maintains a world axis (x) on a ground", async function () {
       this.timeout(10000);
-      const ground = "velGroundX";
-      await flock.createBox(ground, { width: 100, height: 1, depth: 100, position: [0, -0.5, 0] });
-      await flock.setPhysics(ground, "STATIC");
-      boxIds.push(ground);
-
       const id = "velDriverX";
-      await flock.createBox(id, { width: 1, height: 1, depth: 1, position: [0, 0.5, 0] });
-      await flock.setPhysics(id, "DYNAMIC");
-      boxIds.push(id);
-
-      const mesh = flock.scene.getMeshByName(id);
+      const mesh = await makeGroundAndBox("velGroundX", id);
       flock.setSpeed(id, "x_coordinate", 5); // world +X
 
       await new Promise((r) => setTimeout(r, 1500));
@@ -541,17 +523,8 @@ export function runPhysicsTests(flock) {
 
     it("keeps a driven object upright (like move forward)", async function () {
       this.timeout(10000);
-      const ground = "velGroundUp";
-      await flock.createBox(ground, { width: 100, height: 1, depth: 100, position: [0, -0.5, 0] });
-      await flock.setPhysics(ground, "STATIC");
-      boxIds.push(ground);
-
       const id = "velUpright";
-      await flock.createBox(id, { width: 1, height: 1, depth: 1, position: [0, 0.5, 0] });
-      await flock.setPhysics(id, "DYNAMIC");
-      boxIds.push(id);
-
-      const mesh = flock.scene.getMeshByName(id);
+      const mesh = await makeGroundAndBox("velGroundUp", id);
       const B = flock.BABYLON;
       flock.setSpeed(id, "forward", 5);
 
@@ -569,17 +542,8 @@ export function runPhysicsTests(flock) {
 
     it("clamps vertical speed so a slope can't launch it", async function () {
       this.timeout(10000);
-      const ground = "velGroundClamp";
-      await flock.createBox(ground, { width: 100, height: 1, depth: 100, position: [0, -0.5, 0] });
-      await flock.setPhysics(ground, "STATIC");
-      boxIds.push(ground);
-
       const id = "velClamp";
-      await flock.createBox(id, { width: 1, height: 1, depth: 1, position: [0, 0.5, 0] });
-      await flock.setPhysics(id, "DYNAMIC");
-      boxIds.push(id);
-
-      const mesh = flock.scene.getMeshByName(id);
+      const mesh = await makeGroundAndBox("velGroundClamp", id);
       flock.setSpeed(id, "forward", 5); // horizontal drive, no vertical set
 
       // Simulate a ramp kicking it sharply upward.
@@ -626,17 +590,8 @@ export function runPhysicsTests(flock) {
 
     it("'all' to 0 is a full stop that lets physics resume", async function () {
       this.timeout(8000);
-      const ground = "velGroundAll";
-      await flock.createBox(ground, { width: 100, height: 1, depth: 100, position: [0, -0.5, 0] });
-      await flock.setPhysics(ground, "STATIC");
-      boxIds.push(ground);
-
       const id = "boxSetVelocityAll";
-      await flock.createBox(id, { width: 1, height: 1, depth: 1, position: [0, 0.5, 0] });
-      await flock.setPhysics(id, "DYNAMIC");
-      boxIds.push(id);
-
-      const mesh = flock.scene.getMeshByName(id);
+      const mesh = await makeGroundAndBox("velGroundAll", id);
       flock.setSpeed(id, "forward", 6);
 
       // 'all' to 0 stops it; resting on the ground it then stays put.
@@ -663,6 +618,138 @@ export function runPhysicsTests(flock) {
       console.error = () => { errorLogged = true; };
 
       flock.setSpeed(id, "forward", 1);
+
+      console.error = originalConsoleError;
+      expect(errorLogged).to.be.true;
+    });
+  });
+
+  describe("setBounciness method @physics", function () {
+    const boxIds = [];
+
+    beforeEach(async function () {
+      flock.scene ??= {};
+    });
+
+    afterEach(function () {
+      boxIds.forEach((boxId) => {
+        flock.dispose(boxId);
+      });
+      boxIds.length = 0;
+    });
+
+    it("sets restitution on the body's shape material", async function () {
+      const id = "boxBounciness";
+      await flock.createBox(id, { width: 1, height: 1, depth: 1, position: [0, 0, 0] });
+      await flock.setPhysics(id, "DYNAMIC");
+      boxIds.push(id);
+
+      flock.setBounciness(id, 0.9);
+
+      const mesh = flock.scene.getMeshByName(id);
+      expect(mesh.physics.shape.material.restitution).to.be.closeTo(0.9, 1e-6);
+      expect(mesh.metadata.bounciness).to.be.closeTo(0.9, 1e-6);
+    });
+
+    it("forces MAXIMUM restitution combine so the bounciest surface wins", async function () {
+      const id = "boxBouncinessCombine";
+      await flock.createBox(id, { width: 1, height: 1, depth: 1, position: [0, 0, 0] });
+      await flock.setPhysics(id, "DYNAMIC");
+      boxIds.push(id);
+
+      flock.setBounciness(id, 0.5);
+
+      const mesh = flock.scene.getMeshByName(id);
+      expect(mesh.physics.shape.material.restitutionCombine).to.equal(
+        flock.BABYLON.PhysicsMaterialCombineMode.MAXIMUM,
+      );
+    });
+
+    it("preserves the existing friction when changing bounciness", async function () {
+      const id = "boxBouncinessFriction";
+      await flock.createBox(id, { width: 1, height: 1, depth: 1, position: [0, 0, 0] });
+      await flock.setPhysics(id, "DYNAMIC");
+      boxIds.push(id);
+
+      const mesh = flock.scene.getMeshByName(id);
+      mesh.physics.shape.material = { ...mesh.physics.shape.material, friction: 0.42 };
+
+      flock.setBounciness(id, 0.3);
+
+      expect(mesh.physics.shape.material.restitution).to.be.closeTo(0.3, 1e-6);
+      expect(mesh.physics.shape.material.friction).to.be.closeTo(0.42, 1e-6);
+    });
+
+    it("clamps the value to the 0..1 range", async function () {
+      const id = "boxBouncinessClamp";
+      await flock.createBox(id, { width: 1, height: 1, depth: 1, position: [0, 0, 0] });
+      await flock.setPhysics(id, "DYNAMIC");
+      boxIds.push(id);
+
+      const mesh = flock.scene.getMeshByName(id);
+
+      flock.setBounciness(id, 5);
+      expect(mesh.physics.shape.material.restitution).to.equal(1);
+
+      flock.setBounciness(id, -2);
+      expect(mesh.physics.shape.material.restitution).to.equal(0);
+    });
+
+    it("defaults a fresh body to no bounce (restitution 0)", async function () {
+      const id = "boxBouncinessDefault";
+      await flock.createBox(id, { width: 1, height: 1, depth: 1, position: [0, 0, 0] });
+      await flock.setPhysics(id, "DYNAMIC");
+      boxIds.push(id);
+
+      const mesh = flock.scene.getMeshByName(id);
+      expect(mesh.physics.shape.material.restitution).to.equal(0);
+    });
+
+    it("keeps bounciness through a physics shape (capsule) swap", async function () {
+      const id = "boxBouncinessCapsule";
+      await flock.createBox(id, { width: 1, height: 2, depth: 1, position: [0, 1, 0] });
+      await flock.setPhysics(id, "DYNAMIC");
+      boxIds.push(id);
+
+      flock.setBounciness(id, 0.6);
+      await flock.setPhysicsShape(id, "CAPSULE");
+
+      const mesh = flock.scene.getMeshByName(id);
+      expect(mesh.metadata.physicsShapeType).to.equal("CAPSULE");
+      expect(mesh.physics.shape.material.restitution).to.be.closeTo(0.6, 1e-6);
+    });
+
+    it("re-applies the stored bounciness after a physics rebuild", async function () {
+      const id = "boxBouncinessRebuild";
+      await flock.createBox(id, { width: 1, height: 1, depth: 1, position: [0, 0, 0] });
+      await flock.setPhysics(id, "DYNAMIC");
+      boxIds.push(id);
+
+      flock.setBounciness(id, 0.8);
+
+      // Drop physics and re-add it — the new shape starts with the default
+      // material, so without re-application the bounciness would be lost.
+      await flock.setPhysics(id, "NONE");
+      await flock.setPhysics(id, "DYNAMIC");
+
+      const mesh = flock.scene.getMeshByName(id);
+      expect(mesh.physics.shape.material.restitution).to.be.closeTo(0.8, 1e-6);
+    });
+
+    it("should handle missing physics gracefully", async function () {
+      const id = "boxBouncinessNoPhysics";
+      await flock.createBox(id, { width: 1, height: 1, depth: 1, position: [0, 0, 0] });
+      boxIds.push(id);
+
+      const mesh = flock.scene.getMeshByName(id);
+      mesh.physics.dispose();
+      mesh.physics = null;
+
+      let errorLogged = false;
+      const originalConsoleError = console.error;
+      console.error = () => { errorLogged = true; };
+
+      flock.setBounciness(id, 0.5);
 
       console.error = originalConsoleError;
       expect(errorLogged).to.be.true;
@@ -953,6 +1040,120 @@ export function runPhysicsTests(flock) {
 
     it("should not throw when called with false", function () {
       expect(() => flock.showPhysics(false)).to.not.throw();
+    });
+  });
+
+  describe("jump method @physics", function () {
+    const ids = [];
+    const V3 = (x, y, z) => new flock.BABYLON.Vector3(x, y, z);
+    const G = 9.81;
+
+    beforeEach(function () {
+      flock.scene ??= {};
+    });
+
+    afterEach(function () {
+      ids.forEach((id) => flock.dispose(id));
+      ids.length = 0;
+    });
+
+    // Static ground + a dynamic 1x1x1 character resting on it, settled so the
+    // ground check reports it grounded.
+    async function makeGroundAndChar(groundId, charId, pos = [0, 0.5, 0]) {
+      await flock.createBox(groundId, { width: 100, height: 1, depth: 100, position: [0, -0.5, 0] });
+      await flock.setPhysics(groundId, "STATIC");
+      ids.push(groundId);
+      await flock.createBox(charId, { width: 1, height: 1, depth: 1, position: pos });
+      await flock.setPhysics(charId, "DYNAMIC");
+      ids.push(charId);
+      await new Promise((r) => setTimeout(r, 250));
+      return flock.scene.getMeshByName(charId);
+    }
+
+    it("sets an upward takeoff velocity for the requested height (v = sqrt(2gh))", async function () {
+      this.timeout(8000);
+      const mesh = await makeGroundAndChar("jGndHeight", "jCharHeight");
+      flock.jump("jCharHeight", { jumpHeight: 1.5 });
+      // Sample immediately — the takeoff velocity is what we assert, not the arc.
+      const v = mesh.physics.getLinearVelocity();
+      expect(v.y).to.be.closeTo(Math.sqrt(2 * G * 1.5), 0.4);
+    });
+
+    it("preserves horizontal velocity (carries run speed as momentum)", async function () {
+      this.timeout(8000);
+      const mesh = await makeGroundAndChar("jGndMom", "jCharMom");
+      mesh.physics.setLinearVelocity(V3(4, 0, -2));
+      flock.jump("jCharMom", { jumpHeight: 1.5 });
+      const v = mesh.physics.getLinearVelocity();
+      expect(v.x).to.be.closeTo(4, 0.05);
+      expect(v.z).to.be.closeTo(-2, 0.05);
+      expect(v.y).to.be.greaterThan(4);
+    });
+
+    it("carries movement momentum into the jump", async function () {
+      this.timeout(10000);
+      const mesh = await makeGroundAndChar("jGndMove", "jCharMove");
+      // Drive it horizontally through the shared movement core (same path the
+      // move blocks use), so the body has real movement velocity.
+      flock.setSpeed("jCharMove", "x_coordinate", 5); // world +X
+      await new Promise((r) => setTimeout(r, 800));
+      const vBefore = mesh.physics.getLinearVelocity();
+      expect(vBefore.x).to.be.closeTo(5, 1); // actually moving
+
+      flock.jump("jCharMove", { jumpHeight: 1.5 });
+      const vAfter = mesh.physics.getLinearVelocity();
+      expect(vAfter.x).to.be.closeTo(vBefore.x, 0.6); // horizontal momentum carried
+      expect(vAfter.y).to.be.greaterThan(4); // and it took off
+    });
+
+    it("jump velocity survives a following movement update (clamp exemption)", async function () {
+      this.timeout(8000);
+      const mesh = await makeGroundAndChar("jGndClamp", "jCharClamp");
+      flock.jump("jCharClamp", { jumpHeight: 2.0 }); // v ~ 6.26, above the 3 m/s clamp
+      const vJump = mesh.physics.getLinearVelocity().y;
+      expect(vJump).to.be.greaterThan(3.5);
+      // A normal movement frame clamps vertical to <= 3 to stop ramp-launching;
+      // the in-progress jump must be exempt so the takeoff survives.
+      flock.applyGroundedMovement(mesh, V3(3, 0, 0));
+      expect(mesh.physics.getLinearVelocity().y).to.be.greaterThan(3.5);
+    });
+
+    it("air control converges the same amount regardless of frame rate", async function () {
+      this.timeout(8000);
+      const mesh = await makeGroundAndChar("jGndFps", "jCharFps");
+
+      // Drive the airborne air-control path at two frame granularities over the
+      // same total simulated time; the dt-normalised formulas should converge to
+      // (nearly) the same horizontal velocity. Fake "airborne" by lifting the
+      // mesh above the ground and expiring coyote time; no physics steps run
+      // between the synchronous calls, so only our math changes the velocity.
+      const runSteps = (steps, dtMs) => {
+        mesh.position.y = 20; // ground check misses -> airborne branch
+        mesh._lastGroundedAt = 0; // expire coyote
+        mesh._jumpUntilGrounded = false;
+        mesh.physics.setLinearVelocity(V3(5, 0, 0)); // initial momentum along +x
+        for (let i = 0; i < steps; i++) {
+          // Pretend the previous movement frame was dtMs ago.
+          mesh._lastMoveForwardMs = (typeof performance !== "undefined" && performance.now
+            ? performance.now()
+            : Date.now()) - dtMs;
+          flock.applyGroundedMovement(mesh, V3(0, 0, 5)); // steer toward +z
+        }
+        return mesh.physics.getLinearVelocity().clone();
+      };
+
+      // Both cover the same 0.3s of simulated time, and both per-step dts stay
+      // within applyGroundedMovement's [1/240, 1/15] clamp so neither run is
+      // truncated — otherwise the coarse run would be clamped and never converge.
+      const coarse = runSteps(6, 50); // 6 x 50ms = 0.3s (50ms < 1/15s ≈ 66.7ms)
+      const fine = runSteps(30, 10); // 30 x 10ms = 0.3s
+
+      expect(fine.x).to.be.closeTo(coarse.x, 0.4);
+      expect(fine.z).to.be.closeTo(coarse.z, 0.4);
+    });
+
+    it("does nothing when the mesh does not exist", function () {
+      expect(() => flock.jump("nonExistentJumpMesh", { jumpHeight: 1 })).to.not.throw();
     });
   });
 }
