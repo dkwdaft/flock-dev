@@ -135,6 +135,18 @@ export function registerTextGenerators(javascriptGenerator) {
         "COLOR",
         javascriptGenerator.ORDER_ATOMIC,
       ) || '""';
+    const backgroundColorCode =
+      javascriptGenerator.valueToCode(
+        block,
+        "BACKGROUND_COLOR",
+        javascriptGenerator.ORDER_ATOMIC,
+      ) || '"#ffffff"';
+    const alphaCode =
+      javascriptGenerator.valueToCode(
+        block,
+        "ALPHA",
+        javascriptGenerator.ORDER_ATOMIC,
+      ) || "1";
 
     const textBlockVar = javascriptGenerator.nameDB_.getName(
       block.getFieldValue("TEXTBLOCK_VAR"),
@@ -149,6 +161,8 @@ export function registerTextGenerators(javascriptGenerator) {
             y: ${yCode},
             fontSize: ${fontSizeCode},
             color: ${colorCode},
+            backgroundColor: ${backgroundColorCode},
+            alpha: ${alphaCode},
             duration: ${durationCode},
             id: ${textBlockVar}
           });\n`;
@@ -421,7 +435,7 @@ export function registerTextGenerators(javascriptGenerator) {
             size: ${size},
             depth: ${depth},
             position: { x: ${x}, y: ${y}, z: ${z} },
-            modelId: '${meshId}'${doCode ? `,\n  callback: ${doCode}` : ""}
+            modelId: ${JSON.stringify(meshId)}${doCode ? `,\n  callback: ${doCode}` : ""}
           });\n`;
   };
 
