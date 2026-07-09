@@ -1172,6 +1172,7 @@ export default {
   workspace_search_placeholder: 'Buscar en el espacio',
   close: 'Cerrar',
   search_no_matching: 'No se encontraron bloques',
+  search_type_to_search: 'Escribe para buscar bloques',
   code_workspace_focused: 'Espacio de trabajo de código enfocado', // human
   interactive_element_label: 'Elemento interactivo', // human
   panel_resizer_focused:
@@ -1308,6 +1309,7 @@ export default {
   shortcut_toolbox_typing: 'Ir a la categoría',
   shortcut_toolbox_typing_hint: 'Empieza a escribir su nombre',
   shortcut_context_menu: 'Abrir menú contextual',
+  shortcut_toggle_block_toolbar: 'Mostrar/ocultar la barra de sugerencias del bloque',
   shortcut_duplicate_block: 'Duplicar bloque',
   shortcut_detach_block: 'Desconectar bloque',
   shortcut_comment_block: 'Mostrar/ocultar comentario',
