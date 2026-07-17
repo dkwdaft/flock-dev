@@ -13,6 +13,13 @@ const isMobile = () => {
   return /Mobi|Android|iPad/i.test(navigator.userAgent);
 };
 
+// Phones in landscape dock the gizmo toolbar beside the canvas rather than
+// below it. Must match the media query of the same shape in style.css.
+const gizmosBesideCanvas = () =>
+  window.matchMedia(
+    '(max-width: 1024px) and (orientation: landscape) and (max-height: 500px)',
+  ).matches;
+
 let pendingScrollBlockId = null;
 
 export function onResize(mode) {
@@ -61,7 +68,7 @@ function resizeCanvas() {
   if (!canvasArea || !canvas) return;
 
   const areaRect = canvasArea.getBoundingClientRect();
-  const areaWidth = Math.max(1, Math.round(areaRect.width));
+  let areaWidth = Math.max(1, Math.round(areaRect.width));
   let areaHeight = Math.max(1, Math.round(areaRect.height));
 
   if (flock.embedMode) {
@@ -88,9 +95,6 @@ function resizeCanvas() {
     }
 
     const syncEmbedFrame = () => {
-      const measuredCanvasWidth = Math.max(1, Math.round(canvas.getBoundingClientRect().width));
-      const playerWidth = Math.max(1, measuredCanvasWidth);
-
       const embedShell = document.getElementById('embedShell');
       if (embedShell) {
         embedShell.style.width = '100%';
@@ -135,7 +139,27 @@ function resizeCanvas() {
 
   const gizmoButtons = document.getElementById('gizmoButtons');
   if (gizmoButtons && gizmoButtons.style.display != 'none') {
-    areaHeight -= 60; //Gizmos visible
+    if (gizmosBesideCanvas()) {
+      // Docked to the right, so it costs width and the canvas keeps the full
+      // height. Measure the buttons rather than #gizmoButtons itself, which
+      // grows to fill whatever the canvas leaves and so can't size it.
+      const row = gizmoButtons.querySelector('.gizmo-buttons-inner');
+      const barStyle = getComputedStyle(gizmoButtons);
+      const padding =
+        (parseFloat(barStyle.paddingLeft) || 0) +
+        (parseFloat(barStyle.paddingRight) || 0);
+      const buttons = row ? row.getBoundingClientRect().width : 0;
+      areaWidth = Math.max(1, areaWidth - Math.round(buttons + padding));
+    } else {
+      areaHeight -= 60; //Gizmos visible
+      const status = document.getElementById('gizmoStatus');
+      if (status) {
+        const statusStyle = getComputedStyle(status);
+        const statusHeight =
+          status.getBoundingClientRect().height + (parseFloat(statusStyle.marginTop) || 0);
+        areaHeight = Math.max(1, areaHeight - Math.round(statusHeight));
+      }
+    }
   }
 
   // The bottom bar is position:fixed and #canvasArea is sized to the viewport,
@@ -249,23 +273,6 @@ function toggleMenu() {
 window.toggleMenu = toggleMenu;
 
 document.addEventListener('DOMContentLoaded', () => {
-  const requestFullscreen = () => {
-    const elem = document.documentElement;
-
-    if (elem.requestFullscreen) {
-      elem.requestFullscreen();
-    } else if (elem.mozRequestFullScreen) {
-      // For Firefox
-      elem.mozRequestFullScreen();
-    } else if (elem.webkitRequestFullscreen) {
-      // For Chrome, Safari, and Opera
-      elem.webkitRequestFullscreen(Element.ALLOW_KEYBOARD_INPUT);
-    } else if (elem.msRequestFullscreen) {
-      // For IE/Edge
-      elem.msRequestFullscreen();
-    }
-  };
-
   const isFullscreen = window.matchMedia('(display-mode: fullscreen)').matches;
 
   // No need to request fullscreen in PWA
@@ -500,18 +507,6 @@ window.matchMedia('(max-width: 1024px)').addEventListener('change', (e) => {
     onResize();
   }
 });
-
-// Modified toggle function to work with new approach
-function togglePanels() {
-  if (!isNarrowScreen()) {
-    return;
-  }
-  if (currentView === 'canvas') {
-    showCodeView();
-  } else {
-    showCanvasView();
-  }
-}
 
 // Updated play mode to work with new approach
 export function togglePlayMode() {
@@ -1102,7 +1097,7 @@ document.addEventListener('DOMContentLoaded', () => {
     returnBtn.addEventListener('click', async () => {
       try {
         await enterFs();
-      } catch (e) {
+      } catch {
         /* stay windowed; user still has the normal fullscreen button */
       }
       dismiss();
@@ -1136,7 +1131,7 @@ document.addEventListener('DOMContentLoaded', () => {
     recovering = true;
     try {
       await exitFs(); // allowed without a user gesture
-    } catch (e) {
+    } catch {
       /* ignore */
     }
     // Let the exit settle before prompting.

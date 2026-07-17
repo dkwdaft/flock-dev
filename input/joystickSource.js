@@ -5,7 +5,6 @@ export class JoystickSource {
   #inputManager;
   #onScreenSource;
   #canvas;
-  #baseEllipse;
   #thumbEllipse;
   #baseRadius;
   #thumbRadius;
@@ -28,11 +27,10 @@ export class JoystickSource {
   #boundPointerMove;
   #boundPointerUp;
 
-  constructor(inputManager, onScreenSource, { canvas, baseEllipse, thumbEllipse, baseRadius, thumbRadius = 0, scene } = {}) {
+  constructor(inputManager, onScreenSource, { canvas, thumbEllipse, baseRadius, thumbRadius = 0, scene } = {}) {
     this.#inputManager = inputManager;
     this.#onScreenSource = onScreenSource;
     this.#canvas = canvas;
-    this.#baseEllipse = baseEllipse;
     this.#thumbEllipse = thumbEllipse;
     this.#baseRadius = baseRadius;
     this.#thumbRadius = thumbRadius;
@@ -47,10 +45,7 @@ export class JoystickSource {
     if (this.#started) return;
     this.#started = true;
 
-    // Use Babylon's pre-pointer observable to suppress camera rotation for
-    // touches that land on the joystick or are already being tracked by it.
-    // This lets Babylon do its own bookkeeping (setPointerCapture, scene coords)
-    // while keeping the camera still during joystick use.
+    // Suppress Babylon camera rotation for touches on or tracked by the joystick.
     if (this.#scene) {
       this.#prePointerObserver = this.#scene.onPrePointerObservable.add((info) => {
         const pid = info.event.pointerId;
@@ -109,6 +104,14 @@ export class JoystickSource {
     this.#onScreenSource.resume();
   }
 
+  // Raw stick state for engine reads; zero while paused or in the dead zone.
+  getMove() {
+    if (this.#paused) return { x: 0, y: 0 };
+    const mag = Math.sqrt(this.#dx * this.#dx + this.#dy * this.#dy);
+    if (mag < DEAD_ZONE) return { x: 0, y: 0 };
+    return { x: this.#dx, y: this.#dy };
+  }
+
   releaseAll() {
     this.#heldForward = false;
     this.#heldBackward = false;
@@ -123,10 +126,7 @@ export class JoystickSource {
     this.#activePointerId = null;
   }
 
-  // Returns joystick base centre and radius in CSS/viewport pixels, which is
-  // the same space as event.clientX/Y and getBoundingClientRect().
-  // #baseRadius is stored in ADT device-pixel units (canvas.width space); the
-  // canvas.width/rect.width ratio converts it to CSS pixels.
+  // Base centre and radius in CSS pixels; #baseRadius is in device-pixel units.
   #computeBaseLayout() {
     const rect = this.#canvas.getBoundingClientRect();
     const r = this.#baseRadius * (rect.width / this.#canvas.width);

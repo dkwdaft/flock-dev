@@ -63,12 +63,12 @@ import { InputManager } from './input/inputManager.js';
 import { KeyboardSource } from './input/keyboardSource.js';
 import { OnScreenSource } from './input/onScreenSource.js';
 import { GamepadSource } from './input/gamepadSource.js';
+import { CameraControls } from './input/cameraControls.js';
 import { XRSource } from './input/xrSource.js';
 import { getBoundKeys } from './input/bindings.js';
 
 import {
   enableSceneDescription,
-  announce,
   announceSayText,
   announceObjectSay,
   getObjectLabel,
@@ -1264,83 +1264,16 @@ export const flock = {
       flock._hardResetCameraControls(flock.scene?.activeCamera);
     });
 
-    flock.engineReady = true;
-  },
-  setupGamepadCameraControls() {
-    if (!flock.scene) {
-      return;
-    }
-
-    const yawSpeed = 2.5;
-    const pitchSpeed = 2.0;
-    const flySpeed = 3.0;
-
-    if (flock._gamepadCameraObserver) {
-      flock.scene.onBeforeRenderObservable.remove(flock._gamepadCameraObserver);
-      flock._gamepadCameraObserver = null;
-    }
-
-    flock._gamepadCameraObserver = flock.scene.onBeforeRenderObservable.add(() => {
-      const rightX = flock.inputManager.getAxis('LOOK_X');
-      const rightY = flock.inputManager.getAxis('LOOK_Y');
-      const shoulderTurn = flock.inputManager.getAxis('TURN');
-      const yawInput = rightX + shoulderTurn;
-      // Left stick analog; fall back to D-pad shim keys for discrete D-pad input.
-      // Read keyboard state directly from _keyboardSource so that fly mode
-      // (which blocks WASD from InputManager to prevent user code seeing them)
-      // still drives camera movement.
-      const kb = flock._keyboardSource;
-      const moveX =
-        flock.inputManager.getAxis('MOVE_X') ||
-        (kb?.isKeyDown('d') ? 1 : kb?.isKeyDown('a') ? -1 : 0);
-      const moveY =
-        flock.inputManager.getAxis('MOVE_Y') ||
-        (kb?.isKeyDown('s') ? 1 : kb?.isKeyDown('w') ? -1 : 0);
-      if (!yawInput && !rightY && !moveX && !moveY) {
-        return;
-      }
-
-      if (flock._canvasControlsEnabled === false) {
-        return;
-      }
-
-      const camera = flock.scene.activeCamera;
-
-      if (!camera) {
-        return;
-      }
-
-      const deltaTime = (flock.engine?.getDeltaTime?.() ?? 16) / 1000;
-      const yawDelta = yawInput * yawSpeed * deltaTime;
-      const pitchDelta = rightY * pitchSpeed * deltaTime;
-
-      const cameraType = camera.getClassName?.();
-
-      if (cameraType === 'ArcRotateCamera') {
-        camera.alpha -= yawDelta;
-        camera.beta -= pitchDelta;
-
-        const lowerBeta = camera.lowerBetaLimit ?? 0.01;
-        const upperBeta = camera.upperBetaLimit ?? Math.PI - 0.01;
-
-        camera.beta = Math.min(upperBeta, Math.max(lowerBeta, camera.beta));
-      } else {
-        camera.rotation.y += yawDelta;
-        camera.rotation.x += pitchDelta;
-
-        const minPitch = -Math.PI / 2 + 0.01;
-        const maxPitch = Math.PI / 2 - 0.01;
-
-        camera.rotation.x = Math.min(maxPitch, Math.max(minPitch, camera.rotation.x));
-
-        if (moveX || moveY) {
-          const forward = camera.getDirection(new flock.BABYLON.Vector3(0, 0, 1));
-          const right = camera.getDirection(new flock.BABYLON.Vector3(1, 0, 0));
-          camera.position.addInPlace(forward.scale(-moveY * flySpeed * deltaTime));
-          camera.position.addInPlace(right.scale(moveX * flySpeed * deltaTime));
-        }
-      }
+    // macOS suppresses keyup for keys released while ⌘ is held; Babylon's
+    // camera keyboard input keeps them in _keys, so the camera would drift
+    // until the next blur. Clear its held keys when ⌘ comes up.
+    flock.canvas.addEventListener('keyup', (e) => {
+      if (e.key !== 'Meta') return;
+      const kb = flock.scene?.activeCamera?.inputs?.attached?.keyboard;
+      if (kb?._keys) kb._keys.length = 0;
     });
+
+    flock.engineReady = true;
   },
   _scheduleContextEscalation() {
     clearTimeout(flock._escalationTimer);
@@ -1417,7 +1350,7 @@ export const flock = {
 
     if (flock.memoryDebug)
       if (flock.hk) {
-        const [result, stats] = flock.hk._hknp.HP_GetStatistics();
+        const [, stats] = flock.hk._hknp.HP_GetStatistics();
 
         const [
           numBodies,
@@ -1456,15 +1389,19 @@ export const flock = {
                 md.heightmapBody._pluginData.hpBodyId
               );
             }
-          } catch (e) {
+          } catch {
             /* ignore */
           }
           try {
             md.heightmapBody?.dispose();
-          } catch {}
+          } catch {
+            /* already disposed */
+          }
           try {
             md.heightmapShape?.dispose();
-          } catch {}
+          } catch {
+            /* already disposed */
+          }
           md.heightmapBody = null;
           md.heightmapShape = null;
         }
@@ -1487,10 +1424,8 @@ export const flock = {
         flock.inputManager.resetActionKeys();
         detachInteractIndicator();
 
-        if (flock._gamepadCameraObserver) {
-          flock.scene.onBeforeRenderObservable.remove(flock._gamepadCameraObserver);
-          flock._gamepadCameraObserver = null;
-        }
+        flock._cameraControls?.stop();
+        flock._cameraControls = null;
 
         if (flock._gamepadButtonObserver) {
           flock.scene.onBeforeRenderObservable.remove(flock._gamepadButtonObserver);
@@ -1718,7 +1653,9 @@ export const flock = {
           if (!shape?._isDisposed) {
             try {
               shape.dispose();
-            } catch (e) {}
+            } catch {
+              /* already disposed */
+            }
           }
         }
 
@@ -2053,7 +1990,8 @@ export const flock = {
     });
     flock._gamepadSource.start();
     flock._onScreenSource.start(flock.scene);
-    flock.setupGamepadCameraControls();
+    flock._cameraControls = new CameraControls(flock);
+    flock._cameraControls.start();
     // Set up lighting
     const hemisphericLight = new flock.BABYLON.HemisphericLight(
       'hemisphericLight',

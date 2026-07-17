@@ -1155,13 +1155,13 @@ export default {
   fly_camera_instructions_touch:
     'ℹ️ Kamera lotu, użyj sterowania na ekranie i przeciągnij, aby się rozejrzeć',
   select_mesh_delete_prompt: 'ℹ️ Kliknij obiekt, aby go usunąć.',
-  select_mesh_duplicate_prompt:
-    'ℹ️ Wybierz obiekt do powielenia, a następnie kliknij, aby umieścić kopie.',
+  select_mesh_duplicate_prompt: 'ℹ️ Wybierz obiekt do powielenia.',
+  place_duplicate_prompt: 'ℹ️ Kliknij, aby umieścić kopię.', // AI-generated; needs validation
   select_mesh_eye_prompt: 'ℹ️ Kliknij obiekt, aby go okrążyć.',
   place_object_prompt: 'ℹ️ Kliknij na powierzchnię, aby umieścić obiekt.',
   position_readout: 'Pozycja: {position}',
   eyedropper_not_supported_alert:
-    'Narzędzie próbnika kolorów nie jest obsługiwane w tej przeglądarce. Spróbuj użyć Chrome lub Edge.',
+    'Wybieranie koloru jest dostępne w Chrome/Edge na komputerze.', // ai
   blocks_copied_alert: 'Bloki skopiowane do pamięci lokalnej!',
   no_blocks_to_copy_alert: 'Brak bloków do skopiowania.',
   copy_blocks_failed_alert: 'Nie udało się skopiować bloków.',
@@ -1267,11 +1267,11 @@ export default {
   shortcut_quick_colour: 'Szybkie użycie koloru w selektorze kolorów',
   shortcut_delete_object: 'Usuń obiekt',
 
-  axis_x: 'Oś X',
-  axis_y: 'Oś Y',
-  axis_z: 'Oś Z',
-  axis_free: 'Swobodnie',
-  axis_all: 'Jednolicie (wszystkie osie)',
+  // AI-generated; needs validation
+  axis_lock_x: 'Klawiatura zablokowana na osi X',
+  axis_lock_y: 'Klawiatura zablokowana na osi Y',
+  axis_lock_z: 'Klawiatura zablokowana na osi Z',
+  axis_lock_all: 'Zmiana rozmiaru na wszystkich osiach',
 
   // Keyboard shortcuts panel — category names
   shortcut_category_main: 'Ogólne',

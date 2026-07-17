@@ -1159,13 +1159,13 @@ export default {
   fly_camera_instructions_touch:
     "ℹ️ Caméra en vol, utilisez les commandes à l'écran et faites glisser pour regarder autour",
   select_mesh_delete_prompt: 'ℹ️ Cliquez sur un objet pour le supprimer.',
-  select_mesh_duplicate_prompt:
-    'ℹ️ Sélectionnez un objet à dupliquer, puis cliquez pour placer les copies.',
+  select_mesh_duplicate_prompt: 'ℹ️ Sélectionnez un objet à dupliquer.',
+  place_duplicate_prompt: 'ℹ️ Cliquez pour placer une copie.', // AI-generated; needs validation
   select_mesh_eye_prompt: "ℹ️ Cliquez sur un objet pour orbiter autour de lui.",
   place_object_prompt: "ℹ️ Cliquez sur une surface pour placer l'objet.",
   position_readout: 'Position: {position}',
   eyedropper_not_supported_alert:
-    "L'outil pipette n'est pas pris en charge dans ce navigateur. Essayez d'utiliser Chrome ou Edge.",
+    'La sélection de couleur est disponible dans Chrome/Edge sur ordinateur.', // ai
   blocks_copied_alert: 'Blocs copiés dans le stockage local !',
   no_blocks_to_copy_alert: 'Aucun bloc à copier.',
   copy_blocks_failed_alert: 'Échec de la copie des blocs.',
@@ -1274,11 +1274,11 @@ export default {
   shortcut_quick_colour: 'Utiliser rapidement une couleur dans le sélecteur',
   shortcut_delete_object: "Supprimer l'objet",
 
-  axis_x: 'Axe X',
-  axis_y: 'Axe Y',
-  axis_z: 'Axe Z',
-  axis_free: 'Libre',
-  axis_all: 'Uniforme (tous les axes)',
+  // AI-generated; needs validation
+  axis_lock_x: "Clavier verrouillé sur l'axe X",
+  axis_lock_y: "Clavier verrouillé sur l'axe Y",
+  axis_lock_z: "Clavier verrouillé sur l'axe Z",
+  axis_lock_all: 'Redimensionnement sur tous les axes',
 
   // Keyboard shortcuts panel — category names
   shortcut_category_main: 'Général',
