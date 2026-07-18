@@ -57,7 +57,7 @@ import { getMicrobitManager, setFlockReference as setFlockMicrobitManager } from
 import { flockMath, setFlockReference as setFlockMath } from './api/math';
 import { flockSensing, setFlockReference as setFlockSensing } from './api/sensing';
 import { translate } from './main/translation.js';
-import { handleError, dismissBanner, showBanner } from './ui/notifications.js';
+import { handleError, dismissBanner, showBanner, markReported } from './ui/notifications.js';
 import { attachInteractIndicator, detachInteractIndicator } from './ui/interactIndicator.js';
 import { InputManager } from './input/inputManager.js';
 import { KeyboardSource } from './input/keyboardSource.js';
@@ -137,9 +137,11 @@ export const flock = {
   canvas: null,
   abortController: null,
   _renderLoop: null,
+  _renderLoopStopped: false,
   _contextLostAt: null,
   _escalationTimer: null,
   _webglVisibilityListenerAdded: false,
+  _webglContextLostListenerAdded: false,
   _audioVisibilityListenerAdded: false,
   _audioSuspendedByVisibility: false,
   document: document,
@@ -181,28 +183,75 @@ export const flock = {
   // onBlockError lets the UI show a translated message from key + values.
   onBlockError: null,
   _debugLogging: undefined,
-  // Console output is opt-in via the ?debug=true URL param.
+  // Testing phase: warnings ON by default (?debug=false silences).
+  // TODO: revert to opt-in (`=== 'true'`, default false) after testing.
   isDebugLoggingEnabled() {
     if (flock._debugLogging === undefined) {
       try {
         flock._debugLogging =
-          new URLSearchParams(window.location.search).get('debug') === 'true';
+          new URLSearchParams(window.location.search).get('debug') !== 'false';
       } catch {
-        flock._debugLogging = false;
+        flock._debugLogging = true;
       }
     }
     return flock._debugLogging;
   },
   reportBlockError({ key, values = {}, api, error } = {}) {
-    if (error?.name === 'AbortError') return;
+    // A caught value can come straight from user code, so classify and report
+    // through safe primitives rather than its own getters.
+    const safe = error == null ? undefined : flock.sanitizeError(error);
+    if (safe?.name === 'AbortError') return;
+    // A stack overflow is nearly always runaway user recursion; report it as
+    // such. Message differs by engine (V8 "call stack", Firefox "recursion").
+    if (
+      (safe?.name === 'RangeError' || safe?.name === 'InternalError') &&
+      /call stack|recursion/i.test(safe.message)
+    ) {
+      key = 'recursion_too_deep';
+    }
+    // One fault can fire in a burst — a stack-overflow cascade surfaces several
+    // times, and a per-frame loop error repeats endlessly. Collapse identical
+    // reports within a short window.
+    const now = Date.now();
+    const sig = `${key}\0${api ?? ''}\0${safe?.message ?? ''}`;
+    if (sig === flock._lastErrorSig && now - flock._lastErrorAt < 1000) {
+      return;
+    }
+    flock._lastErrorSig = sig;
+    flock._lastErrorAt = now;
     if (flock.isDebugLoggingEnabled()) {
-      console.warn(`[flock] ${api ?? 'block'}: ${key}`, values, error ?? '');
+      console.warn(`[flock] ${api ?? 'block'}: ${key}`, values, safe ?? '');
     }
     try {
-      flock.onBlockError?.({ key, values, api, error });
+      flock.onBlockError?.({ key, values, api, error: safe });
     } catch {
       // a broken listener must not break the swallow path
     }
+  },
+  // User code can throw any value, including an object whose name/message/stack
+  // getters throw or return non-strings. Read each once, defensively, into a
+  // plain Error so host handlers touch only safe primitives. (A getter that
+  // hangs rather than throws can't be defended against — that's a self-inflicted
+  // hang, like any infinite loop in user code.)
+  sanitizeError(error) {
+    const read = (get) => {
+      try {
+        const v = get();
+        return v == null ? '' : String(v);
+      } catch {
+        return '';
+      }
+    };
+    // A thrown primitive (e.g. `throw "bad input"`) has no .message, so use the
+    // value itself rather than losing the text.
+    const isPrimitive =
+      error == null || (typeof error !== 'object' && typeof error !== 'function');
+    const safe = new Error(
+      isPrimitive ? read(() => error) : read(() => error?.message)
+    );
+    safe.name = isPrimitive ? 'Error' : read(() => error?.name) || 'Error';
+    safe.stack = isPrimitive ? '' : read(() => error?.stack);
+    return safe;
   },
   requireMesh(target, { api, name } = {}) {
     if (target instanceof flock.BABYLON.AbstractMesh) return true;
@@ -439,6 +488,7 @@ export const flock = {
     flock.havokAbortHandled = true;
 
     try {
+      flock._renderLoopStopped = true;
       if (flock._renderLoop) {
         flock.engine?.stopRenderLoop(flock._renderLoop);
       } else {
@@ -728,8 +778,10 @@ export const flock = {
       sesScript.text = sesText;
       doc.head.appendChild(sesScript);
 
-      // lockdown the iframe realm
-      win.lockdown();
+      // Lock down the iframe realm. Disable SES's own unhandled-rejection
+      // reporter (the SES_UNHANDLED_REJECTION console dump); the win backstop
+      // below handles those and routes them to the friendly warn path.
+      win.lockdown({ unhandledRejectionTrapping: 'none' });
 
       // initialise scene
       await this.initializeNewScene?.();
@@ -851,16 +903,25 @@ export const flock = {
 
       Object.freeze(endowments);
 
-      // Wrap user code to allow top-level await
-      /*const wrapped =
-                                '(async () => {\n"use strict";\n' +
-                                code +
-                                "\n})()\n//# sourceURL=user-code.js";*/
-
       const wrapped =
         '(async function () {\n"use strict";\n' +
         code +
         '\n}).call(undefined)\n//# sourceURL=user-code.js';
+
+      // Compartment errors surface on `win` (the iframe realm), not the parent;
+      // preventDefault stops SES double-reporting.
+      win.addEventListener('unhandledrejection', (ev) => {
+        ev.preventDefault?.();
+        const error = flock.sanitizeError(ev.reason);
+        if (error.name === 'AbortError') return;
+        flock.reportBlockError({ key: 'unhandled_rejection', api: 'user-code', error });
+      });
+      win.addEventListener('error', (ev) => {
+        ev.preventDefault?.();
+        const error = flock.sanitizeError(ev.error ?? ev.message);
+        if (error.name === 'AbortError') return;
+        flock.reportBlockError({ key: 'uncaught_error', api: 'user-code', error });
+      });
 
       // Evaluate in SES Compartment
       const c = new win.Compartment(endowments);
@@ -879,11 +940,18 @@ export const flock = {
         (document.getElementById('renderCanvas') || doc.getElementById('renderCanvas'))?.focus();
       }
     } catch (error) {
-      const enhancedError = this.createEnhancedError?.(error, code) ?? error;
+      // Read the (possibly user-thrown) error through safe primitives here;
+      // re-throw the original so downstream identity checks (e.g. isBenignAbort's
+      // WebAssembly.RuntimeError test for physics OOM) still work.
+      const safe = this.sanitizeError?.(error) ?? error;
+      const enhancedError = this.createEnhancedError?.(safe, code) ?? safe;
       console.error('Enhanced error details:', enhancedError);
 
       try {
-        this.audioContext?.close?.();
+        // Abort first: start-block timers otherwise outlive the teardown.
+        this.abortController?.abort?.();
+        // stopAllSounds honours the context ownership rules; close() does not.
+        this.stopAllSounds?.();
         this.engine?.stopRenderLoop?.();
         this.removeEventListeners?.();
       } catch (cleanupError) {
@@ -1325,17 +1393,27 @@ export const flock = {
     flock.engine?.dispose();
     flock.engine = null;
 
-    flock.engine = new flock.BABYLON.Engine(flock.canvas, true, {
-      preserveDrawingBuffer: true,
-      stencil: true,
-      powerPreference: 'default',
-    });
+    try {
+      flock.engine = new flock.BABYLON.Engine(flock.canvas, true, {
+        preserveDrawingBuffer: true,
+        stencil: true,
+        powerPreference: 'default',
+      });
+    } catch (error) {
+      // WebGL unavailable or blacklisted: a device problem, not the project's.
+      handleError(error, { source: 'webgl-lost', fatal: true });
+      throw markReported(error);
+    }
 
     flock.engine.disableUniformBuffers = true; // Meshes with alpha black on Samsung A14
-    // Call preventDefault() on the raw event so the browser is willing to restore.
-    flock.canvas.addEventListener('webglcontextlost', (event) => {
-      event.preventDefault();
-    });
+
+    if (!flock._webglContextLostListenerAdded) {
+      flock._webglContextLostListenerAdded = true;
+      // Call preventDefault() on the raw event so the browser is willing to restore.
+      flock.canvas.addEventListener('webglcontextlost', (event) => {
+        event.preventDefault();
+      });
+    }
 
     flock.engine.onContextLostObservable.add(() => {
       flock._contextLostAt = Date.now();
@@ -1353,7 +1431,9 @@ export const flock = {
       flock._contextLostAt = null;
       dismissBanner('webgl-lost');
       flock.engine.resize();
-      if (flock._renderLoop) {
+      // Don't resume behind the stopped overlay if Stop was pressed while the
+      // context was lost.
+      if (flock._renderLoop && !flock._renderLoopStopped) {
         flock.engine.runRenderLoop(flock._renderLoop);
       }
     });
@@ -1810,6 +1890,7 @@ export const flock = {
               return;
             }
             flock.audioEngine = audioEngine;
+            dismissBanner('audio');
             flock.audioContext = audioEngine._audioContext ?? flock.audioContext;
             flock.globalStartTime = flock.audioContext?.currentTime ?? 0;
             if (flock.scene?.activeCamera) {
@@ -1831,6 +1912,7 @@ export const flock = {
         console.warn('[flock] Audio engine unavailable:', err);
         flock.audioEngine = null;
         flock.audioEnginePromise = Promise.resolve();
+        showBanner('audio', { message: translate('error_audio') });
       }
     }
     return flock.audioEnginePromise;
@@ -1938,6 +2020,7 @@ export const flock = {
           return;
         }
         // Stop the loop so a crash doesn't re-fire every frame.
+        flock._renderLoopStopped = true;
         flock.engine?.stopRenderLoop(flock._renderLoop);
         handleError(error, { source: 'project-run', fatal: false });
       }
@@ -2018,6 +2101,7 @@ export const flock = {
     }
 
     // Start the render loop now that a camera exists
+    flock._renderLoopStopped = false;
     flock.engine.runRenderLoop(flock._renderLoop);
     flock._gamepadSource = new GamepadSource(flock.inputManager, {
       scene: flock.scene,

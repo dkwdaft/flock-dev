@@ -980,6 +980,7 @@ export default {
 
   en_GB_option: 'English (UK)',
   en_US_option: 'English (US)',
+  es_option: 'Spanish',
 
   ADD_option: 'add',
   REPLACE_option: 'replace',
@@ -1211,6 +1212,7 @@ export default {
     'Physics engine ran out of memory. Try reducing the number of physics objects or reloading your project.',
   runtime_error_message: 'Error: {message}',
   error_audio: 'Sound is not available on this device. Your project will run without audio.',
+  error_speech: 'Speech is not available right now. Your project will run without spoken words.',
   error_startup: "Flock couldn't start up. Try reloading the page.",
   error_project_crash:
     'Your project hit a problem. Press Stop, check your blocks, then press Play again.',
@@ -1220,6 +1222,12 @@ export default {
     'Your project ran out of memory. Try reloading the page and using fewer blocks.',
   error_design_mode_offline:
     'Design mode needs an internet connection the first time you use it. Connect and try again.',
+  // Block error messages (onBlockError key → text). Keys match the `key`
+  // passed to flock.reportBlockError so a handler can look them up directly.
+  recursion_too_deep:
+    'A function kept calling itself, so it was stopped. Check that it can finish.',
+  unhandled_rejection: 'Something went wrong while your project was running.',
+  uncaught_error: 'Something went wrong while your project was running.',
   banner_reload: 'Reload',
   banner_dismiss: 'Dismiss',
   xr_mode_message: 'XR Mode!',
