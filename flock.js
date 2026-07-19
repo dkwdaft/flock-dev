@@ -474,11 +474,59 @@ export const flock = {
       }
     });
   },
+  // Havok's wasm needs WebAssembly SIMD, which iOS Safari only has from 16.4.
+  // Older engines can't parse the v128 return type in this module's type
+  // section, so validate() is false there and true everywhere Havok can run.
+  isWasmSimdSupported() {
+    if (flock._wasmSimdSupported === undefined) {
+      try {
+        flock._wasmSimdSupported =
+          typeof WebAssembly !== 'undefined' &&
+          WebAssembly.validate(
+            new Uint8Array([
+              0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8, 0, 65,
+              0, 253, 15, 253, 98, 11,
+            ])
+          );
+      } catch {
+        // A throwing validate() means the engine can't handle the module at all.
+        flock._wasmSimdSupported = false;
+      }
+    }
+    return flock._wasmSimdSupported;
+  },
   isPhysicsMemoryAbort(error) {
     const message = `${error?.message ?? error}`.toLowerCase();
     const isWasmRuntimeError =
       typeof WebAssembly !== 'undefined' && error instanceof WebAssembly.RuntimeError;
+    // Emscripten wraps a wasm parse failure as "Aborted(CompileError: …)".
+    // That's a missing capability, not memory pressure.
+    if (message.includes('compileerror') || !flock.isWasmSimdSupported()) {
+      return false;
+    }
     return message.includes('out of memory') || (isWasmRuntimeError && message.includes('abort'));
+  },
+  // Loader is injectable so tests can assert the wasm is never fetched when
+  // the device can't run it.
+  async ensurePhysicsInstance(loadHavok = HavokPhysics) {
+    if (!flock.isWasmSimdSupported()) {
+      const error = new Error('WebAssembly SIMD is unavailable, so Havok physics cannot start.');
+      handleError(error, { source: 'physics-unsupported' });
+      throw markReported(error);
+    }
+
+    // Callers that arrive together share one in-flight load, so a second
+    // caller can't start a duplicate wasm instance and leak the loser.
+    if (!flock.havokInstance) {
+      flock._havokInstancePromise ??= loadHavok();
+      try {
+        flock.havokInstance = await flock._havokInstancePromise;
+      } finally {
+        flock._havokInstancePromise = undefined;
+      }
+    }
+
+    return flock.havokInstance;
   },
   handlePhysicsOutOfMemory(error) {
     if (flock.havokAbortHandled) {
@@ -1318,13 +1366,15 @@ export const flock = {
       'touchend',
       (event) => {
         if (event.touches.length === 0) {
-          const input = flock.scene.activeCamera.inputs?.attached?.pointers;
-          // Add null check for input itself
+          // Canvas is touchable before the first run and after disposal, when
+          // there is no scene yet.
+          const camera = flock.scene?.activeCamera;
+          const input = camera?.inputs?.attached?.pointers;
           if (
             input &&
             (input._pointA !== null || input._pointB !== null || input._isMultiTouch === true)
           ) {
-            flock._hardResetCameraControls(flock.scene.activeCamera, {
+            flock._hardResetCameraControls(camera, {
               reattachDelayMs: 100,
               noPreventDefault: true,
             });
@@ -2042,9 +2092,7 @@ export const flock = {
     flock._subtitleTimer = null;
 
     // Enable physics
-    if (!flock.havokInstance) {
-      flock.havokInstance = await HavokPhysics();
-    }
+    await flock.ensurePhysicsInstance();
     flock.hk = new flock.BABYLON.HavokPlugin(true, flock.havokInstance);
     flock.scene.enablePhysics(new flock.BABYLON.Vector3(0, -9.81, 0), flock.hk);
     setFlockCSG(flock);
