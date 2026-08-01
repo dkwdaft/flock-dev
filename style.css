@@ -717,29 +717,24 @@ button {
   font-weight: bold;
 }
 
-/* One coordinate, styled like the value field on a block. Border colour is set
-   inline, from AXIS_HEX. */
-.gizmo-status__pill {
+.gizmo-status__reading {
   display: inline-block;
-  padding: 0 5px;
-  border: 2px solid;
-  border-radius: 999px;
-  /* Digits are cap-height against the labels' x-height, so they read bigger at
-     a matching size. */
-  font-size: 0.9em;
-  line-height: 1.25;
-  background: var(--color-bg);
-  color: var(--color-text);
-  /* Steady size and digit width, so 0.6 -> 0 doesn't shift the pills beside it. */
-  box-sizing: border-box;
-  min-width: 2.75rem;
-  text-align: center;
+  /* Steady width and digit width, so 1.2 -> 0 doesn't shift the axis beside it. */
+  min-width: 4.5rem;
   font-variant-numeric: tabular-nums;
 }
 
-/* Separate from #gizmoButtons's own display (toggled directly via inline
-   style in view.js for show/hide) so the mobile layout below can safely
-   switch this to a grid without an inline style winning the cascade. */
+/* --axis-color is set inline, from AXIS_HEX. */
+.gizmo-status__reading::before {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 0.95em;
+  margin-right: 6px;
+  vertical-align: -0.12em;
+  background: var(--axis-color);
+}
+
 .gizmo-buttons-inner {
   display: flex;
   flex-wrap: wrap;
@@ -1117,19 +1112,36 @@ button {
   }
 }
 
-/* Narrow AND short: landscape at low resolutions (e.g. small laptop/tablet
-   windows) where there's no room beside the canvas to dock the info panel's
-   shortcuts panel. Portrait phones are narrow too, but tall enough that the
-   docked panel still fits, so this is scoped to landscape only. In this mode:
-   shortcuts open as a modal (.shortcuts-modal), the flock link moves into the
-   bottom bar, and Ctrl+B "area 5" drops out on its own (renderHighlights skips
-   0-size nodes). Selector is `aside#info-panel` (not just `#info-panel`) so it
-   out-specifies the base `#info-panel` rule, declared later in the file, which
-   would otherwise win the cascade. Must match the JS breakpoint used by
-   `isNarrowLayout()` in accessibility/keyboardui.js. */
+/* Landscape-only: at low resolutions there's no room beside the canvas to dock
+   the info panel (portrait is narrow too but tall enough to stay docked). Both
+   panels become modal and the flock link moves to the bottom bar. Must match
+   `isNarrowLayout()` in accessibility/keyboardui.js. `aside#info-panel`, not
+   `#info-panel`, is needed to out-specify the base rule further down the file. */
 @media (max-width: 1024px) and (orientation: landscape) {
+  /* contents, not none: children (the tab bar) still need to render, but shouldn't take a column in #canvasArea's row layout. */
   aside#info-panel {
+    display: contents;
+  }
+
+  #info-panel-body {
     display: none;
+  }
+
+  /* Fixed in the dead space below the gizmo block and above the bottom bar, so the canvas keeps its full height; ancestor-qualified for the same cascade reason as above. */
+  aside#info-panel #info-panel-tabs {
+    position: fixed;
+    /* Spans the canvas strip published as --canvas-width by resizeCanvas(); falls back to hugging the right edge before the first resize. */
+    left: var(--canvas-width, auto);
+    right: 0;
+    bottom: calc(52px + max(0px, env(safe-area-inset-bottom, 0px)));
+    z-index: 1001;
+    margin-bottom: 0;
+    justify-content: flex-end;
+  }
+
+  /* #bottombar-flocklink is the visible copy here (index.html); !important overrides the inline display showCanvasView() sets in main/view.js. */
+  #info-panel-tabs #flocklink {
+    display: none !important;
   }
 
   .bottombar-flocklink {
@@ -2253,7 +2265,7 @@ body.color-picker-open #renderCanvas {
 
 .shortcuts-entry {
   display: grid;
-  grid-template-columns: 33% 1fr;
+  grid-template-columns: 45% 1fr;
 }
 
 .shortcuts-entry dt,
@@ -2385,11 +2397,13 @@ kbd {
   margin-left: 0;
 }
 
-.shortcuts-decrease-btn span {
+.shortcuts-decrease-btn span,
+.player-decrease-btn span {
   font-size: 0.75em;
 }
 
-.shortcuts-increase-btn span {
+.shortcuts-increase-btn span,
+.player-increase-btn span {
   font-size: 1.1em;
 }
 
@@ -2406,6 +2420,63 @@ kbd {
 
 #shortcuts-list {
   margin-bottom: 1.5em;
+}
+
+#player-list {
+  font-size: 1.2em;
+  user-select: text;
+  margin-bottom: 1.5em;
+}
+
+.pc-keys {
+  display: flex;
+  gap: 3px;
+}
+
+/* Mirrors the on-screen pad: up centred above left / down / right. Placement is
+   explicit because auto-flow would put `left` beside `up` on the first row. */
+.pc-keys--dpad {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 3px;
+  width: max-content;
+}
+
+.pc-keys--dpad .pc-chip:nth-child(1) {
+  grid-area: 1 / 2;
+}
+
+.pc-keys--dpad .pc-chip:nth-child(2) {
+  grid-area: 2 / 1;
+}
+
+.pc-keys--dpad .pc-chip:nth-child(3) {
+  grid-area: 2 / 2;
+}
+
+.pc-keys--dpad .pc-chip:nth-child(4) {
+  grid-area: 2 / 3;
+}
+
+.pc-chip {
+  display: grid;
+  place-items: center;
+  width: 1.4em;
+  height: 1.4em;
+  border: 1px solid currentcolor;
+  border-radius: 4px;
+}
+
+.pc-chip svg {
+  display: block;
+  width: 1.1em;
+  height: 1.1em;
+}
+
+.player-controls-note {
+  margin: 1em 0 0;
+  font-size: 0.85em;
+  color: var(--color-muted);
 }
 
 /* Error notification banner */
