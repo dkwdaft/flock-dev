@@ -217,6 +217,13 @@
           pattern: 'generators/generators-material',
         },
         {
+          id: 'controlgenerators',
+          name: 'Control Generator Tests',
+          importPath: './generators-control.test.js',
+          importFn: 'runControlGeneratorTests',
+          pattern: 'generators/generators-control',
+        },
+        {
           id: 'axiskeyboard',
           name: 'Axis Keyboard Handler Tests',
           importPath: './axis-keyboard.test.js',
@@ -433,6 +440,13 @@
           importPath: './mesh-hierarchy.test.js',
           importFn: 'runMeshHierarchyTests',
           pattern: '@meshhierarchy',
+        },
+        {
+          id: 'blockmeshlive',
+          name: 'Live Mesh Update Tests',
+          importPath: './blockmeshlive.test.js',
+          importFn: 'runBlockmeshLiveTests',
+          pattern: '@blockmeshlive',
         },
         {
           id: 'math',

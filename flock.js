@@ -514,11 +514,18 @@ export const flock = {
     // Callers that arrive together share one in-flight load, so a second
     // caller can't start a duplicate wasm instance and leak the loser.
     if (!flock.havokInstance) {
-      flock._havokInstancePromise ??= loadHavok();
+      const pending = (flock._havokInstancePromise ??= loadHavok());
       try {
-        flock.havokInstance = await flock._havokInstancePromise;
+        const instance = await pending;
+        // Commit/clear only our own load: a mid-await reset (OOM) must not
+        // restore a stale instance, and a rejection must still allow a retry.
+        if (flock._havokInstancePromise === pending) {
+          flock.havokInstance = instance;
+        }
       } finally {
-        flock._havokInstancePromise = undefined;
+        if (flock._havokInstancePromise === pending) {
+          flock._havokInstancePromise = undefined;
+        }
       }
     }
 
@@ -549,7 +556,24 @@ export const flock = {
       console.log('Failed to dispose Havok instance during physics OOM handling:', e);
     }
 
+    // Clear the instance so the next run reloads a fresh one.
+    flock.hk = null;
+    flock.havokInstance = null;
+    flock._havokInstancePromise = undefined;
+
     handleError(error, { source: 'physics-oom', fatal: true });
+  },
+  // Counted-loop yield: scheduler.yield() resumes when the browser is free (not
+  // at the next paint); fall back to rAF where unavailable. Guarded like rAF so
+  // a stopped run never resumes.
+  makeLoopYield(guard) {
+    const schedulerYield = window.scheduler?.yield?.bind(window.scheduler) ?? null;
+    const requestAnimationFrame = window.requestAnimationFrame.bind(window);
+    return (callback) => {
+      const settle = guard(callback);
+      if (schedulerYield) schedulerYield().then(settle, settle);
+      else requestAnimationFrame(settle);
+    };
   },
   validateCode(code) {
     if (typeof code !== 'string') {
@@ -889,6 +913,7 @@ export const flock = {
       endowments.requestAnimationFrame = win.__flockWrapHostFn((callback) =>
         hostRequestAnimationFrame(guard(callback))
       );
+      endowments.__flockLoopYield = win.__flockWrapHostFn(flock.makeLoopYield(guard));
 
       endowments.Date = new win.Object();
       endowments.Date.now = win.Date.now.bind(win.Date);
