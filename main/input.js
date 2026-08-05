@@ -1,6 +1,13 @@
 import * as Blockly from 'blockly';
 import { translate } from './translation.js';
 import { focusToolboxRestoringCategory } from './toolboxfocus.js';
+import {
+  isRestorableWorkspaceNode,
+  rememberWorkspaceFocus,
+  focusRememberedWorkspaceNode,
+} from './workspaceFocus.js';
+
+const BLOCKS_WORKSPACE_LABEL = 'Blocks workspace';
 
 export function setupInput() {
   // Get the canvas element
@@ -153,20 +160,14 @@ export function setupInput() {
         // Force tabIndex=0 — Blockly's focus manager may have set it to -1
         workspaceGroup.setAttribute('tabindex', '0');
         workspaceGroup.setAttribute('role', 'group');
-        workspaceGroup.setAttribute('aria-label', 'Blocks workspace');
+        workspaceGroup.setAttribute('aria-label', BLOCKS_WORKSPACE_LABEL);
         pushUnique(workspaceGroup);
       }
 
-      // 6a) Workspace comments and block comment icons
-      document.querySelectorAll('g.blocklyComment').forEach((el) => {
-        if (!el.hasAttribute('tabindex') || el.tabIndex < 0) el.setAttribute('tabindex', '0');
-        if (!el.getAttribute('role')) el.setAttribute('role', 'group');
-        if (!el.getAttribute('aria-label')) el.setAttribute('aria-label', 'Workspace comment');
-        pushUnique(el);
-      });
-      document.querySelectorAll('textarea.blocklyCommentText').forEach(pushUnique);
+      // Workspace comments are deliberately not tab stops — Blockly's B/N stack
+      // navigation reaches them and supplies their ARIA.
 
-      // 6b) Trashcan + its flyout. The bin icon is ALWAYS a stop (Enter opens it when
+      // Trashcan + its flyout. The bin icon is ALWAYS a stop (Enter opens it when
       // closed, closes it when open). When the flyout is open, add its contents JUST
       // BEFORE the icon, so shift+tab off the icon drops into the code blocks and
       // tabbing forward into this region lands on the blocks, then the icon.
@@ -190,7 +191,7 @@ export function setupInput() {
         trashEl.setAttribute('tabindex', '0'); // focus manager may have set it to -1
         pushUnique(trashEl);
       }
-      // 6c) Shortcuts panel (when visible), then undo/redo/zoom
+      // Shortcuts panel (when visible), then undo/redo/zoom
 
       const shortcutsPanel = document.getElementById('shortcutsPanel');
       pushUnique(shortcutsPanel);
@@ -302,6 +303,9 @@ export function setupInput() {
         nextIndex = currentIndex === focusableElements.length - 1 ? 0 : currentIndex + 1;
       }
 
+      const focusManager = Blockly.getFocusManager?.();
+      rememberWorkspaceFocus();
+
       const nextElement = focusableElements[nextIndex];
       if (nextElement) {
         // Ensure element is still focusable before focusing
@@ -310,6 +314,14 @@ export function setupInput() {
             focusToolboxRestoringCategory();
           } else {
             nextElement.focus();
+            // Blockly restores the passive block when Tab arrives from another
+            // tree, but not from the trashcan (same tree) — fall back then.
+            if (
+              nextElement.getAttribute('aria-label') === BLOCKS_WORKSPACE_LABEL &&
+              !isRestorableWorkspaceNode(focusManager?.getFocusedNode?.())
+            ) {
+              focusRememberedWorkspaceNode();
+            }
           }
 
           // Announce for screen readers
@@ -322,7 +334,7 @@ export function setupInput() {
               translate('design_tool_label');
             const focusedMessage = translate('focused_element_suffix').replace('{name}', label);
             announceToScreenReader(focusedMessage);
-          } else if (nextElement.getAttribute('aria-label') === 'Blocks workspace') {
+          } else if (nextElement.getAttribute('aria-label') === BLOCKS_WORKSPACE_LABEL) {
             announceToScreenReader(translate('code_workspace_focused'));
           } else if (nextElement.tagName === 'BUTTON' || nextElement.tagName === 'LABEL') {
             const text =

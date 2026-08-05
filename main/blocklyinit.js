@@ -3,6 +3,7 @@ import { WorkspaceSearch } from '@blockly/plugin-workspace-search';
 import * as BlockDynamicConnection from '@blockly/block-dynamic-connection';
 import { initializeTheme } from './themes.js';
 import { translate } from './translation.js';
+import { focusRememberedWorkspaceNode } from './workspaceFocus.js';
 import {
   options,
   defineBlocks,
@@ -1730,7 +1731,9 @@ export function createBlocklyWorkspace() {
         }
       };
       const returnFocusToWorkspace = () => {
-        Blockly.getFocusManager?.()?.focusTree?.(workspace);
+        if (!focusRememberedWorkspaceNode()) {
+          Blockly.getFocusManager?.()?.focusTree?.(workspace);
+        }
       };
       trashIcon.addEventListener('keydown', (e) => {
         if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
@@ -1743,6 +1746,23 @@ export function createBlocklyWorkspace() {
           trashcan.performAction(); // gated open; no-op on an empty bin
         }
       });
+
+      // Blockly's Escape (hideChaff) is gated on a non-read-only workspace, so it
+      // never fires while focus is inside the read-only trash flyout. Capture it
+      // before the flyout's own key handling swallows the event.
+      document.addEventListener(
+        'keydown',
+        (e) => {
+          if (e.key !== 'Escape' || !trashcan.contentsIsOpen()) return;
+          const target = e.target instanceof Element ? e.target : document.activeElement;
+          if (!injectionDiv.contains(target)) return;
+          e.preventDefault();
+          e.stopPropagation();
+          trashcan.closeFlyout();
+          returnFocusToWorkspace();
+        },
+        true
+      );
 
       workspace.addChangeListener((e) => {
         // Dragging a block out of the trash restores it (BLOCK_CREATE); close the
