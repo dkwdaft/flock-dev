@@ -46,6 +46,9 @@ import {
 } from '../ui/blocklyutil.js';
 import { toolbox as toolboxDef } from '../toolbox.js';
 
+const mobileSearchMediaQuery = '(max-width: 768px), (max-width: 899px) and (pointer: coarse)';
+const isMobileSearchLayout = () => window.matchMedia(mobileSearchMediaQuery).matches;
+
 // Priority 0 — below the 'blocks' serializer's 20, so blocks exist before locks are re-applied.
 if (!Blockly.serialization.registry.getClass?.('flockLock')) {
   Blockly.serialization.registry.register('flockLock', {
@@ -167,7 +170,7 @@ if (!Blockly.serialization.registry.getClass?.('flockLock')) {
 let workspace = null;
 export { workspace };
 
-function installWorkspaceJumpDebug(workspace) {
+export function installWorkspaceJumpDebug(workspace) {
   if (!workspace || workspace.__jumpDebugInstalled) return;
   workspace.__jumpDebugInstalled = true;
 
@@ -179,6 +182,21 @@ function installWorkspaceJumpDebug(workspace) {
       };
     }
   });
+
+  // Also treat a direct tap on the canvas as a field interaction, so the jump is
+  // suppressed on the tap that opens a field editor, not just after it closes.
+  let lastCanvasPointerDown = null;
+  const parentSvg = workspace.getParentSvg?.();
+  if (parentSvg) {
+    parentSvg.addEventListener(
+      'pointerdown',
+      (e) => {
+        if (e.target.closest?.('.blocklyFlyout, .blocklyToolboxDiv')) return;
+        lastCanvasPointerDown = { timestamp: performance.now() };
+      },
+      true
+    );
+  }
 
   const workspaceScroll = workspace.scroll?.bind(workspace);
   if (workspaceScroll) {
@@ -193,19 +211,24 @@ function installWorkspaceJumpDebug(workspace) {
       const msSinceFieldEdit = lastFieldEdit
         ? Math.round(performance.now() - lastFieldEdit.timestamp)
         : null;
+      const msSinceCanvasPointerDown = lastCanvasPointerDown
+        ? Math.round(performance.now() - lastCanvasPointerDown.timestamp)
+        : null;
       const fromFocusScroll = stack.some(
         (line) => line.includes('scrollBoundsIntoView') || line.includes('onNodeFocus')
       );
       const largeHorizontalJump =
         typeof requestedX === 'number' && Math.abs(requestedX - beforeX) > 100;
+      const recentFieldInteraction =
+        (typeof msSinceFieldEdit === 'number' && msSinceFieldEdit < 1500) ||
+        (typeof msSinceCanvasPointerDown === 'number' && msSinceCanvasPointerDown < 800);
 
-      if (
-        fromFocusScroll &&
-        typeof msSinceFieldEdit === 'number' &&
-        msSinceFieldEdit < 1500 &&
-        largeHorizontalJump
-      ) {
-        return;
+      if (fromFocusScroll && recentFieldInteraction && largeHorizontalJump) {
+        // Keep X pinned (suppress the unwanted jump) but still apply Y —
+        // scrollBoundsIntoView bundles both into one call, and a wanted
+        // vertical correction shouldn't be dropped along with the horizontal one.
+        const requestedY = args[1];
+        return workspaceScroll(beforeX, typeof requestedY === 'number' ? requestedY : this.scrollY);
       }
 
       return workspaceScroll(...args);
@@ -742,7 +765,7 @@ export function initializeWorkspace() {
     searchInput.placeholder = translate('toolbox_search_placeholder');
 
     let originalParent = searchInput.parentElement;
-    const isMobile = () => window.matchMedia('(max-width: 768px)').matches;
+    const isMobile = isMobileSearchLayout;
     const isMobileResults = () => window.matchMedia('(max-width: 480px)').matches;
 
     // Get the toolbox search category (used to override matchBlocks and to
@@ -1054,8 +1077,7 @@ export function initializeWorkspace() {
     cancelBtn.addEventListener('mousedown', (e) => e.preventDefault());
     cancelBtn.addEventListener('click', closeOverlay);
 
-    // Close search overlay if screen resizes above tablet size (768px)
-    window.matchMedia('(max-width: 768px)').addEventListener('change', (e) => {
+    window.matchMedia(mobileSearchMediaQuery).addEventListener('change', (e) => {
       if (!e.matches && overlay.isConnected) closeOverlay();
     });
 
@@ -1097,8 +1119,7 @@ export function initializeWorkspace() {
   const originalOpen = workspaceSearch.open.bind(workspaceSearch);
   const originalClose = workspaceSearch.close.bind(workspaceSearch);
 
-  // Mobile workspace search bar (≤480px): full-width fixed bar with prev/next
-  const isMobileWS = () => window.matchMedia('(max-width: 768px)').matches;
+  const isMobileWS = isMobileSearchLayout;
 
   const wsMobileBar = document.createElement('div');
   wsMobileBar.className = 'ws-search-mobile-bar';
@@ -1187,7 +1208,7 @@ export function initializeWorkspace() {
   wsMobileClose.addEventListener('mousedown', (e) => e.preventDefault());
   wsMobileClose.addEventListener('click', () => workspaceSearch.close());
 
-  window.matchMedia('(max-width: 768px)').addEventListener('change', (e) => {
+  window.matchMedia(mobileSearchMediaQuery).addEventListener('change', (e) => {
     if (!e.matches && wsMobileBar.isConnected) workspaceSearch.close();
   });
 
