@@ -537,10 +537,25 @@
       import * as flockmodule from '../flock.js';
       import '@babylonjs/core/Debug/debugLayer';
       import '@babylonjs/inspector';
+      import { disableGltfValidation } from '../main/gltfvalidation.js';
+
+      // Importing the inspector forces glTF validation, whose validator is a
+      // CSP-blocked CDN fetch; stub it before any model loads, as the app does.
+      await disableGltfValidation();
 
       const flock = flockmodule.flock;
       window.__flockForLogging = flock; // Expose for test runner API logging
       flock.modelPath = '../models/';
+
+      // Absolute Draco URLs: flock.js uses relative './draco/', which resolves
+      // to the non-existent /tests/draco/ from this page.
+      flock.BABYLON.DracoCompression.Configuration = {
+        decoder: {
+          wasmUrl: '/draco/draco_wasm_wrapper_gltf.js',
+          wasmBinaryUrl: '/draco/draco_decoder_gltf.wasm',
+          fallbackUrl: '/draco/draco_decoder_gltf.js',
+        },
+      };
 
       await flock.initialize();
 
