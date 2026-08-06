@@ -81,6 +81,45 @@ const handleWindowResize = () => {
 window.addEventListener('resize', handleWindowResize);
 
 // Function to maintain a 16:9 aspect ratio for the canvas
+function getCanvasAvailableSize(canvasArea) {
+  const areaRect = canvasArea.getBoundingClientRect();
+  let areaWidth = Math.max(1, Math.round(areaRect.width));
+  let areaHeight = Math.max(1, Math.round(areaRect.height));
+  let horizontalChromeWidth = 0;
+
+  const gizmoButtons = document.getElementById('gizmoButtons');
+  if (gizmoButtons && getComputedStyle(gizmoButtons).display !== 'none') {
+    if (gizmosBesideCanvas()) {
+      const row = gizmoButtons.querySelector('.gizmo-buttons-inner');
+      const barStyle = getComputedStyle(gizmoButtons);
+      const padding =
+        (parseFloat(barStyle.paddingLeft) || 0) + (parseFloat(barStyle.paddingRight) || 0);
+      const buttons = row ? row.getBoundingClientRect().width : 0;
+      horizontalChromeWidth = Math.round(buttons + padding);
+      areaWidth = Math.max(1, areaWidth - horizontalChromeWidth);
+    } else {
+      areaHeight = Math.max(1, areaHeight - Math.ceil(gizmoButtons.scrollHeight));
+    }
+  }
+
+  const infoPanelTabs = document.getElementById('info-panel-tabs');
+  if (infoPanelTabs) {
+    const tabsRect = infoPanelTabs.getBoundingClientRect();
+    const tabsStyle = getComputedStyle(infoPanelTabs);
+    if (tabsRect.height > 0 && tabsStyle.position !== 'fixed') {
+      areaHeight = Math.max(1, areaHeight - Math.ceil(tabsRect.height));
+    }
+  }
+
+  const bottomBar = document.getElementById('bottomBar');
+  if (bottomBar && getComputedStyle(bottomBar).display !== 'none') {
+    const overlap = areaRect.bottom - bottomBar.getBoundingClientRect().top;
+    if (overlap > 0) areaHeight = Math.max(1, areaHeight - Math.round(overlap));
+  }
+
+  return { areaRect, areaWidth, areaHeight, horizontalChromeWidth };
+}
+
 function resizeCanvas() {
   const canvasArea = document.getElementById('canvasArea');
   const canvas = document.getElementById('renderCanvas');
@@ -90,10 +129,10 @@ function resizeCanvas() {
   // Hidden or collapsed (e.g. display:none in narrow-screen code view). Skip so
   // the buffer isn't shrunk to near-minimum; visibility paths re-resize.
   if (areaRect.width <= 0 || areaRect.height <= 0) return;
-  let areaWidth = Math.max(1, Math.round(areaRect.width));
-  let areaHeight = Math.max(1, Math.round(areaRect.height));
 
   if (flock.embedMode) {
+    let areaWidth = Math.max(1, Math.round(areaRect.width));
+    let areaHeight = Math.max(1, Math.round(areaRect.height));
     const aspectRatio = 16 / 9;
 
     const availableHeight = Math.max(1, areaHeight - 4);
@@ -160,39 +199,7 @@ function resizeCanvas() {
     return;
   }
 
-  const gizmoButtons = document.getElementById('gizmoButtons');
-  if (gizmoButtons && gizmoButtons.style.display != 'none') {
-    if (gizmosBesideCanvas()) {
-      // Docked to the right, so it costs width and the canvas keeps the full
-      // height. Measure the buttons rather than #gizmoButtons itself, which
-      // grows to fill whatever the canvas leaves and so can't size it.
-      const row = gizmoButtons.querySelector('.gizmo-buttons-inner');
-      const barStyle = getComputedStyle(gizmoButtons);
-      const padding =
-        (parseFloat(barStyle.paddingLeft) || 0) + (parseFloat(barStyle.paddingRight) || 0);
-      const buttons = row ? row.getBoundingClientRect().width : 0;
-      areaWidth = Math.max(1, areaWidth - Math.round(buttons + padding));
-    } else {
-      areaHeight -= 60; //Gizmos visible
-      const status = document.getElementById('gizmoStatus');
-      if (status) {
-        const statusStyle = getComputedStyle(status);
-        const statusHeight =
-          status.getBoundingClientRect().height + (parseFloat(statusStyle.marginTop) || 0);
-        areaHeight = Math.max(1, areaHeight - Math.round(statusHeight));
-      }
-    }
-  }
-
-  // The bottom bar is position:fixed and #canvasArea is sized to the viewport,
-  // so the bar overlaps canvasArea's lower edge rather than pushing it up. On
-  // short viewports that overlap eats into the gizmo strip, hiding the buttons.
-  // Subtract however much the bar intrudes so the canvas + gizmos sit above it.
-  const bottomBar = document.getElementById('bottomBar');
-  if (bottomBar && getComputedStyle(bottomBar).display !== 'none') {
-    const overlap = areaRect.bottom - bottomBar.getBoundingClientRect().top;
-    if (overlap > 0) areaHeight = Math.max(1, areaHeight - Math.round(overlap));
-  }
+  const { areaWidth, areaHeight } = getCanvasAvailableSize(canvasArea);
 
   const aspectRatio = 16 / 9;
 
@@ -637,10 +644,23 @@ const INSPECTOR_SEEN_POPUPS = [
   'Babylon/Inspector/TeachingMoments/Bar/bottom/right/User Feedback',
   'Babylon/Inspector/TeachingMoments/Bar/top/right/ExtensionList',
 ];
+const INSPECTOR_THEME_STORAGE_KEY = 'Babylon/Inspector/ThemeMode';
+const INSPECTOR_THEME_ICON_PATH_PREFIXES = ['M15.5 13.5A6.98', 'M10 2c.28 0 .5.22.5.5'];
 let inspectorExtrasObserver = null;
 let inspectorExtrasFrame = null;
 const INSPECTOR_FOCUSABLE_SELECTOR =
   'button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])';
+
+export const getInspectorThemeMode = (themeName = document.body.dataset.theme) =>
+  themeName === 'light' ? 'light' : 'dark';
+
+function syncInspectorTheme() {
+  try {
+    localStorage.setItem(INSPECTOR_THEME_STORAGE_KEY, JSON.stringify(getInspectorThemeMode()));
+  } catch {
+    // The Inspector can use its default when storage is unavailable.
+  }
+}
 
 export function focusInspector() {
   const inspector = document.getElementById('babylon-inspector-container');
@@ -709,6 +729,17 @@ export function collapseInspector({ preserveFocus = true } = {}) {
   return true;
 }
 
+export function isInspectorCollapsed() {
+  const inspector = document.getElementById('babylon-inspector-container');
+  if (!inspector) return false;
+
+  const visibleButtons = [...inspector.querySelectorAll('button')].filter((button) => {
+    const rect = button.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  });
+  return visibleButtons.length === 1;
+}
+
 document.addEventListener('flock-inspector-escape-request', (event) => {
   const inspector = document.getElementById('babylon-inspector-container');
   if (!inspector) return;
@@ -732,6 +763,9 @@ window.addEventListener(
   (event) => {
     if (
       event.key !== 'Escape' ||
+      // Only claim Escape when focus is inside the inspector; otherwise an open
+      // modal (About, Shortcuts panel) must handle it first.
+      !document.activeElement?.closest?.('#babylon-inspector-container') ||
       !document.querySelector(
         '#babylon-inspector-container button[id^="splitButton-"][id$="__primaryActionButton"]'
       )
@@ -776,11 +810,21 @@ function hideInspectorExtras() {
       const label = [button.getAttribute('aria-label'), button.title, tooltip]
         .filter(Boolean)
         .join(' ');
-      if (/extensions|forum|give feedback on inspector/i.test(label)) button.remove();
+      const iconPath = button.querySelector('svg path')?.getAttribute('d') ?? '';
+      const isThemeControl = INSPECTOR_THEME_ICON_PATH_PREFIXES.some((prefix) =>
+        iconPath.startsWith(prefix)
+      );
+      if (isThemeControl) {
+        (button.closest('.fui-SplitButton') ?? button).remove();
+      } else if (/extensions|forum|give feedback on inspector|select theme/i.test(label)) {
+        button.remove();
+      }
     });
 
     for (const tooltip of document.querySelectorAll('[id^="tooltip-"]')) {
-      if (!/extensions|forum|give feedback on inspector/i.test(tooltip.textContent)) continue;
+      if (!/extensions|forum|give feedback on inspector|select theme/i.test(tooltip.textContent)) {
+        continue;
+      }
       inspector
         ?.querySelector(`[aria-describedby="${CSS.escape(tooltip.id)}"]`)
         ?.closest('button')
@@ -811,7 +855,7 @@ export function hideInspector() {
   onResize('reset');
 }
 
-export async function showInspector({ focus = false } = {}) {
+export async function showInspector({ focus = false, collapsed = false } = {}) {
   if (!flock.scene || isNarrowScreen()) return false;
 
   // The inspector chunk is excluded from the service worker precache and
@@ -827,6 +871,7 @@ export async function showInspector({ focus = false } = {}) {
   }
 
   hideInspectorExtras();
+  syncInspectorTheme();
   const codePanel = document.getElementById('codePanel');
   if (!codePanel) return false;
 
@@ -841,6 +886,22 @@ export async function showInspector({ focus = false } = {}) {
 
   await disableGltfValidation();
 
+  if (collapsed && inspector) {
+    inspector.style.visibility = 'hidden';
+    try {
+      let collapseTriggered = false;
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        if (!collapseTriggered) {
+          collapseTriggered = collapseInspector({ preserveFocus: false });
+        }
+        if (collapseTriggered && isInspectorCollapsed()) break;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    } finally {
+      inspector.style.visibility = '';
+    }
+  }
+
   if (focus) {
     for (let attempt = 0; attempt < 10; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -852,6 +913,16 @@ export async function showInspector({ focus = false } = {}) {
   onResize('reset');
   return true;
 }
+
+document.addEventListener('flock-theme-changed', async (event) => {
+  if (!flock.scene?.debugLayer?.isVisible()) return;
+  if (getInspectorThemeMode(event.detail?.previousThemeName) === getInspectorThemeMode()) return;
+
+  const inspector = document.getElementById('babylon-inspector-container');
+  const restoreFocus = inspector?.contains(document.activeElement) ?? false;
+  hideInspector();
+  await showInspector({ focus: restoreFocus });
+});
 
 export async function toggleInspector({ focus = false } = {}) {
   if (flock.scene?.debugLayer?.isVisible()) {
@@ -992,6 +1063,7 @@ class PanelResizer {
     // gizmo toolbar's natural width so its buttons never wrap onto a second row.
     this.minPanelFloor = 300;
     this.minCanvasWidth = this.minPanelFloor;
+    this.maxCanvasWidth = Infinity;
     this.touchActivationPointerId = null;
     this.touchActivationStartX = 0;
     this.touchActivationStartY = 0;
@@ -1056,6 +1128,7 @@ class PanelResizer {
 
     // Cache the gizmo-based minimum once per drag (button set is stable mid-drag).
     this.minCanvasWidth = this.getMinCanvasWidth();
+    this.maxCanvasWidth = Math.max(this.startCanvasWidth, this.getMaxCanvasWidth());
 
     // Add visual feedback
     document.body.style.cursor = 'col-resize';
@@ -1140,21 +1213,19 @@ class PanelResizer {
 
     const mainRect = this.mainContent.getBoundingClientRect();
 
-    const newCanvasWidth = this.startCanvasWidth + deltaX;
-    const newCodeWidth = this.startCodeWidth - deltaX;
+    const panelWidth = this.startCanvasWidth + this.startCodeWidth;
+    const maxCanvasWidth = Math.min(this.maxCanvasWidth, panelWidth - this.minPanelFloor);
+    const newCanvasWidth = Math.min(
+      maxCanvasWidth,
+      Math.max(this.minCanvasWidth, this.startCanvasWidth + deltaX)
+    );
+    const newCodeWidth = panelWidth - newCanvasWidth;
+    const totalWidth = mainRect.width;
 
-    // Ensure minimum widths (canvas side must keep the gizmo row on one line)
-    if (newCanvasWidth >= this.minCanvasWidth && newCodeWidth >= this.minPanelFloor) {
-      const totalWidth = mainRect.width;
-      const canvasFlexBasis = (newCanvasWidth / totalWidth) * 100;
-      const codeFlexBasis = (newCodeWidth / totalWidth) * 100;
+    this.canvasArea.style.flex = `0 0 ${(newCanvasWidth / totalWidth) * 100}%`;
+    this.codePanel.style.flex = `0 0 ${(newCodeWidth / totalWidth) * 100}%`;
 
-      this.canvasArea.style.flex = `0 0 ${canvasFlexBasis}%`;
-      this.codePanel.style.flex = `0 0 ${codeFlexBasis}%`;
-
-      // Trigger resize for canvas and Blockly
-      this.triggerContentResize();
-    }
+    this.triggerContentResize();
 
     if (e.cancelable) e.preventDefault();
   }
@@ -1193,13 +1264,18 @@ class PanelResizer {
     const currentCanvasWidth = this.canvasArea.offsetWidth;
     const currentCodeWidth = this.codePanel.offsetWidth;
     const minCanvasWidth = this.getMinCanvasWidth();
+    const maxCanvasWidth = this.getMaxCanvasWidth();
 
     // Calculate new widths
     const newCanvasWidth = currentCanvasWidth + deltaX;
     const newCodeWidth = currentCodeWidth - deltaX;
 
     // Check minimum width constraint
-    if (newCanvasWidth < minCanvasWidth || newCodeWidth < this.minPanelFloor) {
+    if (
+      newCanvasWidth < minCanvasWidth ||
+      newCanvasWidth > maxCanvasWidth ||
+      newCodeWidth < this.minPanelFloor
+    ) {
       e.preventDefault();
       return; // Just return without changing anything
     }
@@ -1250,6 +1326,11 @@ class PanelResizer {
 
     // +1 guards against sub-pixel rounding tipping the last icon onto a new row.
     return Math.max(this.minPanelFloor, Math.ceil(total) + 1);
+  }
+
+  getMaxCanvasWidth() {
+    const { areaHeight, horizontalChromeWidth } = getCanvasAvailableSize(this.canvasArea);
+    return Math.round((areaHeight * 16) / 9) + horizontalChromeWidth;
   }
 
   // A focusable role="separator" needs a value: the canvas panel's share of the split.
