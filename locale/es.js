@@ -1077,6 +1077,8 @@ export default {
   tent_lights_ui: '⛺ Carpa de Festival', // human
   my_place_ui: '🏠 Mi Lugar', // human
   microbit_monkey_ui: '🐵 Mono micro:bit', // human
+  ar_demo_ui: '📱 Demo de RA', // ai
+  vr_demo_ui: '🥽 Demo de RV', // ai
   tree_jump_ui: '🌳 Salto de árbol', // human
   shape_push_ui: '🔶 Empujar forma', // human
   alien_planet_ui: '👽 Planeta alienígena', // human
@@ -1116,6 +1118,7 @@ export default {
   examples_cat_physics_ui: 'Física', // ai
   examples_cat_worlds_ui: 'Mundos', // ai
   examples_cat_create_ui: 'Creativo', // ai
+  examples_cat_data_ui: 'Datos', // ai
   examples_cat_xr_ui: 'XR', // ai
 
   toggle_play_ui: 'Usa tu proyecto', // human

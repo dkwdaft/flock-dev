@@ -1006,6 +1006,8 @@ export default {
   tent_lights_ui: '⛺ Festivaltält',
   my_place_ui: '🏠 Mitt ställe',
   microbit_monkey_ui: '🐵 micro:bit-apa',
+  ar_demo_ui: '📱 AR-demo',
+  vr_demo_ui: '🥽 VR-demo',
   tree_jump_ui: '🌳 Träd-hopp',
   shape_push_ui: '🔶 Skjuta form',
   alien_planet_ui: '👽 Alienplanet',
@@ -1045,6 +1047,7 @@ export default {
   examples_cat_physics_ui: 'Fysik', // ai
   examples_cat_worlds_ui: 'Världar', // ai
   examples_cat_create_ui: 'Kreativt', // ai
+  examples_cat_data_ui: 'Data', // ai
   examples_cat_xr_ui: 'XR', // ai
 
   toggle_play_ui: 'Använd ditt projekt',

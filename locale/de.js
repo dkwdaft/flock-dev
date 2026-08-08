@@ -1032,6 +1032,8 @@ export default {
   tent_lights_ui: '⛺ Zeltlichter',
   my_place_ui: '🏠 Mein Ort',
   microbit_monkey_ui: '🐵 micro:bit-Affe',
+  ar_demo_ui: '📱 AR-Demo',
+  vr_demo_ui: '🥽 VR-Demo',
   tree_jump_ui: '🌳 Baum-Sprung',
   shape_push_ui: '🔶 Form schieben',
   alien_planet_ui: '👽 Alien-Planet',
@@ -1068,6 +1070,7 @@ export default {
   examples_cat_physics_ui: 'Physik', // ai
   examples_cat_worlds_ui: 'Welten', // ai
   examples_cat_create_ui: 'Kreativ', // ai
+  examples_cat_data_ui: 'Daten', // ai
   examples_cat_xr_ui: 'XR', // ai
   toggle_play_ui: 'Projekt nutzen',
   fullscreen_toggle_ui: 'Vollbild umschalten',

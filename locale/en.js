@@ -1087,6 +1087,8 @@ export default {
   tent_lights_ui: '⛺ Festival tent',
   my_place_ui: '🏠 My place',
   microbit_monkey_ui: '🐵 micro:bit monkey',
+  ar_demo_ui: '📱 AR Demo',
+  vr_demo_ui: '🥽 VR Demo',
   tree_jump_ui: '🌳 Tree jump',
   shape_push_ui: '🔶 Shape push',
   alien_planet_ui: '👽 Alien planet',
@@ -1124,6 +1126,7 @@ export default {
   examples_cat_physics_ui: 'Physics',
   examples_cat_worlds_ui: 'Worlds',
   examples_cat_create_ui: 'Creative',
+  examples_cat_data_ui: 'Data',
   examples_cat_xr_ui: 'XR',
 
   toggle_play_ui: 'Use your project',

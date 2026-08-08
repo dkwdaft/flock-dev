@@ -1018,6 +1018,8 @@ export default {
   tent_lights_ui: '⛺ Światełka namiotu',
   my_place_ui: '🏠 Moje miejsce',
   microbit_monkey_ui: '🐵 małpa micro:bit',
+  ar_demo_ui: '📱 Demo AR',
+  vr_demo_ui: '🥽 Demo VR',
   tree_jump_ui: '🌳 Skok z drzewa',
   shape_push_ui: '🔶 Pchnięcie kształtu',
   alien_planet_ui: '👽 Obca planeta',
@@ -1057,6 +1059,7 @@ export default {
   examples_cat_physics_ui: 'Fizyka', // ai
   examples_cat_worlds_ui: 'Światy', // ai
   examples_cat_create_ui: 'Kreatywne', // ai
+  examples_cat_data_ui: 'Dane', // ai
   examples_cat_xr_ui: 'XR', // ai
 
   toggle_play_ui: 'Użyj projektu',
