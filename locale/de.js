@@ -1082,6 +1082,8 @@ export default {
   select_button_ui: 'Objekt auswählen',
   duplicate_button_ui: 'Duplizieren',
   delete_button_ui: 'Löschen',
+  delete_block_button_ui: 'Block löschen',
+  duplicate_block_button_ui: 'Block duplizieren',
   camera_button_ui: 'Kamera-Steuerung',
   eye_button_ui: 'Um ausgewähltes Objekt kreisen',
   info_panel_link_ui: 'Flock XR Webseite (neuer Tab)',
@@ -1109,6 +1111,12 @@ export default {
   context_expand_all_option: 'Alle ausklappen',
   context_disable_option: 'Deaktivieren',
   context_enable_option: 'Aktivieren',
+  add_comment: 'Kommentar hinzufügen',
+  delete_comment: 'Kommentar löschen',
+  view_in_canvas: 'Im Canvas anzeigen',
+  exit_canvas_view: 'Umkreisen stoppen',
+  detach_block_option: 'Trennen',
+  view_in_canvas_option: 'Im Canvas anzeigen',
   context_copy_option: 'Kopieren',
   context_paste_option: 'Einfügen',
   context_cut_option: 'Ausschneiden',
@@ -1169,6 +1177,7 @@ export default {
   fly_camera_instructions: 'ℹ️ Schau dich um mit Pfeiltasten und Bild auf/ab oder Fn + ↑ ↓',
   fly_camera_instructions_touch:
     'ℹ️ Flugkamera, nutze die Bildschirmsteuerung und ziehe zum Umsehen',
+  select_mesh_prompt: 'ℹ️ Wähle ein Objekt aus, oder nutze die Pfeiltasten, um den Cursor zu bewegen.',
   select_mesh_delete_prompt: 'ℹ️ Klicke auf ein Objekt, um es zu löschen.',
   select_mesh_duplicate_prompt: 'ℹ️ Wähle ein Objekt zum Duplizieren aus.',
   place_duplicate_prompt: 'ℹ️ Klicke, um eine Kopie zu platzieren.', // AI-generated; needs validation
@@ -1326,6 +1335,7 @@ export default {
   shortcut_toggle_hud: 'Bildschirmsteuerung ein-/ausblenden', // machine
   hud_hidden: 'Bildschirmsteuerung ausgeblendet', // machine
   hud_shown: 'Bildschirmsteuerung eingeblendet', // machine
+  gizmo_controls_hint: 'ℹ️ Klicke auf die Zahnrad-Schaltfläche, um die Steuerung ein-/auszublenden.', // machine
   shortcut_quick_colour: 'Schnellfarbauswahl im Farbwähler',
   shortcut_delete_object: 'Objekt löschen',
 

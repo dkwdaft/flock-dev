@@ -1140,6 +1140,8 @@ export default {
   select_button_ui: 'Select object',
   duplicate_button_ui: 'Duplicate selected object',
   delete_button_ui: 'Delete selected object',
+  delete_block_button_ui: 'Delete block',
+  duplicate_block_button_ui: 'Duplicate block',
   camera_button_ui: 'Camera controls',
   eye_button_ui: 'Orbit around selected object',
 
@@ -1185,6 +1187,12 @@ export default {
   context_expand_all_option: 'Expand all',
   context_disable_option: 'Disable',
   context_enable_option: 'Enable',
+  add_comment: 'Add comment',
+  delete_comment: 'Delete comment',
+  view_in_canvas: 'View in canvas',
+  exit_canvas_view: 'Stop orbiting object',
+  detach_block_option: 'Detach',
+  view_in_canvas_option: 'View in canvas',
   context_copy_option: 'Copy',
   context_paste_option: 'Paste',
   context_cut_option: 'Cut',
@@ -1257,6 +1265,7 @@ export default {
   fly_camera_instructions: 'ℹ️ Look around with arrow keys and Pg Up/Pg Down or Fn + ↑ ↓',
   fly_camera_instructions_touch:
     'ℹ️ Fly camera, use the on-screen controls and drag to look around',
+  select_mesh_prompt: 'ℹ️ Select an object, or use arrow keys to move the cursor.',
   select_mesh_delete_prompt: 'ℹ️ Click an object to delete it.',
   select_mesh_duplicate_prompt: 'ℹ️ Select an object to duplicate.',
   place_duplicate_prompt: 'ℹ️ Click to place a copy.',
@@ -1454,6 +1463,7 @@ export default {
   shortcut_toggle_hud: 'Show/hide on-screen controls',
   hud_hidden: 'On-screen controls hidden',
   hud_shown: 'On-screen controls shown',
+  gizmo_controls_hint: 'ℹ️ Click the cog button to show/hide the controls.',
   shortcut_quick_colour: 'Quick use colour in colour picker',
   shortcut_delete_object: 'Delete object',
 

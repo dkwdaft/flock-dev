@@ -1132,6 +1132,8 @@ export default {
   select_button_ui: 'Seleccionar objeto', // human
   duplicate_button_ui: 'Duplicar objeto seleccionado', // human
   delete_button_ui: 'Eliminar objeto seleccionado', // human
+  delete_block_button_ui: 'Eliminar bloque',
+  duplicate_block_button_ui: 'Duplicar bloque',
   camera_button_ui: 'Controles de cámara', // human
   eye_button_ui: 'Orbitar alrededor del objeto seleccionado',
 
@@ -1178,6 +1180,12 @@ export default {
   context_expand_all_option: 'Expandir todo',
   context_disable_option: 'Deshabilitar',
   context_enable_option: 'Habilitar',
+  add_comment: 'Añadir comentario',
+  delete_comment: 'Eliminar comentario',
+  view_in_canvas: 'Ver en el lienzo',
+  exit_canvas_view: 'Dejar de orbitar el objeto',
+  detach_block_option: 'Desconectar',
+  view_in_canvas_option: 'Ver en el lienzo',
   context_copy_option: 'Copiar', // human
   context_paste_option: 'Pegar', // human
   context_cut_option: 'Cortar', // human
@@ -1247,6 +1255,7 @@ export default {
   fly_camera_instructions: 'ℹ️ Mira alrededor con las flechas y Page Up/Down o Fn + ↑ ↓', // human
   fly_camera_instructions_touch:
     'ℹ️ Cámara en vuelo, usa los controles en pantalla y arrastra para mirar alrededor',
+  select_mesh_prompt: 'ℹ️ Selecciona un objeto, o usa las flechas para mover el cursor.',
   select_mesh_delete_prompt: 'ℹ️ Haz clic en un objeto para eliminarlo.', // Google translate
   select_mesh_duplicate_prompt: 'ℹ️ Selecciona un objeto para duplicar.', // Google (had to update it)
   place_duplicate_prompt: 'ℹ️ Haz clic para colocar una copia.', // AI-generated; needs validation
@@ -1398,6 +1407,7 @@ export default {
   shortcut_toggle_hud: 'Mostrar/ocultar controles en pantalla', // machine
   hud_hidden: 'Controles en pantalla ocultos', // machine
   hud_shown: 'Controles en pantalla visibles', // machine
+  gizmo_controls_hint: 'ℹ️ Haz clic en el botón del engranaje para mostrar/ocultar los controles.', // machine
   shortcut_quick_colour: 'Usar color rápido en el selector de color',
   shortcut_delete_object: 'Eliminar objeto',
 

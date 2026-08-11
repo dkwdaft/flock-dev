@@ -1083,6 +1083,8 @@ export default {
   select_button_ui: 'Selecionar objeto',
   duplicate_button_ui: 'Duplicar o objeto selecionado',
   delete_button_ui: 'Eliminar o objeto selecionado',
+  delete_block_button_ui: 'Excluir bloco',
+  duplicate_block_button_ui: 'Duplicar bloco',
   camera_button_ui: 'Controlos da câmara',
   eye_button_ui: 'Orbitar ao redor do objeto selecionado',
 
@@ -1129,6 +1131,12 @@ export default {
   context_expand_all_option: 'Expandir tudo',
   context_disable_option: 'Desativar',
   context_enable_option: 'Ativar',
+  add_comment: 'Adicionar comentário',
+  delete_comment: 'Excluir comentário',
+  view_in_canvas: 'Ver na tela',
+  exit_canvas_view: 'Parar de orbitar o objeto',
+  detach_block_option: 'Desconectar',
+  view_in_canvas_option: 'Ver na tela',
   context_copy_option: 'Copiar',
   context_paste_option: 'Colar',
   context_cut_option: 'Cortar',
@@ -1187,6 +1195,7 @@ export default {
   fly_camera_instructions: 'ℹ️ Olhe ao redor com as setas e Page Up/Down ou Fn + ↑ ↓',
   fly_camera_instructions_touch:
     'ℹ️ Câmera de voo, use os controles na tela e arraste para olhar em volta',
+  select_mesh_prompt: 'ℹ️ Selecione um objeto, ou use as setas para mover o cursor.',
   select_mesh_delete_prompt: 'ℹ️ Clique em um objeto para excluí-lo.',
   select_mesh_duplicate_prompt: 'ℹ️ Selecione um objeto para duplicar.',
   place_duplicate_prompt: 'ℹ️ Clique para posicionar uma cópia.', // AI-generated; needs validation
@@ -1337,6 +1346,7 @@ export default {
   shortcut_toggle_hud: 'Mostrar/ocultar controlos no ecrã', // machine
   hud_hidden: 'Controlos no ecrã ocultos', // machine
   hud_shown: 'Controlos no ecrã visíveis', // machine
+  gizmo_controls_hint: 'ℹ️ Clique no botão de engrenagem para mostrar/ocultar os controlos.', // machine
   shortcut_quick_colour: 'Uso rápido de cor no seletor de cores',
   shortcut_delete_object: 'Eliminar objeto',
 

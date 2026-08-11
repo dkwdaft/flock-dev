@@ -11,6 +11,12 @@ export function runOnScreenControlsTests(flock) {
         flock._joystickSource.stop();
         flock._joystickSource = null;
       }
+      if (flock._controlsResizeEngine && flock._controlsResizeObserver) {
+        flock._controlsResizeEngine.onResizeObservable.remove(flock._controlsResizeObserver);
+      }
+      flock._controlsResizeEngine = null;
+      flock._controlsResizeObserver = null;
+      flock._controlsLayout = null;
       if (flock.controlsTexture) {
         flock.controlsTexture.dispose();
         flock.controlsTexture = null;
@@ -77,6 +83,38 @@ export function runOnScreenControlsTests(flock) {
         flock.onScreenControls('ARROWS', 'YES', 'ENABLED');
         expect(flock.controlsTexture).to.exist;
         expect(flock.controlsTexture).to.not.equal(first);
+      });
+
+      it('should not rebuild controls for a resize at the same hardware scaling', function () {
+        flock.onScreenControls('ARROWS', 'YES', 'ENABLED');
+        const first = flock.controlsTexture;
+
+        flock.engine.onResizeObservable.notifyObservers(flock.engine);
+
+        expect(flock.controlsTexture).to.equal(first);
+      });
+
+      it('should resize controls for hardware scaling changes and restore them afterwards', function () {
+        const originalHardwareScaling = flock.engine.getHardwareScalingLevel();
+        flock.onScreenControls('ARROWS', 'NO', 'ENABLED');
+
+        try {
+          flock.engine.setHardwareScalingLevel(originalHardwareScaling * 2);
+          const scaledButton = flock.controlsTexture
+            .getDescendants()
+            .find((control) => control.textBlock?.text === '△');
+          expect(scaledButton.width).to.equal('35px');
+
+          flock.engine.setHardwareScalingLevel(originalHardwareScaling);
+          const restoredButton = flock.controlsTexture
+            .getDescendants()
+            .find((control) => control.textBlock?.text === '△');
+          expect(restoredButton.width).to.equal('70px');
+        } finally {
+          if (flock.engine.getHardwareScalingLevel() !== originalHardwareScaling) {
+            flock.engine.setHardwareScalingLevel(originalHardwareScaling);
+          }
+        }
       });
 
       it('should show no controls when movement is "NONE" and actions is "NO"', function () {
