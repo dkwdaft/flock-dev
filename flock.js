@@ -138,6 +138,7 @@ export const flock = {
   GUI: null,
   EXPORT: null,
   controlsTexture: null,
+  _xrHUDControlRoots: [],
   inputManager: null,
   canvas: null,
   abortController: null,
@@ -1028,6 +1029,12 @@ export const flock = {
         // focus canvas if present
         (document.getElementById('renderCanvas') || doc.getElementById('renderCanvas'))?.focus();
       }
+
+      try {
+        await this._showXRButtonOnHeadset?.();
+      } catch (xrError) {
+        console.error('XR button setup failed:', xrError);
+      }
     } catch (error) {
       // Read the (possibly user-thrown) error through safe primitives here;
       // re-throw the original so downstream identity checks (e.g. isBenignAbort's
@@ -1718,6 +1725,7 @@ export const flock = {
         // Dispose UI elements
         flock.controlsTexture?.dispose();
         flock.controlsTexture = null;
+        flock._xrHUDControlRoots = [];
 
         // Clear main UI texture and all its controls
         if (flock.scene.UITexture) {
