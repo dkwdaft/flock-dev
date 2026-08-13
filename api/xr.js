@@ -439,6 +439,7 @@ export const flockXR = {
       flock._resetXRViewTracking({ reposition: true });
       flock._applyXRViewVisibility();
       flock._applyCameraBackground();
+      flock._restartCameraBackgroundForXR();
     } else if (state === flock.BABYLON.WebXRState.EXITING_XR) {
       flock._xrSessionActive = false;
       flock._applyXRViewVisibility();
@@ -488,7 +489,6 @@ export const flockXR = {
       }
     }
     flock._syncXRWatchTrail(xrCamera?.position);
-    if (reposition) flock._positionXRMirror();
   },
   _xrTargetHeading() {
     const target = flock._xrFollowTarget;
@@ -984,16 +984,11 @@ export const flockXR = {
     flock._xrMirror = mirror;
     flock._positionXRMirror();
   },
-  // Faces the viewer's heading at the moment it is anchored, and holds that heading after.
+  // Locked to world +Z: taking the heading from the headset pins the backdrop to wherever the
+  // wearer happened to be looking when the feed started.
   _positionXRMirror() {
     const mirror = flock._xrMirror;
-    const xrCamera = flock.xrHelper?.baseExperience?.camera;
-    if (!mirror || !xrCamera?.position) return;
-
-    const forward = xrCamera.getDirection(flock.BABYLON.Vector3.Forward());
-    forward.y = 0;
-    if (forward.lengthSquared() < 1e-6) forward.copyFrom(flock.BABYLON.Vector3.Forward());
-    forward.normalize();
+    if (!mirror) return;
 
     const distance = flock._xrTuning('xm', XR_MIRROR_DISTANCE, 1, 400);
     const size = flock._cameraBackgroundTexture?.getSize?.();
@@ -1002,9 +997,16 @@ export const flockXR = {
     mirror.scaling.set(width, width / aspect, 1);
 
     // infiniteDistance adds the camera's own position, so this is the offset it keeps.
-    mirror.position.set(forward.x * distance, 0, forward.z * distance);
-    // A plane faces down its own -Z, so matching the viewer's heading turns it back on them.
-    mirror.rotation.set(0, Math.atan2(forward.x, forward.z), 0);
+    mirror.position.set(0, 0, distance);
+    // A plane faces down its own -Z, so out on +Z an unrotated plane faces back at the scene.
+    mirror.rotation.set(0, 0, 0);
+  },
+  // Horizon OS's virtual selfie camera holds whatever frame it had when the session opened, so
+  // ask it for a fresh capture from inside the session.
+  _restartCameraBackgroundForXR() {
+    const facing = flock._cameraBackgroundFacing;
+    if (!facing || !flock._cameraBackgroundNeedsMirror()) return;
+    flock.setCameraBackground(facing);
   },
   _applyCameraBackground() {
     const texture = flock._cameraBackgroundTexture;
