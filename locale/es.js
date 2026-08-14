@@ -238,6 +238,7 @@ export default {
   random_colour: 'color aleatorio', // human
   material: 'material %1 %2 alfa %3', // human
   gradient_material: 'material %1 alfa %2', // human
+  gradient_colour: 'degradado %1 dirección %2°', // ai
   set_material: 'establecer material de %1 a %2', // human
 
   // Custom block translations - Physics blocks
@@ -539,6 +540,8 @@ export default {
   random_colour_tooltip: 'Genera un color aleatorio.\nPalabra clave: color aleatorio', // human
   material_tooltip: 'Define propiedades del material', // human
   gradient_material_tooltip: 'Define propiedades del material (gradiente)', // human
+  gradient_colour_tooltip:
+    'Mezcla dos o más colores. La dirección se indica en grados: 0 es de abajo a arriba, 90 es de izquierda a derecha.\nPalabra clave: degradado', // ai
   set_material_tooltip: 'Establecer el material especificado al objeto indicado.', // human
 
   // Tooltip translations - Physics blocks
@@ -676,7 +679,7 @@ export default {
 
   // Tooltip translations - XR blocks
   device_camera_background_tooltip:
-    'Usa la cámara del dispositivo como fondo para la escena. Funciona en móvil y computadora.', // human
+    'Usa la cámara del dispositivo como fondo para la escena. Funciona en móvil y computadora. En unas gafas de RV la escena aparece en tu habitación.', // ai
   set_xr_mode_tooltip: 'Establece el modo XR para la escena.\nOpciones: VR, RA, Ventana Mágica.', // human
   add_teleport_target_tooltip:
     'Permite teletransportarse al suelo, a un objeto o a todos los objetos.',

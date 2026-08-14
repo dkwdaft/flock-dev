@@ -244,6 +244,7 @@ export default {
   random_colour: 'random color',
   material: 'material %1 %2 alpha %3',
   gradient_material: 'material %1 alpha %2',
+  gradient_colour: 'gradient %1 direction %2°',
   set_material: 'set material of %1 to %2',
 
   // Custom block translations - Physics blocks
@@ -538,6 +539,8 @@ export default {
   random_colour_tooltip: 'Generate a random color.\nKeyword: randcol',
   material_tooltip: 'Define material properties',
   gradient_material_tooltip: 'Define material properties',
+  gradient_colour_tooltip:
+    'Blend between two or more colors. Direction is in degrees: 0 is bottom to top, 90 is left to right.\nKeyword: gradient',
   set_material_tooltip: 'Set the specified material on the given object.',
 
   // Tooltip translations - Physics blocks
@@ -672,7 +675,7 @@ export default {
 
   // Tooltip translations - XR blocks
   device_camera_background_tooltip:
-    'Use the device camera as the background for the scene. Works on both mobile and desktop.',
+    'Use the device camera as the background for the scene. Works on both mobile and desktop. In a headset the scene appears in your room instead.',
   set_xr_mode_tooltip: 'Set the XR mode for the scene.\nOptions: VR, AR, Magic Window.',
   set_xr_view_mode_tooltip:
     'Choose whether to watch or embody the followed object and how its camera moves. Watch comfort catches up after movement stops; embody teleport uses controller-ray teleportation.',

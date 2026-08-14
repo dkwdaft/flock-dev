@@ -59,7 +59,11 @@ export const createFlockXRState = () => ({
   _cameraBackgroundTexture: null,
   _cameraBackgroundFacing: null,
   _cameraBackgroundRequest: 0,
-  _xrMirror: null,
+  _xrSavedClearColor: null,
+  _xrSavedSkyEnabled: null,
+  _magicWindowReady: null,
+  _magicWindowFallback: false,
+  _xrHelperAutoCreated: false,
 });
 
 // The panel spans about 56 degrees at this distance.
@@ -74,18 +78,16 @@ const XR_HUD_MAGNIFICATION = 2.5;
 // Holds the wrist panel at the size it had with the smaller HUD plane.
 const XR_WRIST_SCALE = 0.26;
 
-// Out with the sky, well beyond anything a project builds, so the feed reads as a backdrop
-// behind the scene. Inside the sky sphere's 500 radius, corners included.
-const XR_MIRROR_DISTANCE = 200;
-const XR_MIRROR_FOV = Math.PI / 3;
-const XR_MIRROR_ASPECT = 4 / 3;
-
 const SNAP_TURN_ANGLE = Math.PI / 6;
 const SNAP_TURN_PRESS = 0.7;
 const SNAP_TURN_RELEASE = 0.3;
 // Comfort waits for the character to hold still before the view catches up.
 const COMFORT_SETTLE_MS = 250;
 const HEADING_EPSILON = 0.01;
+
+// A working sensor reports within a frame; this waits out iOS, where the permission needs a
+// user gesture this call never has and so never resolves either way.
+const MAGIC_WINDOW_SENSOR_TIMEOUT_MS = 2500;
 
 export const flockXR = {
   _moveUIControls(source, target) {
@@ -438,11 +440,12 @@ export const flockXR = {
       flock._positionXRWatchCamera();
       flock._resetXRViewTracking({ reposition: true });
       flock._applyXRViewVisibility();
+      if (flock._isPassthroughSession()) flock._showPassthroughBackground(true);
       flock._applyCameraBackground();
-      flock._restartCameraBackgroundForXR();
     } else if (state === flock.BABYLON.WebXRState.EXITING_XR) {
       flock._xrSessionActive = false;
       flock._applyXRViewVisibility();
+      flock._showPassthroughBackground(false);
       flock._applyCameraBackground();
       flock._xrSource?.stop();
       const stackPanel = flock.stackPanel;
@@ -824,6 +827,37 @@ export const flockXR = {
     if (/OculusBrowser|Quest|Pico|Wolvic|Vision ?OS|Mobile VR/i.test(agent)) return true;
     return !/Android|iPhone|iPad|iPod/i.test(agent);
   },
+  async _immersiveARSupported() {
+    try {
+      return (await navigator.xr?.isSessionSupported?.('immersive-ar')) === true;
+    } catch {
+      // No WebXR, or an insecure or permissions-blocked context.
+      return false;
+    }
+  },
+  // Passthrough belongs to the session rather than the scene: a VR session leaves a black void
+  // behind the scene whatever the background asks for. A project that set a camera background
+  // wants the real world back there, and on a headset an AR session is the only way to hand it
+  // over, so the background decides which session the enter button opens.
+  async _xrSessionMode() {
+    if (flock._xrMode === 'AR') return 'immersive-ar';
+    if (!flock._cameraBackgroundFacing || !flock._isHeadsetBrowser()) return 'immersive-vr';
+    // A tethered desktop headset does VR without passthrough, and asking it for AR would leave
+    // the wearer with a button that opens nothing.
+    return (await flock._immersiveARSupported()) ? 'immersive-ar' : 'immersive-vr';
+  },
+  // Babylon's enter button (its buttons are private, hence the guarded reach) reads its session
+  // mode at click time, so a background set after XR started up still gets a passthrough session.
+  async _syncPendingXRSessionMode() {
+    const buttons = flock.xrHelper?.enterExitUI?._buttons;
+    if (!buttons?.length || flock._xrSessionActive) return;
+    const sessionMode = await flock._xrSessionMode();
+    for (const button of buttons) {
+      if (button.sessionMode === 'immersive-vr' || button.sessionMode === 'immersive-ar') {
+        button.sessionMode = sessionMode;
+      }
+    }
+  },
   // Entering stays the wearer's click either way: a session needs a user gesture.
   async _showXRButtonOnHeadset() {
     if (flock.xrHelper || flock._xrMode !== undefined) return false;
@@ -833,32 +867,90 @@ export const flockXR = {
     // The project may have set its own mode, or been stopped, while we were asking.
     if (signal?.aborted || flock.xrHelper || flock._xrMode !== undefined) return false;
     await flock.initializeXR('VR');
+    flock._xrHelperAutoCreated = true;
     return true;
   },
+  async _sensorOrientationAvailable() {
+    const input = flock.BABYLON?.FreeCameraDeviceOrientationInput;
+    if (typeof input?.WaitForOrientationChangeAsync !== 'function') return false;
+    try {
+      await input.WaitForOrientationChangeAsync(MAGIC_WINDOW_SENSOR_TIMEOUT_MS);
+      return true;
+    } catch {
+      // Timed out, denied, or no sensor: nothing to look around with either way.
+      return false;
+    }
+  },
+  // The feed stands in for the look-around the sensor can't give, matching what iOS projects
+  // already do by hand. A project that chose its own facing keeps it.
+  _degradeMagicWindow() {
+    flock._magicWindowFallback = true;
+    if (flock._cameraBackgroundLayer) flock._showPassthroughBackground(true);
+    else if (!flock._cameraBackgroundFacing) flock.setCameraBackground('environment');
+  },
+  async _startMagicWindow() {
+    // Captured now, never re-read at settle time: stopping a run replaces the controller.
+    const signal = flock.abortController?.signal;
+    // Only a free camera carries this input; a follow camera has no look-around yet.
+    if (typeof flock.scene?.activeCamera?.inputs?.addDeviceOrientation !== 'function') return;
+
+    // Attaching sets rotationQuaternion, which silently retires camera.rotation and with it the
+    // project's own look controls, so nothing is attached until the sensor is known to report.
+    const available = await flock._sensorOrientationAvailable();
+    if (signal?.aborted || flock._xrMode !== 'MAGIC_WINDOW') return;
+    if (!available) {
+      // A desktop has no sensor and wants no webcam; the feed stands in only on a handheld.
+      if (!flock._isHeadsetBrowser()) flock._degradeMagicWindow();
+      return;
+    }
+
+    const camera = flock.scene?.activeCamera;
+    if (typeof camera?.inputs?.addDeviceOrientation !== 'function') return;
+    if (!camera.inputs.attached.deviceOrientation) camera.inputs.addDeviceOrientation();
+  },
   async initializeXR(mode) {
-    if (flock.xrHelper) return; // Avoid reinitializing
+    const autoHelper = flock.xrHelper && flock._xrHelperAutoCreated ? flock.xrHelper : null;
+    if (flock.xrHelper && !autoHelper) return; // Avoid reinitializing
 
     patchEmulatorOffsetReferenceSpace();
+    // Claimed before any await, so the headset auto-button cannot race in and take the mode.
     flock._xrMode = mode;
+
+    // A headset head-tracks the view already, so looking around there means a session.
+    if (
+      mode === 'MAGIC_WINDOW' &&
+      flock._isHeadsetBrowser() &&
+      (await flock._immersiveVRSupported())
+    ) {
+      mode = 'VR';
+      flock._xrMode = mode;
+    }
+
+    // Projects reach their XR block after the headset button has already opened, so the mode
+    // repoints that button rather than building a second experience behind it.
+    if (autoHelper) {
+      flock._xrHelperAutoCreated = false;
+      flock._syncXRFollowTargetFromCamera();
+      flock._applyXRDefaults(mode);
+      await flock._syncPendingXRSessionMode();
+      flock._applyTeleportationState();
+      return;
+    }
+
     flock._syncXRFollowTargetFromCamera();
     flock._applyXRDefaults(mode);
 
-    if (mode === 'VR') {
-      flock.xrHelper = await flock.scene.createDefaultXRExperienceAsync({
-        outputCanvasOptions: flock._xrCanvasOptions(),
-      });
-    } else if (mode === 'AR') {
+    if (mode === 'VR' || mode === 'AR') {
       flock.xrHelper = await flock.scene.createDefaultXRExperienceAsync({
         outputCanvasOptions: flock._xrCanvasOptions(),
         uiOptions: {
-          sessionMode: 'immersive-ar',
+          sessionMode: await flock._xrSessionMode(),
         },
       });
     } else if (mode === 'MAGIC_WINDOW') {
-      let camera = flock.scene.activeCamera;
-      if (!camera.inputs.attached.deviceOrientation) {
-        camera.inputs.addDeviceOrientation();
-      }
+      // Not awaited: the sensor check waits out a permission iOS never grants here, and the
+      // rest of the project should not wait with it.
+      flock._magicWindowReady = flock._startMagicWindow();
       return;
     }
 
@@ -925,31 +1017,45 @@ export const flockXR = {
     // Handle XR state changes
     flock.xrHelper.baseExperience.onStateChangedObservable.add(flock._handleXRStateChange);
   },
-  _cameraBackgroundNeedsMirror() {
-    return (
-      flock._xrSessionActive && flock._xrMode === 'VR' && flock._cameraBackgroundFacing === 'user'
-    );
+  // 'opaque' is a plain VR session: the compositor has no view of the room to blend the scene into.
+  _isPassthroughSession() {
+    if (flock._xrMode === 'AR') return true;
+    const blend = flock.xrHelper?.baseExperience?.sessionManager?.session?.environmentBlendMode;
+    return blend === 'additive' || blend === 'alpha-blend';
+  },
+  // A passthrough session draws the scene over the room, so the opaque things behind it — the
+  // clear colour and the sky — are what stand between the wearer and that room.
+  _showPassthroughBackground(visible) {
+    const scene = flock.scene;
+    if (!scene) return;
+    if (visible) {
+      flock._xrSavedClearColor ??= scene.clearColor?.clone?.() ?? null;
+      scene.clearColor = new flock.BABYLON.Color4(0, 0, 0, 0);
+      if (flock.sky) {
+        flock._xrSavedSkyEnabled = flock.sky.isEnabled?.() ?? true;
+        flock.sky.setEnabled?.(false);
+      }
+      return;
+    }
+    if (flock._xrSavedClearColor) scene.clearColor = flock._xrSavedClearColor;
+    flock._xrSavedClearColor = null;
+    if (flock.sky && flock._xrSavedSkyEnabled !== null) {
+      flock.sky.setEnabled?.(flock._xrSavedSkyEnabled);
+      flock._xrSavedSkyEnabled = null;
+    }
   },
   _disposeCameraBackgroundLayer() {
     const layer = flock._cameraBackgroundLayer;
     if (!layer) return;
     flock._cameraBackgroundLayer = null;
-    // Layer.dispose() takes its texture with it, and the mirror may be about to adopt it.
+    // Layer.dispose() takes its texture with it, and the feed outlives the layer.
     layer.texture = null;
     layer.dispose();
-  },
-  _disposeXRMirror() {
-    const mirror = flock._xrMirror;
-    if (!mirror) return;
-    flock._xrMirror = null;
-    mirror.material?.dispose();
-    mirror.dispose();
   },
   _disposeCameraBackground() {
     // Strands any webcam request still starting up.
     flock._cameraBackgroundRequest = (flock._cameraBackgroundRequest ?? 0) + 1;
     flock._disposeCameraBackgroundLayer();
-    flock._disposeXRMirror();
     // Disposing the texture is what releases the webcam.
     flock._cameraBackgroundTexture?.dispose();
     flock._cameraBackgroundTexture = null;
@@ -960,64 +1066,19 @@ export const flockXR = {
     const layer = new flock.BABYLON.Layer('videoLayer', null, flock.scene, true);
     layer.texture = texture;
     flock._cameraBackgroundLayer = layer;
+    // The sky is a mesh, so it would draw over a feed the mode fell back to.
+    if (flock._magicWindowFallback) flock._showPassthroughBackground(true);
   },
-  // A background layer is screen space, so both eyes get identical pixels and the feed has no
-  // stereo depth at all: in VR it reads as pressed against the face. A plane in the scene doesn't.
-  _showXRMirror(texture) {
-    if (flock._xrMirror || !flock.scene) return;
-
-    const mirror = flock.BABYLON.MeshBuilder.CreatePlane(
-      'xrCameraMirror',
-      { width: 1, height: 1 },
-      flock.scene
-    );
-    const material = new flock.BABYLON.StandardMaterial('xrCameraMirrorMaterial', flock.scene);
-    material.disableLighting = true;
-    material.emissiveTexture = texture;
-    mirror.material = material;
-    mirror.isPickable = false;
-    mirror.applyFog = false;
-    // Rides with the viewer like the sky: never nearer, never larger.
-    mirror.infiniteDistance = true;
-    flock.glowLayer?.addExcludedMesh?.(mirror);
-
-    flock._xrMirror = mirror;
-    flock._positionXRMirror();
-  },
-  // Locked to world +Z: taking the heading from the headset pins the backdrop to wherever the
-  // wearer happened to be looking when the feed started.
-  _positionXRMirror() {
-    const mirror = flock._xrMirror;
-    if (!mirror) return;
-
-    const distance = flock._xrTuning('xm', XR_MIRROR_DISTANCE, 1, 400);
-    const size = flock._cameraBackgroundTexture?.getSize?.();
-    const aspect = size?.width && size?.height ? size.width / size.height : XR_MIRROR_ASPECT;
-    const width = 2 * distance * Math.tan(XR_MIRROR_FOV / 2);
-    mirror.scaling.set(width, width / aspect, 1);
-
-    // infiniteDistance adds the camera's own position, so this is the offset it keeps.
-    mirror.position.set(0, 0, distance);
-    // A plane faces down its own -Z, so out on +Z an unrotated plane faces back at the scene.
-    mirror.rotation.set(0, 0, 0);
-  },
-  // Horizon OS's virtual selfie camera holds whatever frame it had when the session opened, so
-  // ask it for a fresh capture from inside the session.
-  _restartCameraBackgroundForXR() {
-    const facing = flock._cameraBackgroundFacing;
-    if (!facing || !flock._cameraBackgroundNeedsMirror()) return;
-    flock.setCameraBackground(facing);
-  },
+  // A headset gives the page no camera it can show in a session: the selfie feed freezes there,
+  // and passthrough stands in for it. The feed waits for the flat view.
   _applyCameraBackground() {
     const texture = flock._cameraBackgroundTexture;
     if (!texture) return;
-    if (flock._cameraBackgroundNeedsMirror()) {
+    if (flock._xrSessionActive) {
       flock._disposeCameraBackgroundLayer();
-      flock._showXRMirror(texture);
-    } else {
-      flock._disposeXRMirror();
-      flock._showCameraBackgroundLayer(texture);
+      return;
     }
+    flock._showCameraBackgroundLayer(texture);
   },
   /*
           Category: Scene>XR
@@ -1033,6 +1094,7 @@ export const flockXR = {
 
     flock._disposeCameraBackground();
     flock._cameraBackgroundFacing = cameraType;
+    flock._syncPendingXRSessionMode();
     // Captured now: a later call, or a stop, has to be able to strand this request.
     const request = (flock._cameraBackgroundRequest ?? 0) + 1;
     flock._cameraBackgroundRequest = request;
