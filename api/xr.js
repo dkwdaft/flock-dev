@@ -18,10 +18,7 @@ export const createFlockXRState = () => ({
   _xrFollowCameraVerticalOffset: null,
   _xrFollowLastPosition: null,
   _xrFollowSettledPosition: null,
-  _xrFollowLastHeading: null,
   _xrFollowLastMovedAt: 0,
-  _xrWatchYawOffset: null,
-  _xrWatchAnchorYaw: null,
   _xrWatchAnchorPosition: null,
   _xrWatchAnchorTarget: null,
   _xrSnapTurnHeld: false,
@@ -69,6 +66,7 @@ export const createFlockXRState = () => ({
   _arPlacementFrames: 0,
   _arGroundState: null,
   _arShadowMaterial: null,
+  _arHitTest: null,
   _xrHUDViewAspect: null,
 });
 
@@ -91,8 +89,8 @@ const XR_HANDHELD_HUD_RENDERING_GROUP = 1;
 // Below this a rebuild would be rounding noise, not a turned phone.
 const XR_HUD_ASPECT_TOLERANCE = 0.05;
 
-// A diorama a child can reach across.
-const AR_DEFAULT_SCENE_SIZE_CM = 80;
+// Big enough to fill about half a phone screen from where the look-down limit stands the viewer.
+const AR_DEFAULT_SCENE_SIZE_CM = 150;
 const AR_SCENE_SIZE_MIN_CM = 1;
 const AR_SCENE_SIZE_MAX_CM = 100000;
 // Far enough back to see all of it, never closer than arm's length.
@@ -100,17 +98,21 @@ const AR_DIORAMA_DISTANCE_FACTOR = 1.5;
 const AR_MIN_DIORAMA_DISTANCE_M = 1;
 // A landscape diorama is metres wide; standing back by its full width would leave the room.
 const AR_MAX_DIORAMA_DISTANCE_M = 2;
-const AR_FALLBACK_EYE_HEIGHT_M = 1.5;
+// How far below the screen's centre a handheld diorama is allowed to sit, and how far back
+// that is ever allowed to stand the viewer if the reported eye height is wild.
+const AR_MAX_LOOK_DOWN = Math.PI / 6;
+const AR_MAX_HANDHELD_DISTANCE_M = 3.5;
 const AR_PLACEMENT_SETTLE_FRAMES = 3;
 // Babylon's pointer visuals, not scene content.
 const XR_HELPER_MESH_NAMES = new Set(['laserPointer', 'gazeTracker']);
 
+// Stands in until the session reports a pose to measure the wearer against.
+const XR_FALLBACK_EYE_HEIGHT_M = 1.5;
 const SNAP_TURN_ANGLE = Math.PI / 6;
 const SNAP_TURN_PRESS = 0.7;
 const SNAP_TURN_RELEASE = 0.3;
 // Comfort waits for the character to hold still before the view catches up.
 const COMFORT_SETTLE_MS = 250;
-const HEADING_EPSILON = 0.01;
 
 // A working sensor reports within a frame; this waits out iOS, where the permission needs a
 // user gesture this call never has and so never resolves either way.
@@ -514,10 +516,13 @@ export const flockXR = {
       return;
     }
     // Teleport steers with the thumbstick; otherwise the project's own movement gets it.
-    const projectControls = hasFollowTarget
-      ? flock._xrViewMode === 'watch' ||
-        (flock._xrViewMode === 'embody' && flock._xrCameraMotionMode === 'smooth')
-      : flock._xrCameraMotionMode !== 'teleport';
+    // Canvas controls off stands every built-in camera motion down, teleport included.
+    const projectControls =
+      flock._canvasControlsEnabled === false ||
+      (hasFollowTarget
+        ? flock._xrViewMode === 'watch' ||
+          (flock._xrViewMode === 'embody' && flock._xrCameraMotionMode === 'smooth')
+        : flock._xrCameraMotionMode !== 'teleport');
     const inputMode = projectControls ? 'project' : 'disabled';
     flock._xrSource?.setInputMode(inputMode);
   },
@@ -601,7 +606,6 @@ export const flockXR = {
     if (targetPosition) {
       flock._xrFollowLastPosition = targetPosition.clone?.() ?? { ...targetPosition };
       flock._xrFollowSettledPosition = targetPosition.clone?.() ?? { ...targetPosition };
-      flock._xrFollowLastHeading = flock._xrTargetHeading();
       flock._xrFollowLastMovedAt = performance.now?.() ?? Date.now();
 
       if (reposition && xrCamera?.position && flock._xrViewMode === 'embody') {
@@ -610,21 +614,11 @@ export const flockXR = {
         xrCamera.position.z = targetPosition.z;
       }
     }
-    flock._syncXRWatchTrail(xrCamera?.position);
+    flock._syncXRWatchAnchor(xrCamera?.position);
   },
-  _xrTargetHeading() {
-    const target = flock._xrFollowTarget;
-    if (!target || target.isDisposed?.()) return null;
-    const quaternion = target.rotationQuaternion;
-    if (typeof quaternion?.toEulerAngles === 'function') return quaternion.toEulerAngles().y;
-    const heading = target.rotation?.y;
-    return Number.isFinite(heading) ? heading : null;
-  },
-  // The framing the watch camera keeps as the character walks and turns: where it sits
-  // relative to the character's own heading, so it trails the same shoulder throughout.
-  _syncXRWatchTrail(cameraPosition) {
-    flock._xrWatchYawOffset = null;
-    flock._xrWatchAnchorYaw = null;
+  // Where the camera sits relative to the character, so walking can carry it along and a snap
+  // turn can swing it around them without either having to work the framing out again.
+  _syncXRWatchAnchor(cameraPosition) {
     flock._xrWatchAnchorPosition = null;
     flock._xrWatchAnchorTarget = null;
 
@@ -633,17 +627,18 @@ export const flockXR = {
 
     const offsetX = cameraPosition.x - targetPosition.x;
     const offsetZ = cameraPosition.z - targetPosition.z;
-    const horizontal = Math.hypot(offsetX, offsetZ);
-    if (horizontal < 0.001) return;
+    // Standing on the character leaves nothing to swing around.
+    if (Math.hypot(offsetX, offsetZ) < 0.001) return;
 
-    const yaw = Math.atan2(offsetX, offsetZ);
-    flock._xrWatchYawOffset = yaw - (flock._xrTargetHeading() ?? 0);
-    flock._xrWatchAnchorYaw = yaw;
     flock._xrWatchAnchorPosition = cameraPosition.clone();
     flock._xrWatchAnchorTarget = targetPosition.clone?.() ?? { ...targetPosition };
   },
-  _wrapAngle(angle) {
-    return Math.atan2(Math.sin(angle), Math.cos(angle));
+  // The eyes render from the rig cameras, so a move written mid-frame must reach them too.
+  _translateXRCamera(delta) {
+    const xrCamera = flock.xrHelper?.baseExperience?.camera;
+    if (!xrCamera?.position) return;
+    xrCamera.position.addInPlace(delta);
+    for (const rig of xrCamera.rigCameras ?? []) rig.position?.addInPlace(delta);
   },
   // Rotates the play space, so the headset keeps whatever offset the wearer is looking at.
   _rotateXRCameraYaw(radians) {
@@ -653,7 +648,8 @@ export const flockXR = {
     yaw.multiplyToRef(xrCamera.rotationQuaternion, xrCamera.rotationQuaternion);
   },
   // Carries the camera to `pivot`, turning it `angle` around that pivot on the way, so
-  // the wearer keeps both their own head offset and their view of the character.
+  // the wearer keeps both their own head offset and their view of the character. Following
+  // the character passes 0: only a snap turn ever rotates the world around the wearer.
   _placeXRWatchCamera(pivot, angle) {
     const anchor = flock._xrWatchAnchorPosition;
     const base = flock._xrWatchAnchorTarget;
@@ -671,21 +667,13 @@ export const flockXR = {
       pivot.z + offsetZ * cos - offsetX * sin
     );
 
-    xrCamera.position.addInPlace(desired.subtract(anchor));
+    const shift = desired.subtract(anchor);
+    if (angle) xrCamera.position.addInPlace(shift);
+    else flock._translateXRCamera(shift);
     flock._rotateXRCameraYaw(angle);
     flock._xrWatchAnchorPosition = desired;
-    flock._xrWatchAnchorYaw += angle;
     flock._xrWatchAnchorTarget = pivot.clone?.() ?? { ...pivot };
     return true;
-  },
-  _applyXRWatchTrail() {
-    const targetPosition = flock._xrTargetPosition();
-    if (!targetPosition || flock._xrWatchYawOffset === null) return false;
-    const yaw = (flock._xrTargetHeading() ?? 0) + flock._xrWatchYawOffset;
-    return flock._placeXRWatchCamera(
-      targetPosition,
-      flock._wrapAngle(yaw - flock._xrWatchAnchorYaw)
-    );
   },
   // Watch swings around the character so they stay in view; embodied turns on the spot.
   _applyXRSnapTurn(angle) {
@@ -693,7 +681,6 @@ export const flockXR = {
       flock._xrViewMode === 'watch' &&
       flock._placeXRWatchCamera(flock._xrWatchAnchorTarget, angle)
     ) {
-      flock._xrWatchYawOffset += angle;
       return;
     }
     flock._rotateXRCameraYaw(angle);
@@ -736,6 +723,19 @@ export const flockXR = {
   _syncXRFollowTargetFromCamera(camera = flock.scene?.activeCamera) {
     flock._setXRFollowTarget(flock._captureXRWatchFraming(camera) ?? null);
   },
+  // Watch frames the headset the way the project camera frames the character, so a camera the
+  // project attaches part way through a session has to reach the wearer too.
+  _frameXRFromProjectCamera(camera) {
+    flock._syncXRFollowTargetFromCamera(camera);
+    if (!flock._xrSessionActive || flock._xrMode !== 'VR') return;
+    flock._positionXRWatchCamera();
+    flock._resetXRViewTracking({ reposition: true });
+  },
+  // The session is running by the time watch mode places the camera, so what it sets is where
+  // the eyes land, not where the wearer stands.
+  _xrEyeHeight(camera = flock.xrHelper?.baseExperience?.camera) {
+    return camera?.realWorldHeight || XR_FALLBACK_EYE_HEIGHT_M;
+  },
   _positionXRWatchCamera() {
     const xrCamera = flock.xrHelper?.baseExperience?.camera;
     if (!xrCamera?.position) return;
@@ -752,7 +752,8 @@ export const flockXR = {
         Math.max(0, followRadius * followRadius - verticalOffset * verticalOffset)
       );
       flock._xrWatchPosition.x = targetPosition.x + followDirection.x * horizontalDistance;
-      flock._xrWatchPosition.y = targetPosition.y + verticalOffset;
+      // The project camera's height is a spot to stand in; the wearer's own goes on top of it.
+      flock._xrWatchPosition.y = targetPosition.y + verticalOffset + flock._xrEyeHeight(xrCamera);
       flock._xrWatchPosition.z = targetPosition.z + followDirection.z * horizontalDistance;
     }
 
@@ -878,7 +879,7 @@ export const flockXR = {
       if (length > 1) flock._xrMoveDelta.scaleInPlace(1 / length);
       const seconds = Math.min(0.05, (flock.engine?.getDeltaTime?.() ?? 16) / 1000);
       flock._xrMoveDelta.scaleInPlace(FLY_SPEED * seconds);
-      xrCamera.position.addInPlace(flock._xrMoveDelta);
+      flock._translateXRCamera(flock._xrMoveDelta);
       return;
     }
 
@@ -898,24 +899,16 @@ export const flockXR = {
 
     const now = performance.now?.() ?? Date.now();
     const isWatch = flock._xrViewMode === 'watch';
-    const heading = flock._xrTargetHeading();
-    const turned =
-      isWatch &&
-      heading !== null &&
-      flock._xrFollowLastHeading !== null &&
-      Math.abs(flock._wrapAngle(heading - flock._xrFollowLastHeading)) > HEADING_EPSILON;
 
-    if (
-      flock.BABYLON.Vector3.DistanceSquared(position, flock._xrFollowLastPosition) > 0.0001 ||
-      turned
-    ) {
+    if (flock.BABYLON.Vector3.DistanceSquared(position, flock._xrFollowLastPosition) > 0.0001) {
       const delta = position.subtract(flock._xrFollowLastPosition);
       if (!isWatch) delta.y = 0;
       flock._xrFollowLastMovedAt = now;
       flock._xrFollowLastPosition.copyFrom(position);
-      flock._xrFollowLastHeading = heading;
       if (flock._xrCameraMotionMode === 'smooth') {
-        if (!isWatch || !flock._applyXRWatchTrail()) xrCamera.position.addInPlace(delta);
+        if (!isWatch || !flock._placeXRWatchCamera(position, 0)) {
+          flock._translateXRCamera(delta);
+        }
         flock._xrFollowSettledPosition.copyFrom(position);
       }
       return;
@@ -923,13 +916,13 @@ export const flockXR = {
     if (flock._xrCameraMotionMode !== 'comfort') return;
     if (now - flock._xrFollowLastMovedAt < COMFORT_SETTLE_MS) return;
 
-    if (flock._applyXRWatchTrail()) {
+    if (flock._placeXRWatchCamera(position, 0)) {
       flock._xrFollowSettledPosition.copyFrom(position);
       return;
     }
     const delta = position.subtract(flock._xrFollowSettledPosition);
     if (delta.lengthSquared() <= 0.000001) return;
-    xrCamera.position.addInPlace(delta);
+    flock._translateXRCamera(delta);
     flock._xrFollowSettledPosition.copyFrom(position);
   },
   async _immersiveVRSupported() {
@@ -1073,6 +1066,9 @@ export const flockXR = {
         outputCanvasOptions: flock._xrCanvasOptions(),
         uiOptions: {
           sessionMode: await flock._xrSessionMode(),
+          // A session that was not asked for hit test can never be granted it, and the mode
+          // can still be repointed after this.
+          optionalFeatures: ['hit-test'],
         },
       });
 
@@ -1268,14 +1264,18 @@ export const flockXR = {
   },
   _applyARSceneScale() {
     const sessionManager = flock.xrHelper?.baseExperience?.sessionManager;
-    if (!sessionManager || flock._xrMode !== 'AR' || !flock._xrSessionActive) return;
+    if (!sessionManager || !flock._xrSessionActive) return;
 
-    const scale = flock._arWorldScaleFor(flock._arSceneSizeCentimetres(), flock._arSceneBounds());
+    // A session that ended while scaled leaves its factor behind, so every session sets one.
+    const isAR = flock._xrMode === 'AR';
+    const scale = isAR
+      ? flock._arWorldScaleFor(flock._arSceneSizeCentimetres(), flock._arSceneBounds())
+      : 1;
     flock._arWorldScale = scale;
     sessionManager.worldScalingFactor = scale;
     flock._syncARGround();
     // A headset at life size already stands where the project put it.
-    const placing = scale !== 1 || flock._isHandheldXRSession();
+    const placing = isAR && (scale !== 1 || flock._isHandheldXRSession());
     flock._arPlacementFrames = placing ? AR_PLACEMENT_SETTLE_FRAMES : 0;
   },
   // The session's first frame has an identity rotation, and placement needs the facing.
@@ -1301,12 +1301,23 @@ export const flockXR = {
     else forward.normalize();
 
     const sizeMetres = bounds.width / flock._arWorldScale;
-    const distance =
+    let distance =
       Math.min(
         AR_MAX_DIORAMA_DISTANCE_M,
         Math.max(AR_MIN_DIORAMA_DISTANCE_M, AR_DIORAMA_DISTANCE_FACTOR * sizeMetres)
       ) * flock._arWorldScale;
-    const eyeHeight = camera.realWorldHeight || AR_FALLBACK_EYE_HEIGHT_M * flock._arWorldScale;
+    const eyeHeight = camera.realWorldHeight || XR_FALLBACK_EYE_HEIGHT_M * flock._arWorldScale;
+
+    // A wearer looks down as freely as they turn; a phone points where it is held, so a diorama
+    // at arm's length sits below the screen entirely. Standing back trades size for being seen.
+    if (flock._isHandheldXRSession()) {
+      const drop = bounds.min.y + eyeHeight - bounds.centre.y;
+      const backOff = drop > 0 ? drop / Math.tan(AR_MAX_LOOK_DOWN) : 0;
+      distance = Math.max(
+        distance,
+        Math.min(backOff, AR_MAX_HANDHELD_DISTANCE_M * flock._arWorldScale)
+      );
+    }
 
     // Moving the play space moves the diorama: stand the viewer that far back from it.
     camera.position.set(
@@ -1321,8 +1332,7 @@ export const flockXR = {
     const source = flock._xrTargetPosition() ?? flock._xrNonXRCameraPosition;
     if (!source) return;
     const groundLevel = flock.getGroundLevelAt?.(source.x, source.z) ?? 0;
-    const eyeHeight = camera.realWorldHeight || AR_FALLBACK_EYE_HEIGHT_M;
-    camera.position.set(source.x, groundLevel + eyeHeight, source.z);
+    camera.position.set(source.x, groundLevel + flock._xrEyeHeight(camera), source.z);
   },
   _arShadowCatcher() {
     if (flock._arShadowMaterial) return flock._arShadowMaterial;
@@ -1367,9 +1377,34 @@ export const flockXR = {
     flock._arShadowMaterial?.dispose();
     flock._arShadowMaterial = null;
   },
+  // Enabling the feature again disposes the previous one and its observers, so every listener
+  // shares one. Returns a function that stops listening.
+  _onARHitTest(callback) {
+    const baseExperience = flock.xrHelper?.baseExperience;
+    if (baseExperience?.sessionManager?.sessionMode !== 'immersive-ar') return () => {};
+    if (!flock._arHitTest) {
+      try {
+        flock._arHitTest = baseExperience.featuresManager.enableFeature(
+          flock.BABYLON.WebXRHitTest.Name,
+          'latest',
+          {},
+          true,
+          false
+        );
+      } catch {
+        // No hit test here: the mesh stays where the project put it.
+        return () => {};
+      }
+    }
+    const feature = flock._arHitTest;
+    const observer = feature.onHitTestResultObservable.add(callback);
+    return () => feature.onHitTestResultObservable.remove(observer);
+  },
   _resetARScene() {
     const sessionManager = flock.xrHelper?.baseExperience?.sessionManager;
-    if (sessionManager) sessionManager.worldScalingFactor = 1;
+    // Babylon pushes the depth range back through the session on this write, and a session the
+    // headset itself ended is already gone by the time the exit runs.
+    if (sessionManager?.inXRSession) sessionManager.worldScalingFactor = 1;
     flock._arWorldScale = 1;
     flock._arPlacementFrames = 0;
     flock._restoreARGround();

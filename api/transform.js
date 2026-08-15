@@ -522,7 +522,6 @@ export const flockTransform = {
           mesh.physics.disablePreStep = false;
           mesh.physics.setTargetTransform(mesh.absolutePosition, mesh.rotationQuaternion);
         }
-        mesh.computeWorldMatrix(true);
         resolve();
       });
     });
@@ -577,9 +576,10 @@ export const flockTransform = {
       }
     }
 
-    // Build a look direction toward target (flatten Y if requested)
-    const p1 = mesh1.getAbsolutePosition?.() ?? mesh1.absolutePosition;
-    const p2 = mesh2.getAbsolutePosition?.() ?? mesh2.absolutePosition;
+    // Cached world positions: forcing a recompute here rebuilds the target's hierarchy
+    // mid-frame, which splits the eyes in XR. Creation and positioning already compute it.
+    const p1 = mesh1.absolutePosition ?? mesh1.getAbsolutePosition?.();
+    const p2 = mesh2.absolutePosition ?? mesh2.getAbsolutePosition?.();
     const dir = p2.subtract(p1);
     if (!useY) dir.y = 0;
     if (dir.lengthSquared() === 0) return; // already at target horizontally
@@ -609,7 +609,6 @@ export const flockTransform = {
         scene.onAfterRenderObservable.add(cb);
       });
     }
-    mesh1.computeWorldMatrix(true);
   },
   scale(
     meshName,
