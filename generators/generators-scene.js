@@ -635,6 +635,16 @@ export function registerSceneGenerators(javascriptGenerator) {
     return `setARSceneSize(${size}, ${distance}, ${height});\n`;
   };
 
+  javascriptGenerator.forBlock['set_vr_comfort'] = function (block) {
+    const tunnel = JSON.stringify(block.getFieldValue('TUNNEL'));
+    const strength = JSON.stringify(block.getFieldValue('STRENGTH'));
+    const color = getFieldValue(block, 'COLOR', '"#000000"');
+    const alpha = getFieldValue(block, 'ALPHA', '1');
+    const restFrame = JSON.stringify(block.getFieldValue('REST_FRAME'));
+    const restFrameShow = JSON.stringify(block.getFieldValue('REST_FRAME_SHOW'));
+    return `setVRComfort(${tunnel}, ${strength}, ${color}, ${alpha}, ${restFrame}, ${restFrameShow});\n`;
+  };
+
   javascriptGenerator.forBlock['set_xr_ui_placement'] = function (block) {
     return `setXRUIPlacement(${JSON.stringify(block.getFieldValue('PLACEMENT'))});\n`;
   };

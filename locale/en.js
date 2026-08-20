@@ -377,6 +377,8 @@ export default {
   set_xr_mode: 'set XR mode to %1',
   set_xr_view_mode: 'set VR view to %1 with camera motion %2',
   set_ar_scene_size: 'set AR scene scale: %1 cm distance: %2 cm height: %3 cm',
+  set_vr_comfort: 'set VR comfort tunnel vision %1 strength %2 colour %3 alpha %4',
+  set_vr_comfort_overlay: 'overlay %1 shown %2',
   set_xr_ui_placement: 'show VR UI on %1',
   add_teleport_target: 'add teleport target %1',
   remove_teleport_target: 'remove teleport target %1',
@@ -689,6 +691,8 @@ export default {
     'Choose whether to watch or embody the followed object and how its camera moves. Watch comfort catches up after movement stops; embody teleport uses controller-ray teleportation.',
   set_ar_scene_size_tooltip:
     'Scale: how wide the scene appears in the room, or 0 for life size. Distance: how far in front of you it starts. Height: how far it floats above the floor.\nKeyword: diorama',
+  set_vr_comfort_tooltip:
+    'Comfort options for a VR headset. Tunnel vision narrows the edges of your view while the scene moves; the overlay adds faint markers that hold still in your real room.',
   set_xr_ui_placement_tooltip:
     'Choose where buttons, sliders and text appear in VR. The heads-up display floats in front of you; the wrist attaches them to your left controller like a watch.',
   add_teleport_target_tooltip: 'Allow teleporting onto the ground, one object, or all objects.',
@@ -882,6 +886,16 @@ export default {
   wrist_option: 'wrist',
   smooth_option: 'smooth',
   comfort_option: 'comfort',
+  auto_option: 'auto',
+  dots_option: 'dots',
+  grid_option: 'grid',
+  horizon_option: 'horizon',
+  moving_option: 'when moving',
+  always_option: 'always',
+  low_option: 'low',
+  medium_option: 'medium',
+  high_option: 'high',
+  off_option: 'off',
   space_infinity_option: 'space ❖', // Duplicate key space
   q_icon_option: 'Q ■', // Duplicate key q
   e_icon_option: 'E ✿', // Duplicate key e

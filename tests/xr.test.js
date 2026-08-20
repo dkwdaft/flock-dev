@@ -2914,5 +2914,513 @@ export function runXRTests(flock) {
         stop();
       });
     });
+
+    describe('VR comfort', function () {
+      const COMFORT_KEYS = [
+        '_xrComfortTunnel',
+        '_xrComfortStrength',
+        '_xrComfortColour',
+        '_xrComfortAlpha',
+        '_xrVignetteMesh',
+        '_xrVignetteMaterial',
+        '_xrVignetteRestriction',
+        '_xrComfortHasBaseline',
+        '_xrComfortSampledAt',
+        '_xrComfortPhysicalPosition',
+        '_xrComfortPhysicalRotation',
+        '_xrComfortRenderedPosition',
+        '_xrComfortRenderedRotation',
+        '_xrComfortScratch',
+        '_xrComfortMotion',
+        '_xrComfortPoseStatus',
+        '_xrComfortRestFrame',
+        '_xrComfortRestFrameShow',
+        '_xrRestFrameNode',
+        '_xrRestFrameMesh',
+        '_xrRestFrameMaterial',
+        '_xrRestFrameAnchor',
+        '_xrRestFrameFade',
+      ];
+      let originalState;
+      let testCamera = null;
+
+      // A wearer stood still in a session that renders their pose faithfully: any residual the
+      // driver reads from here was put there by the test, not by the fake.
+      const makeVRSession = function () {
+        // A real node, so a test build is the build a session does.
+        const camera = new flock.BABYLON.TransformNode('xrComfortTestCamera', flock.scene);
+        camera.position.set(0, 1.6, 0);
+        camera.rotationQuaternion = flock.BABYLON.Quaternion.Identity();
+        testCamera = camera;
+        const pose = {
+          transform: {
+            position: { x: 0, y: 1.6, z: 0 },
+            orientation: { x: 0, y: 0, z: 0, w: 1 },
+          },
+          emulatedPosition: false,
+        };
+        const sessionManager = {
+          worldScalingFactor: 1,
+          baseReferenceSpace: { name: 'base' },
+          referenceSpace: { name: 'offset' },
+          currentFrame: {
+            getViewerPose: (space) => (space === sessionManager.baseReferenceSpace ? pose : null),
+          },
+        };
+        flock.xrHelper = { baseExperience: { camera, sessionManager } };
+        flock._xrMode = 'VR';
+        flock._xrSessionActive = true;
+        // Shipped defaults, then the one setting these tests need on: a test that changes a
+        // comfort setting must not decide what the next one starts from.
+        Object.assign(flock, {
+          _xrComfortStrength: createFlockXRState()._xrComfortStrength,
+          _xrComfortColour: createFlockXRState()._xrComfortColour,
+          _xrComfortAlpha: createFlockXRState()._xrComfortAlpha,
+        });
+        flock._xrComfortTunnel = 'auto';
+        flock._xrComfortRestFrame = createFlockXRState()._xrComfortRestFrame;
+        flock._xrComfortRestFrameShow = createFlockXRState()._xrComfortRestFrameShow;
+        flock._xrVignetteMesh = { isVisible: false, isDisposed: () => false };
+        flock._xrVignetteMaterial = { setFloat: () => {} };
+        flock._xrVignetteRestriction = 0;
+        flock._xrComfortMotion = 0;
+        flock._xrRestFrameNode = null;
+        flock._xrRestFrameMaterial = null;
+        flock._xrRestFrameAnchor = null;
+        flock._xrRestFrameFade = 0;
+        flock._resetXRComfortBaseline();
+        return { camera, pose, sessionManager };
+      };
+
+      // Stand-ins for the node and material, so placement can be read off them.
+      const makeRestFrame = function (form, show = 'moving') {
+        flock._xrComfortRestFrame = form;
+        flock._xrComfortRestFrameShow = show;
+        const uniforms = {};
+        const node = {
+          position: new flock.BABYLON.Vector3(),
+          rotationQuaternion: flock.BABYLON.Quaternion.Identity(),
+          enabled: false,
+          setEnabled(value) {
+            node.enabled = value;
+          },
+        };
+        flock._xrRestFrameNode = node;
+        flock._xrRestFrameMaterial = { setFloat: (name, value) => (uniforms[name] = value) };
+        return { node, uniforms };
+      };
+
+      // Each call is one frame roughly 16ms after the last, whatever the clock really did.
+      const stepFrames = function (count, advance) {
+        for (let frame = 0; frame < count; frame += 1) {
+          advance?.(frame);
+          flock._xrComfortSampledAt = (performance.now?.() ?? Date.now()) - 16;
+          flock._updateXRComfort();
+        }
+      };
+
+      beforeEach(function () {
+        originalState = Object.fromEntries(COMFORT_KEYS.map((key) => [key, flock[key]]));
+        originalState.helper = flock.xrHelper;
+        originalState.mode = flock._xrMode;
+        originalState.active = flock._xrSessionActive;
+      });
+
+      afterEach(function () {
+        flock._disposeXRRestFrame();
+        testCamera?.dispose();
+        testCamera = null;
+        for (const key of COMFORT_KEYS) flock[key] = originalState[key];
+        flock.xrHelper = originalState.helper;
+        flock._xrMode = originalState.mode;
+        flock._xrSessionActive = originalState.active;
+      });
+
+      it('exposes the comfort setting to generated user code', function () {
+        const api = flock.createWhitelist({ guard: (fn) => fn });
+        expect(api.setVRComfort).to.be.a('function');
+      });
+
+      it('sets each comfort setting independently of the others', function () {
+        makeVRSession();
+        const uniforms = {};
+        flock._xrVignetteMaterial = {
+          setFloat: (name, value) => (uniforms[name] = value),
+          setColor3: (name, value) => (uniforms[name] = value),
+        };
+
+        flock.setVRComfort('auto', 'high', '#204080', 0.25);
+
+        expect(flock._xrComfortStrength).to.equal('high');
+        expect(flock._xrComfortColour).to.equal('#204080');
+        expect(flock._xrComfortAlpha).to.equal(0.25);
+        expect(uniforms.opacity).to.be.closeTo(0.25, 1e-6);
+        expect(uniforms.tint.b).to.be.closeTo(128 / 255, 0.01);
+
+        // One unusable value must not take the rest of the settings down with it.
+        flock.setVRComfort('auto', 'enormous', 'reddish', 500);
+        expect(flock._xrComfortStrength).to.equal('high');
+        expect(flock._xrComfortColour).to.equal('#204080');
+        expect(flock._xrComfortAlpha).to.equal(1);
+      });
+
+      it('keeps the alpha when handed something that is not a number', function () {
+        makeVRSession();
+        flock.setVRComfort('auto', 'medium', '#000000', 0.4);
+
+        for (const value of [null, '', undefined, 'solid', NaN]) {
+          flock.setVRComfort('auto', 'medium', '#000000', value);
+          expect(flock._xrComfortAlpha, String(value)).to.equal(0.4);
+        }
+
+        // A number that arrived as text is still a number the wearer asked for.
+        flock.setVRComfort('auto', 'medium', '#000000', '0.5');
+        expect(flock._xrComfortAlpha).to.equal(0.5);
+      });
+
+      it('does not take a strength off the prototype chain', function () {
+        makeVRSession();
+        flock.setVRComfort('auto', 'constructor');
+
+        expect(flock._xrComfortStrength).to.equal('medium');
+        expect(flock._xrVignetteClosedAngle()).to.be.a('number');
+      });
+
+      it('closes tighter on high than on low', function () {
+        makeVRSession();
+        flock._xrComfortStrength = 'low';
+        const low = flock._xrVignetteClosedAngle();
+        flock._xrComfortStrength = 'high';
+
+        expect(flock._xrVignetteClosedAngle()).to.be.lessThan(low);
+      });
+
+      it('keeps the current setting when handed something it does not know', function () {
+        flock._xrComfortTunnel = 'auto';
+        flock.setVRComfort('sometimes');
+        expect(flock._xrComfortTunnel).to.equal('auto');
+
+        // 'on' is held back for a renderer that reaches past an immersive VR session, so it
+        // must not quietly resolve to auto in the meantime.
+        flock.setVRComfort('on');
+        expect(flock._xrComfortTunnel).to.equal('auto');
+
+        flock.setVRComfort('off');
+        expect(flock._xrComfortTunnel).to.equal('off');
+      });
+
+      it('stays off until a project asks for it', function () {
+        makeVRSession();
+        flock._xrComfortTunnel = createFlockXRState()._xrComfortTunnel;
+        const { camera } = flock.xrHelper.baseExperience;
+
+        expect(flock._vrComfortTunnelActive()).to.equal(false);
+        stepFrames(20, () => (camera.position.x += 0.05));
+        expect(flock._xrVignetteRestriction).to.equal(0);
+
+        flock.setVRComfort('auto');
+        stepFrames(20, () => (camera.position.x += 0.05));
+        expect(flock._xrVignetteRestriction).to.be.greaterThan(0.5);
+      });
+
+      it('resolves auto to on inside an immersive VR session and off elsewhere', function () {
+        makeVRSession();
+        expect(flock._vrComfortTunnelActive()).to.equal(true);
+
+        flock._xrMode = 'AR';
+        expect(flock._vrComfortTunnelActive()).to.equal(false);
+
+        flock._xrMode = 'VR';
+        flock._xrSessionActive = false;
+        expect(flock._vrComfortTunnelActive()).to.equal(false);
+
+        flock._xrSessionActive = true;
+        flock._xrComfortTunnel = 'off';
+        expect(flock._vrComfortTunnelActive()).to.equal(false);
+      });
+
+      it('closes the periphery while the view is driven under a still wearer', function () {
+        const { camera } = makeVRSession();
+        stepFrames(20, () => (camera.position.x += 0.05));
+
+        expect(flock._xrVignetteRestriction).to.be.greaterThan(0.5);
+        expect(flock._xrVignetteMesh.isVisible).to.equal(true);
+      });
+
+      it('leaves the periphery open when the wearer moves themselves', function () {
+        const { camera, pose } = makeVRSession();
+        stepFrames(20, () => {
+          camera.position.x += 0.05;
+          pose.transform.position.x += 0.05;
+        });
+
+        expect(flock._xrVignetteRestriction).to.equal(0);
+        expect(flock._xrVignetteMesh.isVisible).to.equal(false);
+      });
+
+      it('opens again once the artificial motion stops', function () {
+        const { camera } = makeVRSession();
+        stepFrames(20, () => (camera.position.x += 0.05));
+        stepFrames(40);
+
+        expect(flock._xrVignetteRestriction).to.equal(0);
+      });
+
+      it('reads no speed from a frame the browser sat on', function () {
+        const { camera } = makeVRSession();
+        stepFrames(2);
+
+        camera.position.x += 2;
+        flock._xrComfortSampledAt = (performance.now?.() ?? Date.now()) - 500;
+        flock._updateXRComfort();
+
+        expect(flock._xrVignetteRestriction).to.equal(0);
+      });
+
+      it('reads no speed from a jump', function () {
+        const { camera } = makeVRSession();
+        stepFrames(2);
+        stepFrames(1, () => (camera.position.x += 5));
+
+        expect(flock._xrVignetteRestriction).to.equal(0);
+      });
+
+      it('starts measuring again after a snap turn', function () {
+        makeVRSession();
+        stepFrames(2);
+        flock._rotateXRCameraYaw(Math.PI / 6);
+
+        expect(flock._xrComfortHasBaseline).to.equal(false);
+
+        stepFrames(1);
+        expect(flock._xrVignetteRestriction).to.equal(0);
+      });
+
+      it('drops the restriction when the setting is switched off mid-session', function () {
+        const { camera } = makeVRSession();
+        stepFrames(20, () => (camera.position.x += 0.05));
+        expect(flock._xrVignetteRestriction).to.be.greaterThan(0);
+
+        flock.setVRComfort('off');
+        expect(flock._xrVignetteRestriction).to.equal(0);
+        expect(flock._xrVignetteMesh.isVisible).to.equal(false);
+      });
+
+      it('measures the wearer against the space Babylon does not fold locomotion into', function () {
+        const { sessionManager } = makeVRSession();
+        const asked = [];
+        sessionManager.currentFrame.getViewerPose = (space) => {
+          asked.push(space);
+          return null;
+        };
+
+        flock._readXRPhysicalPose(new flock.BABYLON.Vector3(), new flock.BABYLON.Quaternion());
+
+        expect(asked).to.deep.equal([sessionManager.baseReferenceSpace]);
+      });
+
+      it('leaves the rest frame off until a project asks for it', function () {
+        makeVRSession();
+
+        expect(createFlockXRState()._xrComfortRestFrame).to.equal('none');
+        expect(flock._vrRestFrameActive()).to.equal(false);
+
+        flock.setVRComfort('off', undefined, undefined, undefined, 'grid');
+        expect(flock._vrRestFrameActive()).to.equal(true);
+      });
+
+      it('ignores a rest frame form it does not have', function () {
+        makeVRSession();
+        flock.setVRComfort('off', undefined, undefined, undefined, 'dots');
+        flock.setVRComfort('off', undefined, undefined, undefined, 'constructor');
+
+        expect(flock._xrComfortRestFrame).to.equal('dots');
+      });
+
+      it('holds the rest frame still in the room while the view is driven under the wearer', function () {
+        const { camera } = makeVRSession();
+        const { node } = makeRestFrame('grid');
+        stepFrames(20, () => (camera.position.x += 0.05));
+
+        // The wearer has not moved, so the floor stays a head height below them.
+        expect(node.position.x).to.be.closeTo(0, 0.0001);
+        expect(node.position.y).to.be.closeTo(-1.6, 0.0001);
+      });
+
+      it('lets the wearer walk away from the spot the rest frame is pinned to', function () {
+        const { camera, pose } = makeVRSession();
+        const { node } = makeRestFrame('grid');
+        stepFrames(1);
+        stepFrames(10, () => {
+          camera.position.x += 0.05;
+          pose.transform.position.x += 0.05;
+        });
+
+        expect(node.position.x).to.be.closeTo(-0.5, 0.0001);
+      });
+
+      it('turns the rest frame with the room rather than with the head', function () {
+        const { pose } = makeVRSession();
+        const { node } = makeRestFrame('grid');
+        const yaw = flock.BABYLON.Quaternion.FromEulerAngles(0, Math.PI / 3, 0);
+        stepFrames(2);
+        pose.transform.orientation = { x: yaw.x, y: yaw.y, z: yaw.z, w: yaw.w };
+        stepFrames(1);
+
+        // Turn the head's own rotation back out and what is left is the room.
+        const composed = flock._xrComfortPhysicalRotation.multiply(node.rotationQuaternion);
+        expect(Math.abs(composed.w)).to.be.closeTo(1, 0.0001);
+        expect(Math.abs(node.rotationQuaternion.y)).to.be.greaterThan(0.1);
+      });
+
+      it('fades the rest frame in with the motion and out again', function () {
+        const { camera } = makeVRSession();
+        const { node, uniforms } = makeRestFrame('dots');
+        stepFrames(2);
+        expect(node.enabled).to.equal(false);
+
+        stepFrames(20, () => (camera.position.x += 0.05));
+        expect(node.enabled).to.equal(true);
+        expect(uniforms.opacity).to.be.greaterThan(0);
+
+        stepFrames(40);
+        expect(flock._xrRestFrameFade).to.equal(0);
+        expect(node.enabled).to.equal(false);
+      });
+
+      it('keeps the rest frame up throughout when it is shown always', function () {
+        makeVRSession();
+        const { node } = makeRestFrame('dots', 'always');
+        stepFrames(2);
+
+        expect(node.enabled).to.equal(true);
+        expect(flock._xrRestFrameFade).to.equal(1);
+      });
+
+      it('keeps the room level but stops pinning it when the position is a guess', function () {
+        const { camera, pose } = makeVRSession();
+        pose.emulatedPosition = true;
+        const { node } = makeRestFrame('grid');
+        stepFrames(20, () => (camera.position.x += 0.05));
+
+        expect(node.position.x).to.equal(0);
+        expect(node.position.y).to.equal(0);
+        expect(flock._xrRestFrameAnchor).to.equal(null);
+      });
+
+      it("takes the overlay away when the wearer's own pose cannot be read", function () {
+        const { camera, sessionManager } = makeVRSession();
+        const { node } = makeRestFrame('dots', 'always');
+        stepFrames(2);
+        expect(node.enabled).to.equal(true);
+
+        // Without a pose the markers would ride the head, the one thing to avoid.
+        sessionManager.currentFrame.getViewerPose = () => null;
+        stepFrames(2, () => (camera.position.x += 0.05));
+
+        expect(node.enabled).to.equal(false);
+        expect(flock._xrRestFrameFade).to.equal(0);
+      });
+
+      it('travels with the wearer for the horizon', function () {
+        const { camera, pose } = makeVRSession();
+        const { node } = makeRestFrame('horizon');
+        stepFrames(10, () => {
+          camera.position.x += 0.05;
+          pose.transform.position.x += 0.05;
+        });
+
+        expect(node.position.x).to.equal(0);
+        expect(node.position.y).to.equal(0);
+      });
+
+      it('pins the rest frame to the room again after a recentre', function () {
+        const { pose } = makeVRSession();
+        const { node } = makeRestFrame('grid');
+        stepFrames(4);
+
+        // A recentre moves the wearer without them moving.
+        pose.transform.position.x += 3;
+        stepFrames(2);
+
+        expect(node.position.x).to.be.closeTo(0, 0.0001);
+      });
+
+      it('builds the rest frame under the tunnel that has to cover it', function () {
+        const camera = new flock.BABYLON.TransformNode('xrCameraStandIn', flock.scene);
+        flock.xrHelper = { baseExperience: { camera } };
+        flock._xrComfortRestFrame = 'grid';
+        try {
+          flock._applyXRRestFrame();
+          flock._createXRVignette();
+          const mesh = flock._xrRestFrameMesh;
+
+          expect(mesh.isPickable).to.equal(false);
+          expect(mesh.getTotalVertices()).to.be.greaterThan(0);
+          expect(mesh.renderingGroupId).to.be.lessThan(flock._xrVignetteMesh.renderingGroupId);
+        } finally {
+          flock._disposeXRRestFrame();
+          flock._disposeXRVignette();
+          camera.dispose();
+        }
+      });
+
+      it('compiles a shader for every rest frame form', function () {
+        const camera = new flock.BABYLON.TransformNode('xrCameraStandIn', flock.scene);
+        flock.xrHelper = { baseExperience: { camera } };
+        try {
+          for (const form of ['dots', 'grid', 'horizon']) {
+            flock._xrComfortRestFrame = form;
+            flock._applyXRRestFrame();
+            flock._setXRRestFrameFade(1);
+            const mesh = flock._xrRestFrameMesh;
+            flock.scene.render();
+
+            // A shader that failed to compile leaves the markers silently missing.
+            expect(flock._xrRestFrameMaterial.isReady(mesh), form).to.equal(true);
+            flock._disposeXRRestFrame();
+          }
+        } finally {
+          camera.dispose();
+        }
+      });
+
+      it('keeps the rest frame clear of the wearer and inside the room', function () {
+        const dots = flock._xrRestFrameGeometry('dots');
+        expect(dots.length).to.be.greaterThan(0);
+        for (let index = 0; index < dots.length; index += 3) {
+          expect(Math.hypot(dots[index], dots[index + 2])).to.be.greaterThan(0.4);
+          expect(Math.abs(dots[index])).to.be.lessThan(5);
+          expect(dots[index + 1]).to.be.greaterThan(-0.4);
+        }
+        expect(flock._xrRestFrameGeometry('grid').length % 6).to.equal(0);
+      });
+
+      it('keeps the rest frame out of the AR scene as well', function () {
+        const mesh = flock.BABYLON.MeshBuilder.CreateBox(
+          'xrComfortRestFrameGrid',
+          { size: 1 },
+          flock.scene
+        );
+        try {
+          expect(flock._isARSceneContent(mesh)).to.equal(false);
+        } finally {
+          mesh.dispose();
+        }
+      });
+
+      it('keeps the restrictor out of the AR scene it would otherwise swallow', function () {
+        const mesh = flock.BABYLON.MeshBuilder.CreateSphere(
+          'xrComfortVignette',
+          { diameter: 24 },
+          flock.scene
+        );
+        try {
+          expect(flock._isARSceneContent(mesh)).to.equal(false);
+        } finally {
+          mesh.dispose();
+        }
+      });
+    });
   });
 }

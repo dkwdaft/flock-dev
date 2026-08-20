@@ -50,6 +50,17 @@ export function initContextMenus(workspace) {
     { capture: true }
   );
 
+  // Blockly activates menu items on pointerup, and arms its opening-press guard
+  // (Menu.openingCoords) only for dropdown fields — so without this, releasing
+  // the right button over the just-drawn menu runs the item under the pointer.
+  document.addEventListener(
+    'pointerup',
+    (e) => {
+      if (e.button !== 0 && e.target?.closest?.('.blocklyMenu')) e.stopPropagation();
+    },
+    { capture: true }
+  );
+
   // Screen -> workspace coords
   function screenToWs(ws, xy) {
     const c = new Blockly.utils.Coordinate(xy.x, xy.y);
@@ -1243,6 +1254,7 @@ export function initContextMenus(workspace) {
     document.addEventListener(
       'pointerdown',
       (e) => {
+        if (e.button !== 0) return;
         if (!selectedBlock) return;
         const svgRoot = selectedBlock.getSvgRoot?.();
         if (!svgRoot || !svgRoot.contains(e.target)) return;
@@ -1289,9 +1301,18 @@ export function initContextMenus(workspace) {
       { capture: true }
     );
 
-    duplicateBtn.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+    // pointerdown fires for non-primary buttons too: without this, a right-click
+    // landing on the toolbar runs the button's action instead of opening the menu.
+    function onToolbarButtonPress(btn, handler) {
+      btn.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        handler();
+      });
+    }
+
+    onToolbarButtonPress(duplicateBtn, () => {
       if (!toolbarBlock) return;
       const block = toolbarBlock;
       Blockly.Events.setGroup('toolbar_duplicate');
@@ -1307,9 +1328,7 @@ export function initContextMenus(workspace) {
       Blockly.Events.setGroup(false);
     });
 
-    detachBtn.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+    onToolbarButtonPress(detachBtn, () => {
       if (!toolbarBlock || !isDetachable(toolbarBlock)) return;
       const block = toolbarBlock;
       const healStack = !block.outputConnection?.isConnected();
@@ -1318,17 +1337,13 @@ export function initContextMenus(workspace) {
       Blockly.Events.setGroup(false);
     });
 
-    commentBtn.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+    onToolbarButtonPress(commentBtn, () => {
       if (!toolbarBlock) return;
       toggleBlockComment(toolbarBlock);
       hideBlockToolbar();
     });
 
-    enableBtn.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+    onToolbarButtonPress(enableBtn, () => {
       if (!toolbarBlock) return;
       const block = toolbarBlock;
       Blockly.Events.setGroup('toolbar_disable');
@@ -1338,9 +1353,7 @@ export function initContextMenus(workspace) {
       if (toolbarKeyboardMode) renderBadges();
     });
 
-    viewBtn.addEventListener('pointerdown', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+    onToolbarButtonPress(viewBtn, async () => {
       if (!toolbarBlock || viewBtn.style.display === 'none') return;
       const block = toolbarBlock;
       hideBlockToolbar();
@@ -1354,44 +1367,17 @@ export function initContextMenus(workspace) {
       window.orbitBlock = window.orbitViewActive ? block : null;
     });
 
-    deleteBtn.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+    onToolbarButtonPress(deleteBtn, () => {
       if (!toolbarBlock) return;
       const block = toolbarBlock;
-      // Count only blocks that will actually be deleted: the block + its input
-      // descendants, but NOT the top-level next chain (which gets healed, not deleted).
-      const countDeleted = (b, followNext) => {
-        if (!b || b.isShadow()) return 0;
-        let n = 1;
-        for (const input of b.inputList) {
-          n += countDeleted(input.connection?.targetBlock(), true);
-        }
-        if (followNext) n += countDeleted(b.nextConnection?.targetBlock(), true);
-        return n;
-      };
-      const count = countDeleted(block, false);
-      if (count > 1) {
-        const msg = (Blockly.Msg['DELETE_ALL_BLOCKS'] || 'Delete all %1 blocks?').replace(
-          '%1',
-          count
-        );
-        Blockly.dialog.confirm(msg, (ok) => {
-          if (!ok) return;
-          hideBlockToolbar();
-          if (block.isDisposed?.()) return;
-          block.checkAndDelete();
-          Blockly.Toast?.show?.(workspace, {
-            message: translate('DELETE_UNDO_HINT'),
-            id: 'delete-undo-tip',
-            oncePerSession: true,
-            duration: 8,
-          });
-        });
-      } else {
-        hideBlockToolbar();
-        block.checkAndDelete();
-      }
+      hideBlockToolbar();
+      block.checkAndDelete();
+      Blockly.Toast?.show?.(workspace, {
+        message: translate('DELETE_UNDO_HINT'),
+        id: 'delete-undo-tip',
+        oncePerSession: true,
+        duration: 8,
+      });
     });
   }
 }
