@@ -4,6 +4,7 @@ import * as BlockDynamicConnection from '@blockly/block-dynamic-connection';
 import { initializeTheme } from './themes.js';
 import { translate } from './translation.js';
 import { focusRememberedWorkspaceNode } from './workspaceFocus.js';
+import { setBlockHintsSuppressed } from '../ui/blockHint.js';
 import {
   options,
   defineBlocks,
@@ -755,7 +756,10 @@ export function initializeWorkspace() {
   workspaceSearch.setSearchPlaceholder(translate('workspace_search_placeholder'));
   // @blockly/plugin-workspace-search's createTextInput() only sets a
   // placeholder, never an accessible name.
-  workspaceSearch.inputElement?.setAttribute('aria-label', translate('workspace_search_placeholder'));
+  workspaceSearch.inputElement?.setAttribute(
+    'aria-label',
+    translate('workspace_search_placeholder')
+  );
   window.flockWorkspaceSearch = workspaceSearch;
 
   // Comment textareas (block-comment bubbles and standalone workspace
@@ -890,9 +894,8 @@ export function initializeWorkspace() {
 
     const cancelBtn = document.createElement('button');
     cancelBtn.type = 'button';
-    cancelBtn.className = 'mobile-search-cancel';
+    cancelBtn.className = 'mobile-search-cancel flock-close-icon';
     cancelBtn.setAttribute('aria-label', translate('close'));
-    cancelBtn.textContent = '×';
     overlay.appendChild(cancelBtn);
 
     // Build results panel
@@ -1092,7 +1095,14 @@ export function initializeWorkspace() {
           openRequested = false;
         }
       });
-      input.addEventListener('pointerdown', requestOpen);
+      input.addEventListener('pointerdown', (e) => {
+        requestOpen();
+        // Blockly prevents the default pointer action when the active toolbox
+        // category is clicked again, which collapses native text selection.
+        if (workspace.getToolbox()?.getSelectedItem?.() === searchCategory) {
+          e.stopPropagation();
+        }
+      });
       input.addEventListener('mousedown', requestOpen);
       input.addEventListener('touchstart', requestOpen, { passive: true });
       input.addEventListener('click', requestOpen);
@@ -1163,10 +1173,7 @@ export function initializeWorkspace() {
 
   // Fade non-matching blocks during search
   const blocklyDiv = document.getElementById('blocklyDiv');
-  const originalOpen = workspaceSearch.open.bind(workspaceSearch);
   const originalClose = workspaceSearch.close.bind(workspaceSearch);
-
-  const isMobileWS = isMobileSearchLayout;
 
   const wsMobileBar = document.createElement('div');
   wsMobileBar.className = 'ws-search-mobile-bar';
@@ -1192,8 +1199,7 @@ export function initializeWorkspace() {
 
   const wsMobileClose = document.createElement('button');
   wsMobileClose.type = 'button';
-  wsMobileClose.className = 'ws-search-mobile-btn ws-search-mobile-close';
-  wsMobileClose.textContent = '×';
+  wsMobileClose.className = 'ws-search-mobile-btn ws-search-mobile-close flock-close-icon';
 
   wsMobileBar.append(wsMobileInput, wsMobileCount, wsMobilePrev, wsMobileNext, wsMobileClose);
 
@@ -1251,9 +1257,18 @@ export function initializeWorkspace() {
   workspaceSearch.inputElement?.addEventListener('keydown', wsSearchArrowKeys);
 
   wsMobileInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') workspaceSearch.close();
-    else if (e.key === 'Enter') e.shiftKey ? workspaceSearch.previous() : workspaceSearch.next();
-    else wsSearchArrowKeys(e);
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.shiftKey ? workspaceSearch.previous() : workspaceSearch.next();
+    } else {
+      wsSearchArrowKeys(e);
+    }
+  });
+  wsMobileBar.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopPropagation();
+    workspaceSearch.close();
   });
   wsMobilePrev.addEventListener('mousedown', (e) => e.preventDefault());
   wsMobilePrev.addEventListener('click', () => workspaceSearch.previous());
@@ -1262,31 +1277,27 @@ export function initializeWorkspace() {
   wsMobileClose.addEventListener('mousedown', (e) => e.preventDefault());
   wsMobileClose.addEventListener('click', () => workspaceSearch.close());
 
-  window.matchMedia(mobileSearchMediaQuery).addEventListener('change', (e) => {
-    if (!e.matches && wsMobileBar.isConnected) workspaceSearch.close();
-  });
-
   workspaceSearch.open = function () {
-    if (isMobileWS()) {
-      document.body.appendChild(wsMobileBar);
-      wsMobileInput.value = workspaceSearch.searchText || '';
-      if (wsMobileInput.value) {
-        workspaceSearch.searchAndHighlight(wsMobileInput.value, workspaceSearch.preserveSelected);
-      }
-      updateWsMobileCount();
-      wsMobileInput.focus();
-    } else {
-      originalOpen();
+    setBlockHintsSuppressed(true);
+    document.body.appendChild(wsMobileBar);
+    wsMobileInput.value = workspaceSearch.searchText || '';
+    if (wsMobileInput.value) {
+      workspaceSearch.searchAndHighlight(wsMobileInput.value, workspaceSearch.preserveSelected);
     }
+    updateWsMobileCount();
+    wsMobileInput.focus();
     blocklyDiv?.classList.add('blockly-search-active');
   };
   workspaceSearch.close = function () {
+    const currentResult = workspaceSearch.blocks?.[workspaceSearch.currentBlockIndex];
     if (wsMobileBar.isConnected) {
       wsMobileInput.value = '';
       wsMobileBar.remove();
     }
     originalClose();
     blocklyDiv?.classList.remove('blockly-search-active');
+    if (currentResult && !currentResult.isDisposed()) currentResult.select();
+    setBlockHintsSuppressed(false);
   };
 
   // Override highlight methods to work at block-group level so the plugin's
@@ -1333,14 +1344,14 @@ export function initializeWorkspace() {
   const originalCenter = workspace.centerOnBlock.bind(workspace);
 
   workspace.centerOnBlock = function (blockId) {
-    if (workspaceSearch && workspaceSearch.htmlDiv.style.display !== 'none') {
+    if (blocklyDiv?.classList.contains('blockly-search-active')) {
       const block = this.getBlockById(blockId);
       if (block) {
         const scale = this.scale;
         const blockXY = block.getRelativeToSurfaceXY();
         let yOffset = 0;
 
-        const searchTerm = workspaceSearch.inputElement.value.toLowerCase();
+        const searchTerm = wsMobileInput.value.toLowerCase();
         if (searchTerm) {
           for (const input of block.inputList) {
             const match = input.fieldRow.some((f) =>

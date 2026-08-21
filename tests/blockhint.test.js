@@ -6,6 +6,7 @@ import {
   showBlockHintMessage,
   clearBlockHint,
   hideBlockHint,
+  setBlockHintsSuppressed,
 } from '../ui/blockHint.js';
 
 // blockHint.js reads `enabled` once, at module evaluation, so the mobile
@@ -47,6 +48,7 @@ export function runBlockHintTests(_flock) {
     });
 
     afterEach(function () {
+      setBlockHintsSuppressed(false);
       showBlockHint('');
       setBlockHintsEnabled(originalEnabled);
       container.remove();
@@ -166,6 +168,32 @@ export function runBlockHintTests(_flock) {
       });
     });
 
+    describe('temporary suppression', function () {
+      it('keeps new hints hidden until suppression ends', function () {
+        setBlockHintsSuppressed(true);
+        showBlockHint('Move the object');
+        expect(container.hidden).to.be.true;
+
+        setBlockHintsSuppressed(false);
+        expect(container.hidden).to.be.false;
+        expect(text.textContent).to.equal('Move the object');
+      });
+
+      it('keeps one-off messages hidden while suppressed', function () {
+        setBlockHintsSuppressed(true);
+        showBlockHintMessage('Tips live in the Tools menu');
+        expect(container.hidden).to.be.true;
+      });
+
+      it('remains hidden when hints are enabled during suppression', function () {
+        showBlockHint('Move the object');
+        setBlockHintsSuppressed(true);
+        setBlockHintsEnabled(false);
+        setBlockHintsEnabled(true);
+        expect(container.hidden).to.be.true;
+      });
+    });
+
     describe('showBlockHintMessage', function () {
       it('renders plain text when no boldPart is given', function () {
         showBlockHintMessage('Tips live in the Tools menu');
@@ -220,6 +248,20 @@ export function runBlockHintTests(_flock) {
         setBlockHintsEnabled(true);
         expect(container.hidden).to.be.true;
         expect(text.textContent).to.equal('');
+      });
+
+      it('hides on the next click or tap', function () {
+        showBlockHintMessage('Tips live in the Tools menu');
+        document.dispatchEvent(new PointerEvent('pointerdown'));
+        expect(container.hidden).to.be.true;
+      });
+
+      it('removes the dismissal listener when a regular hint replaces it', function () {
+        showBlockHintMessage('Tips live in the Tools menu');
+        showBlockHint('Move the object');
+        document.dispatchEvent(new PointerEvent('pointerdown'));
+        expect(container.hidden).to.be.false;
+        expect(text.textContent).to.equal('Move the object');
       });
     });
 

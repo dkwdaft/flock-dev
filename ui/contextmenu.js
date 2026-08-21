@@ -2,6 +2,7 @@
 
 import * as Blockly from 'blockly';
 import { translate } from '../main/translation.js';
+import { COMMENT_ICON_PATH } from '../main/customCommentIcon.js';
 import { getMeshFromBlock } from './blockmesh.js';
 import {
   setBlockLocked,
@@ -719,9 +720,9 @@ export function initContextMenus(workspace) {
     const detachBtn = document.createElement('button');
     detachBtn.type = 'button';
     detachBtn.className = 'fc-block-toolbar-btn';
-    // fa-link-slash
+    // fa-object-ungroup
     detachBtn.innerHTML = mkFaSvg(
-      '<path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L489.3 358.2l90.5-90.5c56.5-56.5 56.5-148 0-204.5c-50-50-128.8-56.5-186.3-15.4l-1.6 1.1c-14.4 10.3-17.7 30.3-7.4 44.6s30.3 17.7 44.6 7.4l1.6-1.1c32.1-22.9 76-19.3 103.8 8.6c31.5 31.5 31.5 82.5 0 114l-96 96-31.9-25C430.9 239.6 420.1 175.1 377 132c-52.2-52.3-134.5-56.2-191.3-11.7L38.8 5.1zM239 162c30.1-14.9 67.7-9.9 92.8 15.3c20 20 27.5 48.3 21.7 74.5L239 162zM406.6 416.4L220.9 270c-2.1 39.8 12.2 80.1 42.2 110c38.9 38.9 94.4 51 143.6 36.3zm-290-228.5L60.2 244.3c-56.5 56.5-56.5 148 0 204.5c50 50 128.8 56.5 186.3 15.4l1.6-1.1c14.4-10.3 17.7-30.3 7.4-44.6s-30.3-17.7-44.6-7.4l-1.6 1.1c-32.1 22.9-76 19.3-103.8-8.6C74 372 74 321 105.5 289.5l61.8-61.8-50.6-39.9z"/>',
+      '<path d="M32 119.4C12.9 108.4 0 87.7 0 64C0 28.7 28.7 0 64 0c23.7 0 44.4 12.9 55.4 32H328.6C339.6 12.9 360.3 0 384 0c35.3 0 64 28.7 64 64c0 23.7-12.9 44.4-32 55.4V232.6c19.1 11.1 32 31.7 32 55.4c0 35.3-28.7 64-64 64c-23.7 0-44.4-12.9-55.4-32H119.4c-11.1 19.1-31.7 32-55.4 32c-35.3 0-64-28.7-64-64c0-23.7 12.9-44.4 32-55.4V119.4zM119.4 96c-5.6 9.7-13.7 17.8-23.4 23.4V232.6c9.7 5.6 17.8 13.7 23.4 23.4H328.6c5.6-9.7 13.7-17.8 23.4-23.4V119.4c-9.7-5.6-17.8-13.7-23.4-23.4H119.4zm192 384c-11.1 19.1-31.7 32-55.4 32c-35.3 0-64-28.7-64-64c0-23.7 12.9-44.4 32-55.4V352h64v40.6c9.7 5.6 17.8 13.7 23.4 23.4H520.6c5.6-9.7 13.7-17.8 23.4-23.4V279.4c-9.7-5.6-17.8-13.7-23.4-23.4h-46c-5.4-15.4-14.6-28.9-26.5-39.6V192h72.6c11.1-19.1 31.7-32 55.4-32c35.3 0 64 28.7 64 64c0 23.7-12.9 44.4-32 55.4V392.6c19.1 11.1 32 31.7 32 55.4c0 35.3-28.7 64-64 64c-23.7 0-44.4-12.9-55.4-32H311.4z"/>',
       '0 0 640 512'
     );
 
@@ -750,30 +751,26 @@ export function initContextMenus(workspace) {
     commentBtn.type = 'button';
     commentBtn.className = 'fc-block-toolbar-btn';
     setToolbarLabel(commentBtn, getToolbarLabel('add_comment', 'Add comment'));
-    // fa-comment (pre-6.7 path revision; same rendered glyph as current fa-comment)
-    const commentAddSvg = mkFaSvg(
-      '<path d="M256 448c141.4 0 256-93.1 256-208S397.4 32 256 32S0 125.1 0 240c0 49.6 21.4 95 57 130.7C44.5 421.1 2.7 466 2.2 466.5c-2.2 2.4-2.8 5.7-1.5 8.7S4.8 480 8 480c66.3 0 116-31.8 140.6-51.4C169.2 433.6 212.3 448 256 448z"/>',
-      '0 0 512 512'
-    );
-    // fa-comment-slash
+    const commentIconPath = `<path d="${COMMENT_ICON_PATH}" fill="none" stroke="currentColor" stroke-width="32" stroke-linejoin="round"/>`;
+    const commentAddSvg = mkFaSvg(commentIconPath, '0 0 448 512');
     const commentDeleteSvg = mkFaSvg(
-      '<path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L512.9 376.7C552.2 340.2 576 292.3 576 240C576 125.1 461.4 32 320 32c-67.7 0-129.3 21.4-175.1 56.3L38.8 5.1zm385.2 425L82.9 161.3C70.7 185.6 64 212.2 64 240c0 45.1 17.7 86.8 47.7 120.9c-1.9 24.5-11.4 46.3-21.4 62.9c-5.5 9.2-11.1 16.6-15.2 21.6c-2.1 2.5-3.7 4.4-4.9 5.7c-.6 .6-1 1.1-1.3 1.4l-.3 .3c0 0 0 0 0 0c0 0 0 0 0 0s0 0 0 0s0 0 0 0c-4.6 4.6-5.9 11.4-3.4 17.4c2.5 6 8.3 9.9 14.8 9.9c28.7 0 57.6-8.9 81.6-19.3c22.9-10 42.4-21.9 54.3-30.6c31.8 11.5 67 17.9 104.1 17.9c37 0 72.3-6.4 104.1-17.9z"/>',
-      '0 0 640 512'
+      `${commentIconPath}<path d="M246 102L346 202M346 102L246 202" fill="none" stroke="currentColor" stroke-width="32" stroke-linecap="round"/>`,
+      '0 0 448 512'
     );
     commentBtn.innerHTML = commentAddSvg;
 
     const enableBtn = document.createElement('button');
     enableBtn.type = 'button';
     enableBtn.className = 'fc-block-toolbar-btn';
-    // fa-ban — shown when the block is currently enabled (click to disable).
-    const blockDisableSvg = mkFaSvg(
-      '<path d="M367.2 412.5L99.5 144.8C77.1 176.1 64 214.5 64 256c0 106 86 192 192 192c41.5 0 79.9-13.1 111.2-35.5zm45.3-45.3C434.9 335.9 448 297.5 448 256c0-106-86-192-192-192c-41.5 0-79.9 13.1-111.2 35.5L412.5 367.2zM0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256z"/>',
-      '0 0 512 512'
+    // fa-toggle-on
+    const blockEnabledSvg = mkFaSvg(
+      '<path d="M384 64c106 0 192 86 192 192s-86 192-192 192l-192 0C86 448 0 362 0 256S86 64 192 64l192 0zm0 288a96 96 0 1 0 0-192 96 96 0 1 0 0 192z"/>',
+      '0 0 576 512'
     );
-    // fa-circle-check — shown when the block is currently disabled (click to enable).
-    const blockEnableSvg = mkFaSvg(
-      '<path d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM369 209L241 337c-9.4 9.4-24.6 9.4-33.9 0l-64-64c-9.4-9.4-9.4-24.6 0-33.9s24.6-9.4 33.9 0l47 47L335 175c9.4-9.4 24.6-9.4 33.9 0s9.4 24.6 0 33.9z"/>',
-      '0 0 512 512'
+    // fa-toggle-off
+    const blockDisabledSvg = mkFaSvg(
+      '<path d="M192 64C86 64 0 150 0 256S86 448 192 448l192 0c106 0 192-86 192-192S490 64 384 64L192 64zm0 288a96 96 0 1 1 0-192 96 96 0 1 1 0 192z"/>',
+      '0 0 576 512'
     );
 
     // fa-eye
@@ -1087,7 +1084,7 @@ export function initContextMenus(workspace) {
         enableBtn,
         disabled ? getToolbarLabel('context_enable_option', 'Enable') : getToolbarLabel('context_disable_option', 'Disable')
       );
-      enableBtn.innerHTML = disabled ? blockEnableSvg : blockDisableSvg;
+      enableBtn.innerHTML = disabled ? blockDisabledSvg : blockEnabledSvg;
     }
 
     function showBlockToolbar(block, { keyboard = false } = {}) {

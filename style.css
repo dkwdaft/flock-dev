@@ -470,27 +470,14 @@ button {
   color: var(--color-text-primary);
 }
 
-/* Demo picker trigger button — styled to read as a clickable dropdown. */
 #exampleButton {
-  font-size: 14px;
-  border: 1px solid var(--color-border);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  /* Size to the label (varies by language) and keep it on one line with the
-     caret, rather than clipping or wrapping. */
+  padding: 4px 12px;
   width: auto;
   white-space: nowrap;
   flex-shrink: 0;
-}
-
-/* The caret is an in-DOM span (aria-hidden), so it renders on every browser
-   and stays silent to screen readers without relying on the newer CSS
-   content alt-text syntax. */
-.example-caret {
-  font-size: 0.9em;
-  line-height: 1;
 }
 
 /* Canvas Styles */
@@ -711,7 +698,12 @@ button {
 }
 
 #exampleButton {
-  background-color: var(--color-button-bg);
+  background-color: var(--color-primary);
+  color: #ffffff;
+}
+
+#exampleButton:hover {
+  background-color: #3d166d;
 }
 
 .bigbutton:hover {
@@ -1454,9 +1446,8 @@ button {
   overflow-y: auto;
 }
 
-/* Demo / example picker: a dropdown panel of tiles anchored under the Demo
-   button. The backdrop stays full-screen (for click-outside) but transparent,
-   so the panel reads as a popover rather than a centred modal. */
+/* Keep the full-screen click-outside target transparent so this reads as a
+   popover anchored to Projects. */
 #exampleModal {
   background-color: transparent;
 }
@@ -1464,7 +1455,7 @@ button {
 .example-modal-content {
   position: fixed;
   /* top / left / max-width are set by JS (openExampleModal) relative to the
-     Demo button and the scrollbar-free content width. */
+     Projects button and the scrollbar-free content width. */
   margin: 0;
   /* border-box so the width/max-width include the padding + border (there is no
      global box-sizing reset in this project), otherwise the panel is ~50px
@@ -1476,6 +1467,57 @@ button {
   overflow-x: hidden;
   border: 1px solid var(--color-border);
   box-shadow: 0 8px 24px var(--color-shadow-medium);
+}
+
+.project-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 2.5em 1em 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.project-action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  background-color: var(--color-button-bg);
+  color: var(--color-text-primary);
+  font-size: 14px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.project-action-button:hover {
+  background-color: var(--color-button-bg-hover);
+}
+
+.project-action-button:focus,
+.project-action-button:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.project-action-icon {
+  display: inline-flex;
+  width: 1em;
+  height: 1em;
+  flex: none;
+  color: var(--color-primary);
+}
+
+.project-action-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+[data-theme='contrast'] .project-action-button {
+  color: var(--color-bg);
 }
 
 .example-tabs {
@@ -1609,6 +1651,35 @@ button {
 
 .hidden {
   display: none !important;
+}
+
+.flock-close-icon::before {
+  content: '';
+  display: block;
+  width: 18px;
+  height: 18px;
+  background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
+@media (max-width: 768px), (max-width: 899px) and (pointer: coarse) {
+  .flock-close-icon::before {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+button.flock-close-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
 }
 
 .close-button {
@@ -1948,6 +2019,10 @@ body.color-picker-open #renderCanvas {
   position: relative;
   cursor: pointer;
   color: var(--color-menu-item);
+}
+
+#menuDropdown .menu-item.hidden {
+  display: none !important;
 }
 
 .menu-item:hover {
@@ -2823,15 +2898,6 @@ svg.blocklyTrashcanFlyout {
 .fc-block-toolbar-hint {
   pointer-events: none;
   cursor: default;
-}
-
-.fc-block-toolbar-btn--delete {
-  color: #c0392b;
-}
-
-[data-theme='dark'] .fc-block-toolbar-btn--delete,
-[data-theme='dark-contrast'] .fc-block-toolbar-btn--delete {
-  color: #e57373;
 }
 
 /* The "no entry" cursor is the lock indicator (no outline — a dashed outline
