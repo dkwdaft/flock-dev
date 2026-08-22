@@ -1127,7 +1127,6 @@ export default {
   inspector_tool_ui: 'Inspector', // ai
   show_block_hints_ui: 'Mostrar sugerencias de bloques',
   hide_block_hints_ui: 'Ocultar sugerencias de bloques',
-  block_hints_menu_location_ui: 'Haz clic en Menú > Herramientas',
   language_submenu_ui: 'Idioma', // human
   about_submenu_ui: 'Sobre nosotros', // human
   hub_submenu_ui: 'Centro', // human
@@ -1232,6 +1231,12 @@ export default {
   close: 'Cerrar',
   search_no_matching: 'No se encontraron bloques',
   search_type_to_search: 'Escribe para buscar bloques',
+  block_search_prompt: 'escribe para buscar un bloque', // ai
+  block_search_placeholder: 'Escribe para buscar un bloque', // ai
+  block_search_label: 'Buscar un bloque', // ai
+  block_search_result: 'bloque encontrado', // ai
+  block_search_results: 'bloques encontrados', // ai
+  block_search_tooltip: 'Escribe para buscar un bloque y pulsa Intro para añadirlo.', // ai
   code_workspace_focused: 'Espacio de trabajo de código enfocado', // human
   interactive_element_label: 'Elemento interactivo', // human
   panel_resizer_focused:

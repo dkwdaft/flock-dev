@@ -5,6 +5,7 @@ import { restoreBlockFocus, getLastHighlightedBlockId } from '../ui/blocklyutil.
 import { showBanner } from '../ui/notifications.js';
 import { translate } from './translation.js';
 import { disableGltfValidation } from './gltfvalidation.js';
+import { logViewport } from './viewportDebug.js';
 
 export const isNarrowScreen = () => {
   return window.innerWidth <= 1024;
@@ -942,12 +943,36 @@ const scrollEditingBlockIntoView = () => {
 
 let _lastViewportKey = null;
 
+const NON_TEXT_INPUT_TYPES = new Set([
+  'button',
+  'checkbox',
+  'color',
+  'file',
+  'image',
+  'radio',
+  'range',
+  'reset',
+  'submit',
+]);
+
+// Whether the focus is somewhere that would actually raise a soft keyboard.
+const editableFocused = () => {
+  const el = document.activeElement;
+  if (!el) return false;
+  if (el.isContentEditable) return true;
+  if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return false;
+  if (el.readOnly || el.disabled) return false;
+  return el.tagName === 'TEXTAREA' || !NON_TEXT_INPUT_TYPES.has(el.type);
+};
+
 const adjustViewport = () => {
   // Under pinch/auto zoom visualViewport.height shrinks though the layout
   // viewport hasn't; multiply by scale so --app-height doesn't collapse. At
   // scale 1 this is identical to the raw height.
   const vv = window.visualViewport;
   const viewportHeight = vv ? vv.height * vv.scale : window.innerHeight;
+  // Height alone can't tell a keyboard from expanded iOS browser chrome.
+  const keyboardOpen = !!vv && window.innerHeight - viewportHeight > 150 && editableFocused();
   const vh = viewportHeight * 0.01;
   document.documentElement.style.setProperty('--vh', `${vh}px`);
   document.documentElement.style.setProperty('--app-height', `${viewportHeight}px`);
@@ -958,9 +983,8 @@ const adjustViewport = () => {
   if (viewportKey !== _lastViewportKey) {
     _lastViewportKey = viewportKey;
     handleWindowResize();
+    logViewport('resize');
   }
-  const keyboardOpen =
-    window.visualViewport && window.innerHeight - window.visualViewport.height > 150;
   document.documentElement.classList.toggle('keyboard-open', keyboardOpen);
 
   if (keyboardOpen && !_keyboardWasOpen) {

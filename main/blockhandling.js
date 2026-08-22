@@ -5,6 +5,7 @@ import { blockHandlerRegistry, refreshReporterAriaLabels } from '../blocks/block
 import { announceToScreenReader } from './input.js';
 import { TOP_BLOCK_TYPES } from '../config.js';
 import { showBlockHint, clearBlockHint } from '../ui/blockHint.js';
+import { ensureBlockSearchIndex, isCompactSearchLayout } from './blocksearch.js';
 
 function asBlocklyBlock(candidate) {
   if (!candidate || typeof candidate !== 'object') {
@@ -68,6 +69,9 @@ function focusBlocklyBlock(block) {
 function focusKeywordField(block) {
   focusBlocklyBlock(block);
 
+  // The picker needs the search index; build it now if the idle build has not run.
+  ensureBlockSearchIndex(block.workspace);
+
   const textInputField = block.getField('KEYWORD');
   if (textInputField) {
     textInputField.showEditor_();
@@ -90,8 +94,68 @@ function createKeywordBlockAtViewportCenter(blockType) {
   return block;
 }
 
+function showSelectedBlockHint() {
+  const selected = asBlocklyBlock(window.currentBlock);
+  if (selected && !selected.isDisposed?.()) {
+    showBlockHint(Blockly.Tooltip.getTooltipOfObject(selected));
+  } else {
+    clearBlockHint();
+  }
+}
+
+// Blockly hangs its tooltip owner (a block or a field) off the SVG elements it
+// binds, so walking up from the pointer target finds what is under the cursor.
+function blockFromPointerTarget(target) {
+  for (let node = target; node; node = node.parentNode) {
+    const owner = node.tooltip;
+    if (!owner) continue;
+    const block = asBlocklyBlock(owner) || asBlocklyBlock(owner.getSourceBlock?.());
+    if (block) return block;
+  }
+  return null;
+}
+
+// Hints for the toolbox: hovering or keyboard-focusing a flyout block describes
+// it in the hint box, which replaced Blockly's hover tooltips.
+function initializeFlyoutHints() {
+  const flyoutWorkspace = workspace.getFlyout()?.getWorkspace();
+  if (!flyoutWorkspace) return;
+
+  let hoveredBlock = null;
+
+  // A flyout item is dragged out whole, so hint about its root block rather
+  // than whichever shadow field the pointer or cursor happens to be on.
+  const showFlyoutHint = (block) => {
+    const root = block && !block.isDisposed() ? block.getRootBlock() : null;
+    if (!root) {
+      showSelectedBlockHint();
+      return;
+    }
+    showBlockHint(Blockly.Tooltip.getTooltipOfObject(root));
+  };
+
+  flyoutWorkspace.addChangeListener((event) => {
+    if (event.type !== Blockly.Events.SELECTED) return;
+    // Deselecting (clicking a flyout block deselects it again) falls back to
+    // the block under the pointer, which is usually the one just clicked.
+    const selected = event.newElementId && flyoutWorkspace.getBlockById(event.newElementId);
+    showFlyoutHint(selected || hoveredBlock);
+  });
+
+  const flyoutSvg = flyoutWorkspace.getParentSvg();
+  flyoutSvg.addEventListener('pointerover', (event) => {
+    hoveredBlock = blockFromPointerTarget(event.target);
+    showFlyoutHint(hoveredBlock);
+  });
+  flyoutSvg.addEventListener('pointerleave', () => {
+    hoveredBlock = null;
+    showSelectedBlockHint();
+  });
+}
+
 export function initializeBlockHandling() {
   observeBlocklyInputs();
+  initializeFlyoutHints();
 
   // Refresh reporter fields' ARIA when their slot changes so a value block
   // (e.g. a number in scale's X) announces its parent input ("x, number").
@@ -324,11 +388,7 @@ export function initializeBlockHandling() {
     // Track the currently selected block.
     if (event.type === Blockly.Events.SELECTED) {
       window.currentBlock = event.newElementId ? workspace.getBlockById(event.newElementId) : null;
-      if (window.currentBlock) {
-        showBlockHint(Blockly.Tooltip.getTooltipOfObject(window.currentBlock));
-      } else {
-        clearBlockHint();
-      }
+      showSelectedBlockHint();
     }
 
     // Workaround for Blockly not checking for orphans on key
@@ -432,6 +492,12 @@ export function initializeBlockHandling() {
 
 // Function to enforce minimum font size and delay the focus to prevent zoom
 function enforceMinimumFontSize(input) {
+  // The block picker sets its own size to match the toolbox search box; on
+  // narrow screens it still takes the 16px iOS zoom guard below.
+  if (input.classList.contains('block-search-input') && !isCompactSearchLayout()) {
+    return;
+  }
+
   const currentFontSize = parseFloat(input.style.fontSize);
 
   // Set font size immediately if it's less than 16px

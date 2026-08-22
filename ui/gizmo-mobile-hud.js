@@ -39,6 +39,7 @@ export function createGizmoMobileHud({
   showUniform = false,
   stepLabels = ['◁', '▷'],
   onAxisChange = null,
+  onCollapsedChange = null,
   stepLabelsByAxis = null,
   getValues = null,
   initialAxis = null,
@@ -133,6 +134,7 @@ export function createGizmoMobileHud({
     collapsed = next;
     writeCollapsed(collapsed);
     applyCollapsed();
+    onCollapsedChange?.(collapsed);
   }
 
   handle.onPointerUpObservable.add(() => setCollapsed(!collapsed));
@@ -524,6 +526,7 @@ export function createGizmoMobileHud({
     return collapsed;
   };
   stop.isCollapsed = () => collapsed;
+  stop.getAxis = () => axis;
   stop.setAxis = (newAxis) => {
     if (stopped) return;
     const def = AXIS_DEFS.find((d) => d.key === newAxis);

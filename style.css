@@ -616,10 +616,21 @@ button {
   z-index: 90;
   text-align: left;
   pointer-events: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .block-hint[hidden] {
   display: none;
+}
+
+.block-hint__icon {
+  flex: none;
+  width: 1.1em;
+  height: 1.1em;
+  margin-top: 0.1em;
+  color: var(--color-text-brand);
 }
 
 .block-hint__text {
@@ -713,7 +724,7 @@ button {
 /* Gizmo Buttons */
 .gizmo-buttons {
   font-family: 'Atkinson Hyperlegible Next', 'Asap', Helvetica, Arial, Lucida, sans-serif;
-  padding: 5px 5px 25px 0px;
+  padding: 5px 5px 8px 0px;
   margin: 0;
   box-sizing: border-box;
   flex-direction: column;
@@ -723,7 +734,7 @@ button {
    top margin clears the Ctrl+G badges renderBadges() floats below each button. */
 .gizmo-status {
   height: 1.6em;
-  margin: 24px 0 0 5px;
+  margin: 12px 0 0 5px;
   font-size: 1rem;
   line-height: 1.4;
   color: var(--color-text);
@@ -752,6 +763,14 @@ button {
   margin-right: 6px;
   vertical-align: -0.12em;
   background: var(--axis-color);
+}
+
+/* When an info tab is docked, tighten the gizmo bar and status row without
+   making an empty row prominent. The lower rule matches the panel's tab bar. */
+@media (min-width: 1025px), (orientation: portrait) {
+  #canvasArea:has(.info-tab-btn.active) .gizmo-buttons {
+    box-shadow: inset 0 -1px var(--color-border);
+  }
 }
 
 .gizmo-buttons-inner {
@@ -858,6 +877,25 @@ button {
 [data-theme='low-vision'] .gizmo-button img,
 [data-theme='low-vision'] .bigbutton svg {
   color: #f0f0f0 !important;
+}
+
+/* Round, so the fill sits concentric with the circular info glyph. */
+#blockHintsBtn {
+  border-radius: 50%;
+}
+
+/* Collapsed hints invert the button, leaving expanded as the solid state.
+   The theme rules above set .icon path with !important, so this must too. */
+#blockHintsBtn:not(.active) {
+  background-color: var(--color-text-brand);
+}
+
+#blockHintsBtn:not(.active):hover {
+  opacity: 0.85;
+}
+
+#blockHintsBtn:not(.active) .icon path {
+  fill: var(--color-bg) !important;
 }
 
 /* Make links in the 'About' modal and the info panel visible in dark and contrast themes */
@@ -1473,7 +1511,7 @@ button {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 0 2.5em 1em 0;
+  padding: 0 0 1em;
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -1707,12 +1745,6 @@ button.flock-close-icon {
 @media (max-width: 1024px) {
   #projectName {
     display: none; /* hid the project name input box for mobile screens*/
-  }
-  #openButton {
-    display: none; /* Hide open icon on mobile screens */
-  }
-  #exportCodeButton {
-    display: none; /* Hide save icon on mobile screens */
   }
 }
 
@@ -2399,6 +2431,10 @@ kbd {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* Containing block for the panels' absolutely-positioned .sr-only spans.
+     Without it they resolve against #canvasArea, escaping this scroller's
+     clipping and giving #canvasArea phantom scrollable overflow. */
+  position: relative;
 }
 
 #info-panel:has(.info-tab-btn.active) #info-panel-body {
