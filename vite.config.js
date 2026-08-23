@@ -96,6 +96,8 @@ export default {
         { src: 'animations/*.{glb,gltf}', dest: 'animations' },
         { src: 'sounds/*.{mp3,aac,wav}', dest: 'sounds' },
         { src: 'images/*.*', dest: 'images' },
+        // Flat glob above, so the project tile thumbnails need their own target.
+        { src: 'images/thumbnails/*.webp', dest: 'images/thumbnails' },
         { src: 'examples/*.flock', dest: 'examples' },
         { src: 'textures/*.png', dest: 'textures' },
         { src: 'fonts/*.{json,woff2,ttf}', dest: 'fonts' },
@@ -158,25 +160,37 @@ export default {
         background_color: '#ffffff',
         display: 'standalone',
 
-        // Keep start route simple and within scope
         start_url: BASE_URL,
         id: BASE_URL,
         scope: BASE_URL,
 
         orientation: 'any',
         categories: ['education', 'games'],
+        // Maskable icons must be opaque, bird inside the centre 80% circle.
         icons: [
           {
             src: 'images/icon_192x192.png',
             sizes: '192x192',
             type: 'image/png',
-            purpose: 'any maskable',
+            purpose: 'any',
           },
           {
             src: 'images/icon_512x512.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any maskable',
+            purpose: 'any',
+          },
+          {
+            src: 'images/icon_maskable_192x192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+          {
+            src: 'images/icon_maskable_512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
           },
         ],
       },

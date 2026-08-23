@@ -234,8 +234,8 @@ export function setupInput() {
 
       // 7) Main UI controls (in natural order)
       [
-        '#exampleButton',
         '#menuBtn',
+        '#exampleButton',
         '#runCodeButton',
         '#stopCodeButton',
         '#colorPickerButton',
