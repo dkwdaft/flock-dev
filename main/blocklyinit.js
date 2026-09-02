@@ -561,56 +561,27 @@ export function initializeWorkspace() {
 
   // Register variable category callback
   workspace.registerToolboxCategoryCallback('VARIABLE', function (ws) {
-    const xmlList = Blockly.Variables.flyoutCategory(ws);
+    const items = Blockly.Variables.flyoutCategory(ws);
 
-    xmlList.forEach((xmlBlock) => {
-      if (xmlBlock.getAttribute && xmlBlock.getAttribute('type') === 'variables_set') {
-        const valueElement = document.createElement('value');
-        valueElement.setAttribute('name', 'VALUE');
+    // Blockly leaves the set block's socket empty; fill it with a number, and
+    // follow it with a copy holding text, so both kinds are one drag away.
+    const setItem = items.find((item) => item.kind === 'block' && item.type === 'variables_set');
+    if (!setItem) return items;
 
-        const shadowElement = document.createElement('shadow');
-        shadowElement.setAttribute('type', 'math_number');
-
-        const fieldElement = document.createElement('field');
-        fieldElement.setAttribute('name', 'NUM');
-        fieldElement.textContent = '0';
-
-        shadowElement.appendChild(fieldElement);
-        valueElement.appendChild(shadowElement);
-        xmlBlock.appendChild(valueElement);
-      }
+    const withValue = (shadow) => ({
+      ...setItem,
+      fields: { ...setItem.fields },
+      inputs: { ...setItem.inputs, VALUE: { shadow } },
     });
 
-    const defaultBlock = xmlList.find(
-      (xmlBlock) => xmlBlock.getAttribute && xmlBlock.getAttribute('type') === 'variables_set'
+    items.splice(
+      items.indexOf(setItem),
+      1,
+      withValue({ type: 'math_number', fields: { NUM: 0 } }),
+      withValue({ type: 'text', fields: { TEXT: '' } })
     );
-    if (defaultBlock) {
-      const xmlBlockText = defaultBlock.cloneNode(true);
 
-      const valueElements = xmlBlockText.getElementsByTagName('value');
-      for (let i = 0; i < valueElements.length; i++) {
-        if (valueElements[i].getAttribute('name') === 'VALUE') {
-          while (valueElements[i].firstChild) {
-            valueElements[i].removeChild(valueElements[i].firstChild);
-          }
-          const shadowText = document.createElement('shadow');
-          shadowText.setAttribute('type', 'text');
-
-          const fieldText = document.createElement('field');
-          fieldText.setAttribute('name', 'TEXT');
-          fieldText.textContent = '';
-          shadowText.appendChild(fieldText);
-          valueElements[i].appendChild(shadowText);
-          break;
-        }
-      }
-
-      const defaultIndex = xmlList.indexOf(defaultBlock);
-      if (defaultIndex !== -1) {
-        xmlList.splice(defaultIndex + 1, 0, xmlBlockText);
-      }
-    }
-    return xmlList;
+    return items;
   });
 
   workspace.registerToolboxCategoryCallback('LIST', function (ws) {
@@ -2751,6 +2722,9 @@ export function overrideSearchPlugin(workspace) {
         indexedBlocks.push({
           ...blockInfo,
           text: Array.from(searchTerms).join(' ').toLowerCase(),
+          // What the block can plug into: false for a statement, null for an
+          // untyped output. Used to filter the value-socket block picker.
+          outputCheck: block.outputConnection ? (block.outputConnection.getCheck() ?? null) : false,
         });
       });
     } finally {
