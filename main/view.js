@@ -224,6 +224,7 @@ function resizeCanvas() {
 
   canvas.style.width = `${Math.round(newWidth)}px`;
   canvas.style.height = `${Math.round(newHeight)}px`;
+  canvasArea.style.setProperty('--render-canvas-width', `${Math.round(newWidth)}px`);
 
   // position:fixed info-panel tabs (landscape) can't measure the canvas strip themselves, so publish its
   // edge here. Uses the canvas's actual viewport-right edge, not newWidth alone, since the canvas can sit
@@ -384,10 +385,7 @@ function restoreCameraFov() {
   camera.fovMode = fovMode;
 }
 
-function addPlayModeExitListeners() {
-  const exitButton = document.getElementById('exitPlayMode');
-  if (exitButton) exitButton.addEventListener('click', togglePlayMode);
-
+function addPlayModeExitShortcut() {
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape' || !playModeActive || event.defaultPrevented) return;
     togglePlayMode();
@@ -539,7 +537,7 @@ document.addEventListener('DOMContentLoaded', () => {
 export function initializeUI() {
   addSwipeListeners(); // Add swipe event listeners (narrow screens only)
   addButtonListener(); // Add button click listener (narrow screens only)
-  addPlayModeExitListeners();
+  addPlayModeExitShortcut();
 
   // Initialize currentView based on actual DOM state on narrow screens
   if (isNarrowScreen()) {
@@ -623,8 +621,7 @@ export function togglePlayMode() {
       canvasArea.style.width = '0';
       canvasArea.style.flex = '1 1 0';
     }
-    // No Flock chrome left above the canvas, so it starts at the safe area.
-    document.documentElement.style.setProperty('--dynamic-offset', '0px');
+    document.documentElement.style.setProperty('--dynamic-offset', '50px');
     applyPlayModeFov();
     // Keyboard play needs the canvas focused; the exit button must not take it.
     document.getElementById('renderCanvas')?.focus({ preventScroll: true });
@@ -1360,7 +1357,8 @@ class PanelResizer {
   // button's own width avoids counting the absolutely-positioned shape-menu
   // dropdown nested inside #shape-menu, which would otherwise inflate the min.
   // The buttons live in an inner wrapper (.gizmo-buttons-inner) that carries the
-  // flex layout + gap; #gizmoButtons itself carries the horizontal padding.
+  // flex layout, gap and the bar's own padding; #gizmoButtons adds the
+  // horizontal padding around it.
   getMinCanvasWidth() {
     const gizmo = document.getElementById('gizmoButtons');
     if (!gizmo) return this.minPanelFloor;
@@ -1373,8 +1371,12 @@ class PanelResizer {
 
     const rowStyle = window.getComputedStyle(row);
     const gap = parseFloat(rowStyle.columnGap || rowStyle.gap) || 0;
+    const rowPaddingX =
+      row === gizmo
+        ? 0
+        : (parseFloat(rowStyle.paddingLeft) || 0) + (parseFloat(rowStyle.paddingRight) || 0);
 
-    let total = paddingX;
+    let total = paddingX + rowPaddingX;
     let visibleChildren = 0;
     for (const child of row.children) {
       const childStyle = window.getComputedStyle(child);
