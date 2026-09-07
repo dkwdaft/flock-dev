@@ -2686,6 +2686,22 @@ const toolboxSensing = {
             },
           },
         },
+        BACKGROUND: {
+          shadow: {
+            type: 'colour',
+            fields: {
+              COLOR: '#000000',
+            },
+          },
+        },
+        ALPHA: {
+          shadow: {
+            type: 'math_number',
+            fields: {
+              NUM: 0,
+            },
+          },
+        },
       },
     },
     {
@@ -5388,6 +5404,13 @@ const subcategoryBg = (colour, level) =>
     ? `color-mix(in srgb, ${colour} 60%, white)`
     : colour;
 
+// The row-divider colour: the same colour Blockly strokes a block's outline
+// with. For our hue-derived block styles that colourTertiary works out to the
+// fill blended 25% toward black, so the category rule ends up identical to the
+// 1px edge on the matching blocks (verified against computed styles).
+const categoryBorderColour = (colour) =>
+  Blockly.utils.colour.blend('#000', colour, 0.25) || colour;
+
 class IconCategory extends Blockly.ToolboxCategory {
   constructor(categoryDef, toolbox, opt_parent) {
     super(categoryDef, toolbox, opt_parent);
@@ -5424,6 +5447,10 @@ class IconCategory extends Blockly.ToolboxCategory {
         'background-color',
         subcategoryBg(tabColour, this.getLevel()),
         'important'
+      );
+      this.rowDiv_.style.setProperty(
+        '--fc-category-border-colour',
+        categoryBorderColour(tabColour)
       );
     }
 
@@ -5547,6 +5574,10 @@ class CustomCollapsibleToolboxCategory extends Blockly.CollapsibleToolboxCategor
         'background-color',
         subcategoryBg(tabColour, this.getLevel()),
         'important'
+      );
+      this.rowDiv_.style.setProperty(
+        '--fc-category-border-colour',
+        categoryBorderColour(tabColour)
       );
     }
 
