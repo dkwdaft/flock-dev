@@ -149,6 +149,7 @@ export default {
   load_object: 'add %1 %2 %3 scale: %4 x: %5 y: %6 z: %7',
   load_multi_object: 'add %1 %2 scale: %3 x: %4 y: %5 z: %6\ncolors: %7',
   load_model: 'add %1 %2 scale: %3 x: %4 y: %5 z: %6',
+  then_label: 'then',
 
   // Custom block translations - Animate blocks
   glide_to: 'glide %1 to x: %2 y: %3 z: %4 in %5 ms\n%6 return? %7 loop? %8 %9',
@@ -273,7 +274,7 @@ export default {
   interact_indicator: 'interact indicator %1',
   button_controls: 'button controls %1 enabled: %2 color: %3',
   on_screen_controls:
-    'player controls  movement: %1  actions: %2  enabled: %3\ncolor: %4  background: %5  alpha: %6',
+    'player controls  movement: %1  actions: %2  show: %3\ncolor: %4  background: %5  alpha: %6',
   microbit_input: 'when micro:bit event %1',
   add_microbit: 'add micro:bit %1 radio channel %2',
   microbit_any_option: 'any',
@@ -379,7 +380,7 @@ export default {
   set_xr_view_mode: 'set VR view to %1 with camera motion %2',
   set_ar_scene_size: 'set AR scene scale: %1 cm distance: %2 cm height: %3 cm',
   set_vr_comfort: 'set VR comfort tunnel vision %1 strength %2 colour %3 alpha %4',
-  set_vr_comfort_overlay: 'overlay %1 shown %2',
+  set_vr_comfort_overlay: 'overlay %1 shown %2 spacing %3 colour %4',
   set_xr_ui_placement: 'show VR UI on %1',
   add_teleport_target: 'add teleport target %1',
   remove_teleport_target: 'remove teleport target %1',
@@ -664,7 +665,7 @@ export default {
   set_ar_scene_size_tooltip:
     'Scale: how wide the scene appears in the room, or 0 for life size. Distance: how far in front of you it starts. Height: how far it floats above the floor.',
   set_vr_comfort_tooltip:
-    'Comfort options for a VR headset. Tunnel vision narrows the edges of your view while the scene moves; the overlay adds faint markers that hold still in your real room.',
+    'Comfort options for a VR headset. Tunnel vision narrows the edges of your view while the scene moves; the overlay adds faint markers (dots or a room-sized grid cage) that hold still in your real room. Spacing and colour set how the dots and grid look.',
   set_xr_ui_placement_tooltip:
     'Choose where buttons, sliders and text appear in VR. The heads-up display floats in front of you; the wrist attaches them to your left controller like a watch.',
   add_teleport_target_tooltip: 'Allow teleporting onto the ground, one object, or all objects.',
@@ -764,7 +765,7 @@ export default {
   environment_option: 'back',
 
   LINEAR_option: 'Linear',
-  NONE_option: 'None',
+  NONE_option: 'none',
   EXP_option: 'Exp',
   EXP2_option: 'Exp2',
 
@@ -866,6 +867,8 @@ export default {
   low_option: 'low',
   medium_option: 'medium',
   high_option: 'high',
+  small_option: 'small',
+  large_option: 'large',
   off_option: 'off',
   space_infinity_option: 'space ❖', // Duplicate key space
   q_icon_option: 'Q ■', // Duplicate key q
@@ -905,6 +908,8 @@ export default {
   AUTO_option: 'auto',
   ENABLED_option: 'enabled',
   DISABLED_option: 'disabled',
+  SHOW_option: 'show',
+  HIDE_option: 'hide',
 
   BOTH_option: 'both',
   ARROWS_option: 'arrows',
@@ -912,6 +917,8 @@ export default {
   JOYSTICK_option: 'joystick',
   YES_option: 'yes',
   NO_option: 'no',
+  NUMBERS_option: 'numbers',
+  LETTERS_option: 'letters',
   ACTION_FORWARD_option: 'forward',
   ACTION_BACKWARD_option: 'backward',
   ACTION_LEFT_option: 'left',
@@ -1123,7 +1130,7 @@ export default {
   light_theme_ui: 'Light',
   dark_theme_ui: 'Dark',
   dark_contrast_theme_ui: 'Dark',
-  low_vision_theme_ui: 'Low color',
+  low_color_theme_ui: 'Low color',
   contrast_theme_ui: 'Contrast',
 
   run_code_button_ui: 'Run your code',
@@ -1210,6 +1217,8 @@ export default {
   exit_canvas_view: 'Stop orbiting object',
   detach_block_option: 'Detach',
   view_in_canvas_option: 'View in canvas',
+  move_item_up_option: 'Move item up',
+  move_item_down_option: 'Move item down',
   context_copy_option: 'Copy',
   context_paste_option: 'Paste',
   context_cut_option: 'Cut',
@@ -1494,6 +1503,8 @@ export default {
   hud_hidden: 'Gizmo controls hidden',
   hud_shown: 'Gizmo controls shown',
   gizmo_controls_hint: 'Show or hide the gizmo controls from Menu > Tools.',
+  xr_mode_missing_hint:
+    "No XR mode block, so this project won't open in your headset. Add one from Scene > XR.",
   shortcut_quick_colour: 'Quick use colour in colour picker',
   shortcut_delete_object: 'Delete object',
 

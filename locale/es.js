@@ -144,6 +144,7 @@ export default {
   load_object: 'añadir %1 %2 %3 escala: %4 x: %5 y: %6 z: %7', // human
   load_multi_object: 'añadir %1 %2 escala: %3 x: %4 y: %5 z: %6\ncolores: %7', // human
   load_model: 'añadir %1 %2 escala: %3 x: %4 y: %5 z: %6', // human
+  then_label: 'luego', // human
 
   // Custom block translations - Animate blocks
   glide_to: 'deslizar %1 a x %2 y %3 z %4 en %5 ms\n%6 ¿regresar? %7 ¿repetir? %8 %9', // human
@@ -268,7 +269,7 @@ export default {
   interact_indicator: 'indicador de interacción %1', // ai
   button_controls: 'controles de botón %1 habilitados %2 color %3', // human
   on_screen_controls:
-    'controles del jugador  movimiento: %1  acciones: %2  activado: %3\ncolor: %4  fondo: %5  alfa: %6', // ai
+    'controles del jugador  movimiento: %1  acciones: %2  mostrar: %3\ncolor: %4  fondo: %5  alfa: %6', // ai
   microbit_input: 'cuando evento micro:bit %1', // human
   add_microbit: 'añadir micro:bit %1 canal de radio %2', // ai
   microbit_any_option: 'cualquiera', // ai
@@ -374,7 +375,7 @@ export default {
   set_xr_view_mode: 'establecer vista de RV a %1 con movimiento de cámara %2',
   set_ar_scene_size: 'escena AR escala: %1 cm distancia: %2 cm altura: %3 cm', // ai
   set_vr_comfort: 'confort de RV visión de túnel %1 intensidad %2 color %3 alfa %4', // ai
-  set_vr_comfort_overlay: 'superposición %1 mostrada %2', // ai
+  set_vr_comfort_overlay: 'superposición %1 mostrada %2 espaciado %3 color %4', // ai
   set_xr_ui_placement: 'mostrar interfaz de RV en %1', // ai
   add_teleport_target: 'añadir destino de teletransporte %1',
   remove_teleport_target: 'eliminar destino de teletransporte %1',
@@ -752,7 +753,7 @@ export default {
   environment_option: 'trasero', // human
 
   LINEAR_option: 'Lineal', // human
-  NONE_option: 'Ninguno', // human
+  NONE_option: 'ninguno', // human
   EXP_option: 'Exp', // human
   EXP2_option: 'Exp2', // human
 
@@ -854,6 +855,8 @@ export default {
   low_option: 'baja', // ai
   medium_option: 'media', // ai
   high_option: 'alta', // ai
+  small_option: 'pequeño', // ai
+  large_option: 'grande', // ai
   off_option: 'desactivado', // ai
   space_infinity_option: 'espacio ❖', // human
   q_icon_option: 'Q ■', // human
@@ -893,6 +896,8 @@ export default {
   AUTO_option: 'automático', // human
   ENABLED_option: 'habilitado', // human
   DISABLED_option: 'deshabilitado', // human
+  SHOW_option: 'mostrar', // ai
+  HIDE_option: 'ocultar', // ai
 
   BOTH_option: 'ambos', // human
   ARROWS_option: 'flechas', // human
@@ -900,6 +905,8 @@ export default {
   JOYSTICK_option: 'joystick', // ai
   YES_option: 'sí', // ai
   NO_option: 'no', // ai
+  NUMBERS_option: 'números', // ai
+  LETTERS_option: 'letras', // ai
   ACTION_FORWARD_option: 'adelante', // human
   ACTION_BACKWARD_option: 'atrás', // human
   ACTION_LEFT_option: 'izquierda', // human
@@ -1102,7 +1109,7 @@ export default {
   light_theme_ui: 'Claro', // human
   dark_theme_ui: 'Oscuro', // human
   contrast_theme_ui: 'Contraste', // human
-  low_vision_theme_ui: 'Color reducido', // ai
+  low_color_theme_ui: 'Color reducido', // ai
 
   run_code_button_ui: 'Ejecutar tu código', // human
   stop_code_button_ui: 'Detener tu código', // human
@@ -1424,6 +1431,8 @@ export default {
   hud_shown: 'Controles de manipulación visibles', // ai
   gizmo_controls_hint:
     'Muestra u oculta los controles de manipulación desde Menú > Herramientas.', // ai
+  xr_mode_missing_hint:
+    'Sin bloque de modo XR, este proyecto no se abrirá en tu visor. Añade uno desde Escena > XR.', // ai
   shortcut_quick_colour: 'Usar color rápido en el selector de color',
   shortcut_delete_object: 'Eliminar objeto',
 

@@ -73,6 +73,19 @@ function controlsShouldShow(mode) {
   return mode === 'ENABLED' || (mode === 'AUTO' && getPlayerControlsEnabled());
 }
 
+// What the four action buttons show. 'LETTERS' matches the r/e/f/space key
+// bindings (with the usual spacebar glyph); 'NUMBERS' is the 1-4 pad. The block
+// keeps the old field values, so 'YES' means the number pad and 'NO' means no
+// action buttons; 'NUMBERS'/'NONE' are accepted too for direct script calls.
+const ACTION_BUTTON_LABELS = {
+  YES: ['1', '2', '3', '4'],
+  NUMBERS: ['1', '2', '3', '4'],
+  LETTERS: ['R', 'E', 'F', '␣'],
+};
+function actionButtonLabels(actions) {
+  return ACTION_BUTTON_LABELS[actions] || null;
+}
+
 function renderControls(layout, scale) {
   flock._onScreenSource?.releaseAll();
   if (flock._joystickSource) {
@@ -118,7 +131,8 @@ function renderControls(layout, scale) {
       flock._joystickSource = flock.createJoystickControls(moveColor, moveBackground);
       flock._joystickSource?.start();
     }
-    if (layout.actions === 'YES') flock.createButtonControls(actionColor, actionBackground);
+    const actionLabels = actionButtonLabels(layout.actions);
+    if (actionLabels) flock.createButtonControls(actionColor, actionBackground, actionLabels);
   } finally {
     flock.displayScale = previousDisplayScale;
   }
@@ -284,13 +298,17 @@ export const flockUI = {
     });
 
     if (duration > 0) {
-      setTimeout(() => {
+      const expireTimer = flock.hiddenAwareTimeout(() => {
         const ctl = flock.scene.UITexture.getControlByName(bgId);
         if (ctl) {
           ctl.dispose();
         }
         unregisterUIControl(textBlockId);
       }, duration * 1000);
+
+      flock.abortController?.signal.addEventListener('abort', () => expireTimer.cancel(), {
+        once: true,
+      });
     }
 
     return textBlockId;
@@ -643,7 +661,7 @@ export const flockUI = {
     grid.addControl(downButton, 1, 1);
     grid.addControl(rightButton, 1, 2);
   },
-  createButtonControls(color, background = 'transparent') {
+  createButtonControls(color, background = 'transparent', labels = ['1', '2', '3', '4']) {
     if (!flock.controlsTexture) return;
 
     const rightGrid = new flock.GUI.Grid();
@@ -667,19 +685,19 @@ export const flockUI = {
       background,
     };
     const button1 = flock.createSmallButton(
-      '1',
+      labels[0],
       [...getBoundKeys('BUTTON1'), 'PageUp'],
       color,
       actionStyle
     );
-    const button2 = flock.createSmallButton('2', getBoundKeys('BUTTON2'), color, actionStyle);
+    const button2 = flock.createSmallButton(labels[1], getBoundKeys('BUTTON2'), color, actionStyle);
     const button3 = flock.createSmallButton(
-      '3',
+      labels[2],
       [...getBoundKeys('BUTTON3'), 'PageDown'],
       color,
       actionStyle
     );
-    const button4 = flock.createSmallButton('4', getBoundKeys('BUTTON4'), color, actionStyle);
+    const button4 = flock.createSmallButton(labels[3], getBoundKeys('BUTTON4'), color, actionStyle);
 
     rightGrid.addControl(button1, 0, 0);
     rightGrid.addControl(button2, 0, 1);
@@ -965,17 +983,17 @@ export const flockUI = {
           bg.addControl(textBlock);
 
           if (duration > 0) {
-            const timeoutId = setTimeout(() => {
+            const sayTimer = flock.hiddenAwareTimeout(() => {
               stackPanel.removeControl(bg);
               bg.dispose();
               textBlock.dispose();
               resolve();
             }, duration * 1000);
 
-            flock.abortController.signal.addEventListener(
+            flock.abortController?.signal.addEventListener(
               'abort',
               () => {
-                clearTimeout(timeoutId);
+                sayTimer.cancel();
                 bg.dispose();
                 textBlock.dispose();
                 resolve(new Error('Action aborted'));
@@ -1052,17 +1070,15 @@ export const flockUI = {
         });
       };
 
-      let timeoutId = null;
+      let fadeTimer = null;
       if (safeDuration > 0) {
-        timeoutId = setTimeout(fadeOut, safeDuration * 1000);
+        fadeTimer = flock.hiddenAwareTimeout(fadeOut, safeDuration * 1000);
       }
 
-      flock.abortController.signal.addEventListener(
+      flock.abortController?.signal.addEventListener(
         'abort',
         () => {
-          if (timeoutId !== null) {
-            clearTimeout(timeoutId);
-          }
+          fadeTimer?.cancel();
           if (flock.stackPanel) {
             flock.stackPanel.removeControl(bg);
             bg.dispose();
@@ -1213,7 +1229,7 @@ export const flockUI = {
 
       const seconds = Number(duration);
       if (isFinite(seconds) && seconds > 0) {
-        flock._subtitleTimer = setTimeout(() => {
+        flock._subtitleTimer = flock.hiddenAwareTimeout(() => {
           if (flock._subtitleToken === token) flock.clearSubtitle();
         }, seconds * 1000);
       }
@@ -1229,7 +1245,7 @@ export const flockUI = {
 
   clearSubtitle() {
     if (flock._subtitleTimer) {
-      clearTimeout(flock._subtitleTimer);
+      flock._subtitleTimer.cancel();
       flock._subtitleTimer = null;
     }
     if (!flock._subtitleControl) return;

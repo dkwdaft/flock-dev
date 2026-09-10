@@ -109,6 +109,7 @@ export const flock = {
   soundPath: './sounds/',
   imagePath: './images/',
   texturePath: './textures/',
+  animationPath: './animations/',
   // Keep optional Babylon dependencies referenced so bundlers include them.
   optionalBabylonDeps,
   engine: null,
@@ -573,17 +574,81 @@ export const flock = {
 
     handleError(error, { source: 'physics-oom', fatal: true });
   },
+  // Wrap a yield primitive so it holds while the tab is hidden: a background
+  // tab must spend no real time running loops, matching wait() and the game
+  // clock. A stopped run abandons the held yield exactly as it would while
+  // visible, so abort only needs to detach the listener.
+  makeHiddenAwareYield(nativeYield, signal) {
+    const doc = typeof document !== 'undefined' ? document : null;
+    return (settle) => {
+      if (!doc?.hidden) {
+        nativeYield(settle);
+        return;
+      }
+      const onVisible = () => {
+        if (doc.hidden) return;
+        doc.removeEventListener('visibilitychange', onVisible);
+        signal?.removeEventListener('abort', onAbort);
+        nativeYield(settle);
+      };
+      const onAbort = () => doc.removeEventListener('visibilitychange', onVisible);
+      doc.addEventListener('visibilitychange', onVisible);
+      signal?.addEventListener('abort', onAbort, { once: true });
+    };
+  },
   // Counted-loop yield: scheduler.yield() resumes when the browser is free (not
   // at the next paint); fall back to rAF where unavailable. Guarded like rAF so
-  // a stopped run never resumes.
-  makeLoopYield(guard) {
+  // a stopped run never resumes; held while the tab is hidden.
+  makeLoopYield(guard, signal) {
     const schedulerYield = window.scheduler?.yield?.bind(window.scheduler) ?? null;
     const requestAnimationFrame = window.requestAnimationFrame.bind(window);
-    return (callback) => {
-      const settle = guard(callback);
-      if (schedulerYield) schedulerYield().then(settle, settle);
-      else requestAnimationFrame(settle);
+    const nativeYield = (settle) =>
+      schedulerYield ? schedulerYield().then(settle, settle) : requestAnimationFrame(settle);
+    const held = flock.makeHiddenAwareYield(nativeYield, signal);
+    return (callback) => held(guard(callback));
+  },
+  // setTimeout that spends no hidden-tab time: it pauses while the tab is
+  // hidden and resumes with the delay that was left, so a block's "for N
+  // seconds" means N visible seconds — the same rule as wait(). Returns a
+  // handle whose cancel() stops it and detaches the listener.
+  hiddenAwareTimeout(callback, ms) {
+    const doc = typeof document !== 'undefined' ? document : null;
+    let remaining = Math.max(0, Number(ms) || 0);
+    let startedAt = 0;
+    let running = false;
+    let id = null;
+    let done = false;
+
+    const cancel = () => {
+      if (done) return;
+      done = true;
+      running = false;
+      clearTimeout(id);
+      doc?.removeEventListener('visibilitychange', onVisibility);
     };
+    const fire = () => {
+      cancel();
+      callback();
+    };
+    const arm = () => {
+      startedAt = performance.now();
+      running = true;
+      id = setTimeout(fire, remaining);
+    };
+    const onVisibility = () => {
+      if (doc.hidden) {
+        if (!running) return;
+        running = false;
+        clearTimeout(id);
+        remaining = Math.max(0, remaining - (performance.now() - startedAt));
+      } else if (!running) {
+        arm();
+      }
+    };
+
+    doc?.addEventListener('visibilitychange', onVisibility);
+    if (!doc?.hidden) arm();
+    return { cancel };
   },
   validateCode(code) {
     if (typeof code !== 'string') {
@@ -848,9 +913,10 @@ export const flock = {
       });
 
       // --- load SES text in parent and inject inline into iframe (CSP allows inline) ---
-      const sesResp = await fetch('vendor/ses/lockdown.umd.min.js');
+      const sesResp = await fetch(flockRuntimeUrl('vendor/ses/lockdown.umd.min.js'));
       if (!sesResp.ok) throw new Error(`Failed to fetch SES: ${sesResp.status}`);
       const sesText = await sesResp.text();
+      await verifySesIntegrity(sesText);
       const sesScript = doc.createElement('script');
       sesScript.type = 'text/javascript';
       sesScript.text = sesText;
@@ -920,10 +986,14 @@ export const flock = {
       // to cancel implicitly) or a stale run's frames fire into the next run.
       // Wrapped so the endowment carries no host `.constructor`.
       const hostRequestAnimationFrame = window.requestAnimationFrame.bind(window);
-      endowments.requestAnimationFrame = win.__flockWrapHostFn((callback) =>
-        hostRequestAnimationFrame(guard(callback))
+      const frameYield = flock.makeHiddenAwareYield(
+        (settle) => hostRequestAnimationFrame(settle),
+        signal
       );
-      endowments.__flockLoopYield = win.__flockWrapHostFn(flock.makeLoopYield(guard));
+      endowments.requestAnimationFrame = win.__flockWrapHostFn((callback) =>
+        frameYield(guard(callback))
+      );
+      endowments.__flockLoopYield = win.__flockWrapHostFn(flock.makeLoopYield(guard, signal));
 
       endowments.Date = new win.Object();
       endowments.Date.now = win.Date.now.bind(win.Date);
@@ -1425,7 +1495,7 @@ export const flock = {
     flock.abortController = new AbortController();
 
     try {
-      const manifoldWasm = await getManifold();
+      const manifoldWasm = await getManifold(flockRuntimeUrl('wasm/manifold.wasm'));
       await flock.BABYLON.InitializeCSG2Async({
         manifoldInstance: manifoldWasm.Manifold,
         manifoldMeshInstance: manifoldWasm.Mesh,
@@ -1558,8 +1628,9 @@ export const flock = {
       dismissBanner('webgl-lost');
       flock.engine.resize();
       // Don't resume behind the stopped overlay if Stop was pressed while the
-      // context was lost.
-      if (flock._renderLoop && !flock._renderLoopStopped) {
+      // context was lost, nor into a hidden tab (the visibilitychange handler
+      // resumes the loop when the tab is shown again).
+      if (flock._renderLoop && !flock._renderLoopStopped && !document.hidden) {
         flock.engine.runRenderLoop(flock._renderLoop);
       }
     });
@@ -1580,6 +1651,25 @@ export const flock = {
       flock._audioVisibilityListenerAdded = true;
       document.addEventListener('visibilitychange', () => {
         flock.syncAudioWithPageState?.();
+      });
+    }
+
+    if (!flock._renderVisibilityListenerAdded) {
+      flock._renderVisibilityListenerAdded = true;
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          // Stop outright rather than leaning on the browser to throttle rAF:
+          // everything driven by scene.render() (physics, animations, forever,
+          // waitUntil) then freezes with the clock, audio and loop yields
+          // instead of crawling on in the background.
+          flock.engine?.stopRenderLoop();
+        } else if (
+          flock._renderLoop &&
+          !flock._renderLoopStopped &&
+          !flock.engine?.isContextLost?.()
+        ) {
+          flock.engine.runRenderLoop(flock._renderLoop);
+        }
       });
     }
 
@@ -2835,24 +2925,195 @@ export const flock = {
   },
 };
 
+async function verifySesIntegrity(sesText) {
+  const expected = typeof __FLOCK_SES_SRI__ !== 'undefined' ? __FLOCK_SES_SRI__ : null;
+  if (!expected) return;
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sesText));
+  const actual = 'sha256-' + btoa(String.fromCharCode(...new Uint8Array(digest)));
+  if (actual !== expected) {
+    throw new Error('SES lockdown integrity check failed — refusing to run project code');
+  }
+}
+
+function flockConfigUrl(value) {
+  if (!value) return null;
+  try {
+    const url = new URL(value, document.baseURI);
+    if (url.protocol === 'http:' || url.protocol === 'https:') return url.href;
+  } catch {
+    /* fall through */
+  }
+  console.warn('FLOCK_CONFIG: ignoring non-http(s) URL', value);
+  return null;
+}
+
+// A base URL must end in '/' or `new URL(relative, base)` drops its last path
+// segment. Vite's BASE_URL normally has the slash, but the GitHub Pages deployer
+// passes `--base=/flock`, so guard against it (and against a slashless FLOCK_CONFIG).
+function ensureTrailingSlash(url) {
+  const parsed = new URL(url);
+  if (!parsed.pathname.endsWith('/')) parsed.pathname += '/';
+  return parsed.href;
+}
+
+function flockRuntimeBase() {
+  const configured =
+    typeof window !== 'undefined' && window.FLOCK_CONFIG && window.FLOCK_CONFIG.runtimeBaseUrl;
+  const base = flockConfigUrl(configured) || new URL(import.meta.env.BASE_URL, import.meta.url).href;
+  return ensureTrailingSlash(base);
+}
+
+function flockRuntimeUrl(relativePath) {
+  return new URL(relativePath, flockRuntimeBase()).href;
+}
+
+flock.runtimeUrl = flockRuntimeUrl;
+
+function flockAssetBase() {
+  const configured =
+    typeof window !== 'undefined' && window.FLOCK_CONFIG && window.FLOCK_CONFIG.assetBase;
+  const base = flockConfigUrl(configured);
+  return base ? ensureTrailingSlash(base) : flockRuntimeBase();
+}
+
+function injectStandaloneChrome() {
+  const doc = flock.document;
+  const body = doc.body;
+  if (!body) return;
+
+  const assetBase = flockAssetBase();
+  const brandImg = (name, className, alt) => {
+    const el = doc.createElement('img');
+    el.src = new URL('images/' + name, assetBase).href;
+    if (className) el.className = className;
+    el.alt = alt;
+    return el;
+  };
+
+  if (!doc.getElementById('loadingScreen')) {
+    const screen = doc.createElement('div');
+    screen.id = 'loadingScreen';
+    screen.className = 'flock-loading';
+    screen.setAttribute('role', 'status');
+    screen.setAttribute('aria-label', 'Loading');
+
+    const content = doc.createElement('div');
+    content.className = 'flock-loading-content';
+
+    const bird = brandImg('flock-bird-mascot.svg', 'flock-loading-bird', '');
+    bird.width = 120;
+    bird.height = 120;
+
+    const spinner = doc.createElement('div');
+    spinner.className = 'flock-loading-spinner';
+    spinner.setAttribute('aria-hidden', 'true');
+
+    const text = doc.createElement('p');
+    text.className = 'flock-loading-text';
+    text.textContent = 'Loading…';
+
+    content.append(bird, brandImg('inline-flock-xr.svg', 'flock-loading-logo', 'Flock XR'), spinner, text);
+    screen.appendChild(content);
+    body.appendChild(screen);
+  }
+  body.setAttribute('aria-busy', 'true');
+
+  if (!doc.querySelector('.flock-credit')) {
+    const footer = doc.createElement('footer');
+    footer.className = 'flock-credit';
+
+    const made = doc.createElement('a');
+    made.href = 'https://flockxr.com/';
+    made.target = '_blank';
+    made.rel = 'noopener noreferrer';
+    const madeText = doc.createElement('span');
+    madeText.textContent = 'Made with Flock XR';
+    made.append(brandImg('inline-flock-xr.svg', '', 'Flock XR'), madeText);
+
+    const open = doc.createElement('a');
+    open.className = 'flock-credit-open';
+    open.setAttribute('data-flock-open-in-editor', '');
+    open.target = '_blank';
+    open.rel = 'noopener noreferrer';
+    open.textContent = 'Open in Flock';
+    open.href = 'https://flipcomputing.github.io/flock/';
+
+    footer.append(made, open);
+    body.appendChild(footer);
+  }
+}
+
+function hideStandaloneLoadingScreen() {
+  if (typeof window.hideLoadingScreen === 'function') {
+    window.hideLoadingScreen();
+    return;
+  }
+  const el = flock.document.getElementById('loadingScreen');
+  if (!el) return;
+  el.classList.add('fade-out');
+  flock.document.body?.setAttribute('aria-busy', 'false');
+  setTimeout(() => el.remove(), 600);
+}
+
+function wireOpenInEditorLink() {
+  const link = flock.document.querySelector('[data-flock-open-in-editor]');
+  if (!link) return;
+  const here = window.location;
+  if (here.protocol !== 'http:' && here.protocol !== 'https:') {
+    link.hidden = true;
+    return;
+  }
+  const cfg = (typeof window !== 'undefined' && window.FLOCK_CONFIG) || {};
+  const editor = flockConfigUrl(cfg.editorUrl) || 'https://flipcomputing.github.io/flock/';
+  link.href = `${editor}?project=${encodeURIComponent(here.href)}`;
+}
+
+const MAX_STANDALONE_PROJECT_LENGTH = 4 * 1024 * 1024;
+
+async function resolveStandaloneProjectCode(scriptElement) {
+  const source = scriptElement.textContent;
+  if (source.length > MAX_STANDALONE_PROJECT_LENGTH) {
+    throw new Error('Embedded project is too large');
+  }
+  const type = (scriptElement.type || '').toLowerCase();
+  if (type === 'application/flock+json' || type === 'application/vnd.flock+json') {
+    const { compileFlockProject } = await import('./flockCompiler.js');
+    return compileFlockProject(JSON.parse(source));
+  }
+  return source;
+}
+
 export function initializeFlock() {
   const scriptElement = flock.document.getElementById('flock');
-  if (scriptElement) {
-    flock
-      .initialize()
-      .then(() => {
-        flock.modelPath = 'https://flipcomputing.github.io/flock/models/';
-        flock.soundPath = 'https://flipcomputing.github.io/flock/sounds/';
-        flock.imagePath = 'https://flipcomputing.github.io/flock/images/';
-        flock.texturePath = 'https://flipcomputing.github.io/flock/textures/';
-        const userCode = scriptElement.textContent;
+  if (!scriptElement) return;
+  injectStandaloneChrome();
+  wireOpenInEditorLink();
+  flock
+    .initialize()
+    .then(async () => {
+      const assetBase = flockAssetBase();
+      flock.modelPath = new URL('models/', assetBase).href;
+      flock.soundPath = new URL('sounds/', assetBase).href;
+      flock.imagePath = new URL('images/', assetBase).href;
+      flock.texturePath = new URL('textures/', assetBase).href;
+      flock.animationPath = new URL('animations/', assetBase).href;
+      flock.BABYLON.DracoCompression.Configuration = {
+        decoder: {
+          wasmUrl: flockRuntimeUrl('draco/draco_wasm_wrapper_gltf.js'),
+          wasmBinaryUrl: flockRuntimeUrl('draco/draco_decoder_gltf.wasm'),
+          fallbackUrl: flockRuntimeUrl('draco/draco_decoder_gltf.js'),
+        },
+      };
 
-        flock.runCode(userCode);
-      })
-      .catch((error) => {
-        console.error('Error initializing flock:', error);
-      });
-  }
+      const code = await resolveStandaloneProjectCode(scriptElement);
+      await flock.runCode(code);
+    })
+    .catch((error) => {
+      console.error('Error initializing flock:', error);
+    })
+    .finally(() => {
+      hideStandaloneLoadingScreen();
+    });
 }
 
 window.setBPM = flockSound.setBPM;
@@ -2864,9 +3125,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (scriptElement) {
     console.log('Standalone Flock 🐦');
     initializeFlock();
-
-    if (window.hideLoadingScreen && typeof window.hideLoadingScreen === 'function') {
-      setTimeout(window.hideLoadingScreen, 1000);
-    }
+    setTimeout(hideStandaloneLoadingScreen, 15000);
   }
 });

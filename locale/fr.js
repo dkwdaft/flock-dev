@@ -1041,7 +1041,7 @@ export default {
   light_theme_ui: 'Clair',
   dark_theme_ui: 'Sombre',
   contrast_theme_ui: 'Contraste',
-  low_vision_theme_ui: 'Couleur réduite', // ai
+  low_color_theme_ui: 'Couleur réduite', // ai
 
   run_code_button_ui: 'Exécuter votre code',
   stop_code_button_ui: 'Arrêter votre code',
@@ -1343,6 +1343,8 @@ export default {
   hud_shown: 'Commandes de manipulation affichées', // ai
   gizmo_controls_hint:
     'Affichez ou masquez les commandes de manipulation depuis Menu > Outils.', // ai
+  xr_mode_missing_hint:
+    "Sans bloc mode XR, ce projet ne s'ouvrira pas dans votre casque. Ajoutez-en un depuis Scène > XR.", // ai
   shortcut_quick_colour: 'Utiliser rapidement une couleur dans le sélecteur',
   shortcut_delete_object: "Supprimer l'objet",
 

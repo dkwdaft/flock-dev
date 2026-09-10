@@ -96,6 +96,8 @@ export const createFlockXRState = () => ({
   _xrComfortAlpha: 1,
   _xrComfortRestFrame: 'none',
   _xrComfortRestFrameShow: 'moving',
+  _xrComfortRestFrameSpacing: 'medium',
+  _xrComfortRestFrameColour: REST_FRAME_COLOUR,
   _xrComfortMotion: 0,
   _xrComfortPoseStatus: null,
   _xrVignetteMesh: null,
@@ -191,14 +193,19 @@ const COMFORT_JUMP_RAD = Math.PI / 12;
 
 // The restrictor closes the periphery down as the motion reading rises. Restriction runs
 // 0 (open) to 1 (tunnel), and stops short of 1 so there is always something left to steer by.
-const VIGNETTE_MAX_RESTRICTION = 0.85;
-// Half-angles from straight ahead: open sits outside any headset's field of view, so an open
-// restrictor is not merely invisible but has nothing to draw.
-const VIGNETTE_OPEN_ANGLE = 1.6;
-// How tight the tunnel gets at full speed. Relief and immersion trade off against each other
-// differently for every wearer, which is why this is the wearer's choice rather than a constant.
-const VIGNETTE_CLOSED_ANGLES = { low: 0.61, medium: 0.35, high: 0.21 };
-const VIGNETTE_FEATHER_RAD = 0.22;
+const VIGNETTE_MAX_RESTRICTION = 0.95;
+// Half-angles from straight ahead. Open sits just past the widest headset's field of view, so
+// an open restrictor has nothing to draw while the ramp still spends its range inside the view.
+const VIGNETTE_OPEN_ANGLE = 1.15;
+// How tight the tunnel gets at full speed, chosen by the wearer. Low stays visible without
+// taking much of the view; high leaves a narrow porthole.
+const VIGNETTE_CLOSED_ANGLES = { low: 0.63, medium: 0.5, high: 0.38 };
+// The edge is a smoothstep band sized as a fraction of how far the aperture has closed from
+// open, so it softens as the tunnel tightens and its edge moves in from the far periphery. Per
+// the subtle dynamic-FOV work (Fernandes & Feiner 2016): the restrictor works best unnoticed.
+const VIGNETTE_FEATHER_FRACTION = 0.35;
+// Never collapses to a hard line while the tunnel has only just begun to close.
+const VIGNETTE_FEATHER_MIN_RAD = 0.12;
 // Far enough out that the eyes' offset from the centre is a fifth of a degree of aperture.
 const VIGNETTE_RADIUS_M = 12;
 // Drawn after the scene, the handheld HUD's group, and the rest frame the tunnel must cover.
@@ -210,15 +217,18 @@ const REST_FRAME_RENDERING_GROUP = 2;
 const REST_FRAME_FORMS = new Set(['none', 'dots', 'grid', 'horizon']);
 // Faint: it is there to be sensed, not looked at.
 const REST_FRAME_OPACITY = 0.35;
-const REST_FRAME_COLOUR = [0.8, 0.85, 1];
+// The colour the picker starts on; a bad value from the block falls back to it.
+const REST_FRAME_COLOUR = '#ccd9ff';
 // Room-scale: further out than this reads as scenery rather than as a reference.
 const REST_FRAME_EXTENT_M = 4;
-const REST_FRAME_GRID_SPACING_M = 1;
-const REST_FRAME_DOT_SPACING_M = 1.5;
-const REST_FRAME_DOT_CEILING_M = 3;
+// Named rather than numbered: the wearer picks a density, not a measurement. Drives the grid
+// lines and the dot lattice alike.
+const REST_FRAME_SPACINGS = { small: 1, medium: 1.5, large: 2.5 };
+const REST_FRAME_CEILING_M = 3;
 // Nothing inside arm's reach: a dot at the end of the nose is an obstruction, not a reference.
 const REST_FRAME_DOT_CLEARANCE_M = 0.8;
-const REST_FRAME_DOT_JITTER_M = 0.35;
+// A fraction of the spacing, so the scatter reads the same at every density.
+const REST_FRAME_DOT_JITTER_RATIO = 0.23;
 // Pixels across at a metre, shrinking with distance; the floor keeps far dots from vanishing.
 const REST_FRAME_DOT_PIXELS = 28;
 const REST_FRAME_DOT_MIN_PIXELS = 4;
@@ -1099,7 +1109,7 @@ export const flockXR = {
     material.disableDepthWrite = true;
     material.depthFunction = B.Constants.ALWAYS;
     material.setFloat('aperture', VIGNETTE_OPEN_ANGLE);
-    material.setFloat('feather', VIGNETTE_FEATHER_RAD);
+    material.setFloat('feather', VIGNETTE_FEATHER_MIN_RAD);
 
     const mesh = B.MeshBuilder.CreateSphere(
       VIGNETTE_MESH_NAME,
@@ -1112,9 +1122,9 @@ export const flockXR = {
     mesh.renderingGroupId = VIGNETTE_RENDERING_GROUP;
     // It surrounds the camera, so testing its bounds against the frustum proves nothing.
     mesh.alwaysSelectAsActiveMesh = true;
-    // Riding the camera node keeps the aperture centred without a per-frame placement that
-    // could land a frame behind the eyes it is drawn for.
-    mesh.parent = camera;
+    // Placed per frame by _syncXRVignettePose rather than parented, so locomotion cannot slide
+    // the aperture off the eyes the way it does a child of the XR camera.
+    mesh.rotationQuaternion = new B.Quaternion();
 
     flock._xrVignetteMaterial = material;
     flock._xrVignetteMesh = mesh;
@@ -1164,10 +1174,38 @@ export const flockXR = {
     // Open, the aperture is wider than any headset shows: there would be nothing to draw.
     mesh.isVisible = value > 0;
     if (value <= 0) return;
-    flock._xrVignetteMaterial?.setFloat?.(
-      'aperture',
-      VIGNETTE_OPEN_ANGLE + (flock._xrVignetteClosedAngle() - VIGNETTE_OPEN_ANGLE) * value
+    const aperture =
+      VIGNETTE_OPEN_ANGLE + (flock._xrVignetteClosedAngle() - VIGNETTE_OPEN_ANGLE) * value;
+    const material = flock._xrVignetteMaterial;
+    material?.setFloat?.('aperture', aperture);
+    material?.setFloat?.(
+      'feather',
+      Math.max(
+        VIGNETTE_FEATHER_MIN_RAD,
+        (VIGNETTE_OPEN_ANGLE - aperture) * VIGNETTE_FEATHER_FRACTION
+      )
     );
+  },
+  // Centre on the averaged rig pose, as _syncXRHUDPose does: the rig cameras hold the pose the
+  // eyes render from, which locomotion moves the XR camera past.
+  _syncXRVignettePose() {
+    const mesh = flock._xrVignetteMesh;
+    if (!mesh || mesh.isDisposed?.() || !mesh.isVisible) return;
+    const rigs = flock.xrHelper?.baseExperience?.camera?.rigCameras;
+    if (!rigs?.length) return;
+
+    const B = flock.BABYLON;
+    flock._xrVignetteCenter ??= new B.Vector3();
+    const center = flock._xrVignetteCenter.copyFromFloats(0, 0, 0);
+    for (const rig of rigs) {
+      // globalPosition is only refreshed alongside the world matrix.
+      rig.getWorldMatrix();
+      center.addInPlace(rig.globalPosition);
+    }
+    center.scaleInPlace(1 / rigs.length);
+    mesh.position.copyFrom(center);
+    mesh.rotationQuaternion ??= new B.Quaternion();
+    mesh.rotationQuaternion.copyFrom(rigs[0].absoluteRotation);
   },
   _vrRestFrameActive() {
     if (flock._xrComfortRestFrame === 'none') return false;
@@ -1221,25 +1259,43 @@ export const flockXR = {
       }
       return positions;
     }
+
+    const spacing =
+      REST_FRAME_SPACINGS[flock._xrComfortRestFrameSpacing] ?? REST_FRAME_SPACINGS.medium;
+    // Grown out from the origin so the lattice stays centred on the wearer whatever the spacing.
+    const steps = Math.max(1, Math.floor(REST_FRAME_EXTENT_M / spacing));
+    const extent = steps * spacing;
+    const offsets = [];
+    for (let i = -steps; i <= steps; i += 1) offsets.push(i * spacing);
+
     if (form === 'grid') {
-      const extent = REST_FRAME_EXTENT_M;
-      for (let offset = -extent; offset <= extent + 0.0001; offset += REST_FRAME_GRID_SPACING_M) {
-        positions.push(offset, 0, -extent, offset, 0, extent);
-        positions.push(-extent, 0, offset, extent, 0, offset);
+      // A cage, not a floor: floor and ceiling lattices joined by uprights at every crossing, so
+      // something of it stays in view whichever way the wearer is looking.
+      for (const y of [0, REST_FRAME_CEILING_M]) {
+        for (const offset of offsets) {
+          positions.push(offset, y, -extent, offset, y, extent);
+          positions.push(-extent, y, offset, extent, y, offset);
+        }
+      }
+      for (const x of offsets) {
+        for (const z of offsets) {
+          positions.push(x, 0, z, x, REST_FRAME_CEILING_M, z);
+        }
       }
       return positions;
     }
+
     // Jittered off the lattice so it does not read as a second grid, but by a fixed pattern:
     // a project's dots land in the same places every run.
     let seed = 1;
+    const amplitude = spacing * REST_FRAME_DOT_JITTER_RATIO;
     const jitter = () => {
       seed = (seed * 1103515245 + 12345) % 2147483648;
-      return (seed / 2147483648 - 0.5) * 2 * REST_FRAME_DOT_JITTER_M;
+      return (seed / 2147483648 - 0.5) * 2 * amplitude;
     };
-    const spacing = REST_FRAME_DOT_SPACING_M;
-    for (let x = -REST_FRAME_EXTENT_M; x <= REST_FRAME_EXTENT_M + 0.0001; x += spacing) {
-      for (let z = -REST_FRAME_EXTENT_M; z <= REST_FRAME_EXTENT_M + 0.0001; z += spacing) {
-        for (let y = 0; y <= REST_FRAME_DOT_CEILING_M + 0.0001; y += spacing) {
+    for (const x of offsets) {
+      for (const z of offsets) {
+        for (let y = 0; y <= REST_FRAME_CEILING_M + 0.0001; y += spacing) {
           const point = [x + jitter(), y + jitter(), z + jitter()];
           if (Math.hypot(point[0], point[2]) < REST_FRAME_DOT_CLEARANCE_M) continue;
           positions.push(...point);
@@ -1280,10 +1336,11 @@ export const flockXR = {
     material.depthFunction = B.Constants.ALWAYS;
     material.fillMode =
       form === 'dots' ? B.Material.PointListDrawMode : B.Material.LineListDrawMode;
-    material.setColor3('tint', new B.Color3(...REST_FRAME_COLOUR));
     material.setFloat('pointSize', REST_FRAME_DOT_PIXELS);
     material.setFloat('minPointSize', REST_FRAME_DOT_MIN_PIXELS);
     material.setFloat('opacity', 0);
+    flock._xrRestFrameMaterial = material;
+    flock._applyXRRestFrameColour();
 
     const mesh = new B.Mesh(REST_FRAME_MESH_NAMES[form], flock.scene);
     const vertexData = new B.VertexData();
@@ -1299,8 +1356,20 @@ export const flockXR = {
 
     flock._xrRestFrameNode = node;
     flock._xrRestFrameMesh = mesh;
-    flock._xrRestFrameMaterial = material;
     flock._xrRestFrameFade = 0;
+  },
+  // Live: the colour is a straight uniform swap, no reason to rebuild the geometry for it.
+  _applyXRRestFrameColour() {
+    const material = flock._xrRestFrameMaterial;
+    if (!material) return;
+    const B = flock.BABYLON;
+    let tint = null;
+    try {
+      tint = B.Color3.FromHexString(flock._xrComfortRestFrameColour);
+    } catch {
+      // A colour the picker never produces: fall back rather than lose the frame.
+    }
+    material.setColor3('tint', tint ?? B.Color3.FromHexString(REST_FRAME_COLOUR));
   },
   _disposeXRRestFrame() {
     flock._xrRestFrameMesh?.dispose?.();
@@ -1472,6 +1541,7 @@ export const flockXR = {
     }
     const status = flock._sampleXRComfortMotion();
     flock._setXRVignetteRestriction(tunnel ? VIGNETTE_MAX_RESTRICTION * flock._xrComfortMotion : 0);
+    flock._syncXRVignettePose();
     if (restFrame) flock._placeXRRestFrame(status);
     else flock._setXRRestFrameFade(0);
   },
@@ -2091,7 +2161,16 @@ export const flockXR = {
     flock._arSceneHeightCm = optionalCentimetres(heightCm, AR_SCENE_HEIGHT_MAX_CM);
     flock._applyARSceneScale();
   },
-  setVRComfort(mode, strength, colour, alpha, restFrame, restFrameShow) {
+  setVRComfort(
+    mode,
+    strength,
+    colour,
+    alpha,
+    restFrame,
+    restFrameShow,
+    restFrameSpacing,
+    restFrameColour
+  ) {
     // Each setting stands on its own: one bad value leaves the others to take effect.
     if (mode === 'auto' || mode === 'off') flock._xrComfortTunnel = mode;
     if (Object.hasOwn(VIGNETTE_CLOSED_ANGLES, strength)) flock._xrComfortStrength = strength;
@@ -2107,12 +2186,21 @@ export const flockXR = {
     if (restFrameShow === 'moving' || restFrameShow === 'always') {
       flock._xrComfortRestFrameShow = restFrameShow;
     }
-    const rebuild = REST_FRAME_FORMS.has(restFrame) && restFrame !== flock._xrComfortRestFrame;
-    if (rebuild) flock._xrComfortRestFrame = restFrame;
+    if (typeof restFrameColour === 'string' && /^#[0-9a-f]{6}$/i.test(restFrameColour)) {
+      flock._xrComfortRestFrameColour = restFrameColour;
+    }
+    const spacingChanged =
+      Object.hasOwn(REST_FRAME_SPACINGS, restFrameSpacing) &&
+      restFrameSpacing !== flock._xrComfortRestFrameSpacing;
+    if (spacingChanged) flock._xrComfortRestFrameSpacing = restFrameSpacing;
+    const formChanged = REST_FRAME_FORMS.has(restFrame) && restFrame !== flock._xrComfortRestFrame;
+    if (formChanged) flock._xrComfortRestFrame = restFrame;
     flock._applyXRVignetteStyle();
     flock._resetXRComfortBaseline();
     if (flock._xrComfortTunnel === 'off') flock._setXRVignetteRestriction(0);
-    if (rebuild) flock._applyXRRestFrame();
+    // Geometry has to be rebuilt for a new form or spacing; a recolour is a live uniform swap.
+    if (formChanged || spacingChanged) flock._applyXRRestFrame();
+    else flock._applyXRRestFrameColour();
   },
   setXRUIPlacement(placement) {
     if (placement !== 'hud' && placement !== 'wrist') return;

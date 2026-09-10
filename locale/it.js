@@ -346,7 +346,7 @@ export default {
   set_xr_view_mode: 'imposta vista VR su %1 con movimento della camera %2',
   set_ar_scene_size: 'scena AR scala: %1 cm distanza: %2 cm altezza: %3 cm', // ai
   set_vr_comfort: 'comfort VR visione a tunnel %1 intensità %2 colore %3 alpha %4', // ai
-  set_vr_comfort_overlay: 'sovrapposizione %1 mostrata %2', // ai
+  set_vr_comfort_overlay: 'sovrapposizione %1 mostrata %2 spaziatura %3 colore %4', // ai
   set_xr_ui_placement: 'mostra interfaccia VR su %1', // ai
   add_teleport_target: 'aggiungi destinazione teletrasporto %1',
   remove_teleport_target: 'rimuovi destinazione teletrasporto %1',
@@ -801,6 +801,8 @@ export default {
   low_option: 'bassa', // ai
   medium_option: 'media', // ai
   high_option: 'alta', // ai
+  small_option: 'piccola', // ai
+  large_option: 'grande', // ai
   off_option: 'disattivato', // ai
   space_infinity_option: 'spazio ❖', // Duplicate key space
   q_icon_option: 'Q ■', // Duplicate key q
@@ -1047,7 +1049,7 @@ export default {
   light_theme_ui: 'Chiaro',
   dark_theme_ui: 'Scuro',
   dark_contrast_theme_ui: 'Scuro',
-  low_vision_theme_ui: 'Colore ridotto', // ai
+  low_color_theme_ui: 'Colore ridotto', // ai
   contrast_theme_ui: 'Contrasto',
 
   run_code_button_ui: 'Esegui il tuo codice',
@@ -1342,6 +1344,8 @@ export default {
   hud_hidden: 'Comandi di manipolazione nascosti', // ai
   hud_shown: 'Comandi di manipolazione visibili', // ai
   gizmo_controls_hint: 'Mostra o nascondi i comandi di manipolazione da Menu > Strumenti.', // ai
+  xr_mode_missing_hint:
+    'Nessun blocco modalità XR: questo progetto non si aprirà nel visore. Aggiungine uno da Scena > XR.', // ai
   shortcut_quick_colour: 'Uso rapido del colore nel selettore colori',
   shortcut_delete_object: 'Elimina oggetto',
 

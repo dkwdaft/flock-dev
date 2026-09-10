@@ -5,6 +5,7 @@ import {
   getVariableInfo,
   getPositionTuple,
   createMesh,
+  getThenCallback,
 } from './generators-utilities.js';
 
 export function registerSceneGenerators(javascriptGenerator) {
@@ -118,7 +119,7 @@ export function registerSceneGenerators(javascriptGenerator) {
                         modelName: '${modelName}',
                         modelId: ${JSON.stringify(meshId)},
                         scale: ${scale},
-                        position: { x: ${x}, y: ${y}, z: ${z} }${doCode ? `,\ncallback: ${doCode}` : ''}
+                        position: { x: ${x}, y: ${y}, z: ${z} }${doCode ? `,\ncallback: ${doCode}` : ''}${getThenCallback(block)}
                 });\n`;
   };
 
@@ -161,7 +162,7 @@ export function registerSceneGenerators(javascriptGenerator) {
                         sleeves: ${sleevesColor},
                         shorts: ${shortsColor},
                         tshirt: ${tshirtColor}
-                  }${doCode ? `, callback: ${doCode}` : ''}
+                  }${doCode ? `, callback: ${doCode}` : ''}${getThenCallback(block)}
                 });\n`;
   };
 
@@ -194,7 +195,7 @@ export function registerSceneGenerators(javascriptGenerator) {
                           modelId: ${JSON.stringify(meshId)},
                           color: ${color},
                           scale: ${scale},
-                          position: { x: ${x}, y: ${y}, z: ${z} }${doCode ? `,\ncallback: ${doCode}` : ''}
+                          position: { x: ${x}, y: ${y}, z: ${z} }${doCode ? `,\ncallback: ${doCode}` : ''}${getThenCallback(block)}
                   });\n`;
   };
   // Add object -------------------------------------------------------
@@ -225,7 +226,7 @@ export function registerSceneGenerators(javascriptGenerator) {
                         modelId: ${JSON.stringify(meshId)},
                         color: ${color},
                         scale: ${scale},
-                        position: { x: ${x}, y: ${y}, z: ${z} }${doCode ? `,\ncallback: ${doCode}` : ''}
+                        position: { x: ${x}, y: ${y}, z: ${z} }${doCode ? `,\ncallback: ${doCode}` : ''}${getThenCallback(block)}
                 });\n`;
   };
 
@@ -402,7 +403,7 @@ export function registerSceneGenerators(javascriptGenerator) {
     // Return the code to clone the mesh
     return `${cloneVariableName} = cloneMesh({
                           sourceMeshName: ${sourceMeshName},
-                          cloneId: '${cloneId}'${doCode ? `,\ncallback: ${doCode}` : ''}
+                          cloneId: '${cloneId}'${doCode ? `,\ncallback: ${doCode}` : ''}${getThenCallback(block)}
                   });\n`;
   };
   // -------------------------------
@@ -642,7 +643,9 @@ export function registerSceneGenerators(javascriptGenerator) {
     const alpha = getFieldValue(block, 'ALPHA', '1');
     const restFrame = JSON.stringify(block.getFieldValue('REST_FRAME'));
     const restFrameShow = JSON.stringify(block.getFieldValue('REST_FRAME_SHOW'));
-    return `setVRComfort(${tunnel}, ${strength}, ${color}, ${alpha}, ${restFrame}, ${restFrameShow});\n`;
+    const restFrameSpacing = JSON.stringify(block.getFieldValue('REST_FRAME_SPACING'));
+    const restFrameColor = getFieldValue(block, 'REST_FRAME_COLOR', '"#ccd9ff"');
+    return `setVRComfort(${tunnel}, ${strength}, ${color}, ${alpha}, ${restFrame}, ${restFrameShow}, ${restFrameSpacing}, ${restFrameColor});\n`;
   };
 
   javascriptGenerator.forBlock['set_xr_ui_placement'] = function (block) {

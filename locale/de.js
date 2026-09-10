@@ -1040,7 +1040,7 @@ export default {
   light_theme_ui: 'Hell',
   dark_theme_ui: 'Dunkel',
   dark_contrast_theme_ui: 'Kontrast Dunkel',
-  low_vision_theme_ui: 'Wenig Farbe', // ai
+  low_color_theme_ui: 'Wenig Farbe', // ai
   contrast_theme_ui: 'Kontrast',
   run_code_button_ui: 'Code ausführen',
   stop_code_button_ui: 'Code stoppen',
@@ -1323,6 +1323,8 @@ export default {
   hud_hidden: 'Gizmo-Steuerung ausgeblendet', // ai
   hud_shown: 'Gizmo-Steuerung eingeblendet', // ai
   gizmo_controls_hint: 'Blende die Gizmo-Steuerung über Menü > Werkzeuge ein oder aus.', // ai
+  xr_mode_missing_hint:
+    'Kein XR‑Modus‑Block, daher öffnet dieses Projekt nicht im Headset. Füge einen über Szene > XR hinzu.', // ai
   shortcut_quick_colour: 'Schnellfarbauswahl im Farbwähler',
   shortcut_delete_object: 'Objekt löschen',
 

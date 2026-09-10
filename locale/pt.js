@@ -1036,7 +1036,7 @@ export default {
   light_theme_ui: 'Claro',
   dark_theme_ui: 'Escuro',
   contrast_theme_ui: 'Contraste',
-  low_vision_theme_ui: 'Cor reduzida', // ai
+  low_color_theme_ui: 'Cor reduzida', // ai
 
   run_code_button_ui: 'Executar o teu código',
   stop_code_button_ui: 'Parar o teu código',
@@ -1332,6 +1332,8 @@ export default {
   hud_hidden: 'Controlos de manipulação ocultos', // ai
   hud_shown: 'Controlos de manipulação visíveis', // ai
   gizmo_controls_hint: 'Mostra ou oculta os controlos de manipulação em Menu > Ferramentas.', // ai
+  xr_mode_missing_hint:
+    'Sem bloco de modo XR, este projeto não abrirá no teu visor. Adiciona um em Cena > XR.', // ai
   shortcut_quick_colour: 'Uso rápido de cor no seletor de cores',
   shortcut_delete_object: 'Eliminar objeto',
 
