@@ -1241,7 +1241,7 @@ export function initializeWorkspace() {
       }
     });
   };
-  workspaceSearch.unhighlightSearchGroup = function (blocks) {
+  workspaceSearch.unhighlightSearchGroup = function (blocks = workspaceSearch.blocks) {
     blocks.forEach((block) => block.getSvgRoot()?.classList.remove('ws-search-match'));
     workspace.getTopBlocks(false).forEach((block) => {
       block.getSvgRoot()?.classList.remove('ws-search-fade');
@@ -1638,6 +1638,65 @@ function installShadowNavigationPatch(ws) {
       },
     });
   }
+
+  // The block a field, connection or nested block sits on — one hop straight to the
+  // block that owns it, not the sibling-by-sibling walk ArrowLeft's getOutNode does
+  // (which passes through every other input on the way, e.g. FROM/TO before BY on a
+  // for_loop). A shadow's field skips the shadow itself, matching the rest of this file.
+  const containingBlockOf = (node) => {
+    if (!node) return null;
+    if (typeof node.getCommentText === 'function') {
+      // Node is itself a block: its immediate container is whatever it's plugged into.
+      return typeof node.getParent === 'function' ? node.getParent() : null;
+    }
+    if (typeof node.getSourceBlock !== 'function') return null;
+    const owner = node.getSourceBlock();
+    if (!owner) return null;
+    if (owner.isShadow?.() && typeof owner.getParent === 'function') {
+      return owner.getParent() ?? owner;
+    }
+    return owner;
+  };
+
+  // Whether hideChaff below actually has anything to do — a hover-triggered tooltip or
+  // an open context menu. If so it takes priority over stepping out: Escape's job of
+  // dismissing those must not be swallowed just because focus also happens to be
+  // nested in a block.
+  const hasVisibleChaff = () => !!(Blockly.Tooltip?.isVisible?.() || Blockly.ContextMenu?.getMenu?.());
+
+  // Escape only hides chaff (flyouts/tooltips), so it's a no-op whenever focus sits
+  // anywhere below the top of a block's own tree — a field, an empty input connection,
+  // or a real (non-shadow) block plugged into another block's input — and nothing is
+  // open to hide. Give Escape a direct step out to that containing block, falling back
+  // to the original hideChaff when there's a tooltip/context menu to dismiss instead, or
+  // nowhere to go (e.g. a top-level block). An open field editor is untouched: Blockly's
+  // own Escape there already cancels the edit and refocuses the block — this only
+  // covers what's left once that's already happened, or never opened in the first place.
+  {
+    const builtinEscape = shortcutRegistry.getRegistry?.()?.['escape'];
+    if (builtinEscape) {
+      shortcutRegistry.register(
+        {
+          name: 'escape',
+          preconditionFn: builtinEscape.preconditionFn,
+          callback: (ws2, event, shortcut, scope) => {
+            const node = scope?.focusedNode;
+            if (node && !fieldEditorOpen() && !hasVisibleChaff()) {
+              const block = containingBlockOf(node);
+              if (block && block !== node) {
+                event?.preventDefault?.();
+                Blockly.keyboardNavigationController?.setIsActive?.(true);
+                Blockly.getFocusManager().focusNode(block);
+                return true;
+              }
+            }
+            return builtinEscape.callback(ws2, event, shortcut, scope);
+          },
+        },
+        /* allowOverrides= */ true
+      );
+    }
+  }
 }
 
 export function createBlocklyWorkspace() {
@@ -1754,12 +1813,9 @@ export function createBlocklyWorkspace() {
     // Lift the trashcan icon into an overlay SVG while the flyout is open — the
     // higher z-index flyout would otherwise hide it.
     const injectionDiv = workspace.getInjectionDiv();
-    let trashIcon = null;
-    try {
-      trashIcon = trashcan.getFocusableElement();
-    } catch {
-      trashIcon = null;
-    }
+    // Trashcan doesn't implement IFocusableNode (no getFocusableElement), so
+    // find its icon the same way main/input.js's tab order does.
+    const trashIcon = injectionDiv?.querySelector('g.blocklyTrash') ?? null;
     const iconHome = trashIcon?.parentNode;
     if (injectionDiv && trashIcon && iconHome) {
       const iconOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -1811,8 +1867,8 @@ export function createBlocklyWorkspace() {
         if (trashcan.contentsIsOpen()) {
           trashcan.closeFlyout();
           returnFocusToWorkspace();
-        } else {
-          trashcan.performAction(); // gated open; no-op on an empty bin
+        } else if (trashcan.hasContents()) {
+          trashcan.openFlyout();
         }
       });
 
