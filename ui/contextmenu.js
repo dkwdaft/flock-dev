@@ -702,6 +702,17 @@ export function initContextMenus(workspace) {
       el.title = label;
     };
 
+    const expandBtn = document.createElement('button');
+    expandBtn.type = 'button';
+    expandBtn.className = 'fc-block-toolbar-btn';
+    // fa-angles-down (v7.3.1; other icons here are v6.7.2)
+    // by @fontawesome — https://fontawesome.com
+    // License: https://fontawesome.com/license/free  Copyright 2026 Fonticons, Inc.
+    expandBtn.innerHTML = mkFaSvg(
+      '<path d="M342.6 534.6C330.1 547.1 309.8 547.1 297.3 534.6L137.3 374.6C124.8 362.1 124.8 341.8 137.3 329.3C149.8 316.8 170.1 316.8 182.6 329.3L320 466.7L457.4 329.4C469.9 316.9 490.2 316.9 502.7 329.4C515.2 341.9 515.2 362.2 502.7 374.7L342.7 534.7zM502.6 182.6L342.6 342.6C330.1 355.1 309.8 355.1 297.3 342.6L137.3 182.6C124.8 170.1 124.8 149.8 137.3 137.3C149.8 124.8 170.1 124.8 182.6 137.3L320 274.7L457.4 137.4C469.9 124.9 490.2 124.9 502.7 137.4C515.2 149.9 515.2 170.2 502.7 182.7z"/>',
+      '0 0 640 640'
+    );
+
     const duplicateBtn = document.createElement('button');
     duplicateBtn.type = 'button';
     duplicateBtn.className = 'fc-block-toolbar-btn';
@@ -727,15 +738,26 @@ export function initContextMenus(workspace) {
       '0 0 576 512'
     );
 
-    // duplicate/delete/detach labels don't change per-block, so nothing else
-    // re-applies them after creation — without this, switching language after
-    // the toolbar first renders would leave them stuck in the old language.
+    const unlockBtn = document.createElement('button');
+    unlockBtn.type = 'button';
+    unlockBtn.className = 'fc-block-toolbar-btn';
+    // fa-unlock
+    unlockBtn.innerHTML = mkFaSvg(
+      '<path d="M352 144c0-44.2 35.8-80 80-80s80 35.8 80 80v48c0 17.7 14.3 32 32 32s32-14.3 32-32V144C576 64.5 511.5 0 432 0S288 64.5 288 144v48H64c-35.3 0-64 28.7-64 64V448c0 35.3 28.7 64 64 64H336c35.3 0 64-28.7 64-64V256c0-35.3-28.7-64-64-64H352V144z"/>',
+      '0 0 576 512'
+    );
+
+    // duplicate/delete/detach/unlock labels don't change per-block, so nothing
+    // else re-applies them after creation — without this, switching language
+    // after the toolbar first renders would leave them stuck in the old language.
     function refreshStaticToolbarLabels() {
       // role="toolbar" needs a name of its own, not just named buttons.
       blockToolbar.setAttribute('aria-label', getToolbarLabel('block_menu', 'Block menu'));
+      setToolbarLabel(expandBtn, getToolbarLabel('context_expand_option', 'Expand'));
       setToolbarLabel(duplicateBtn, getToolbarLabel('duplicate_block_button_ui', 'Duplicate block'));
       setToolbarLabel(deleteBtn, getToolbarLabel('delete_block_button_ui', 'Delete block'));
       setToolbarLabel(detachBtn, getToolbarLabel('shortcut_detach_block', 'Detach'));
+      setToolbarLabel(unlockBtn, getToolbarLabel('unlock_block_option', 'Unlock'));
     }
 
     // Passive "press M to move" hint. Looks like a toolbar button but is inert
@@ -795,7 +817,17 @@ export function initContextMenus(workspace) {
     setToolbarLabel(viewBtn, getToolbarLabel('view_in_canvas', 'View in canvas'));
     viewBtn.innerHTML = viewEnterSvg;
 
-    blockToolbar.append(duplicateBtn, detachBtn, moveHint, commentBtn, enableBtn, viewBtn, deleteBtn);
+    blockToolbar.append(
+      expandBtn,
+      unlockBtn,
+      duplicateBtn,
+      detachBtn,
+      moveHint,
+      commentBtn,
+      enableBtn,
+      viewBtn,
+      deleteBtn
+    );
 
     // The keyboard shortcut that each toolbar button mirrors. The overlay shows
     // these as a passive legend — the keys themselves are bound elsewhere
@@ -1084,6 +1116,9 @@ export function initContextMenus(workspace) {
       if (!block) return;
       const simplified = isLooseAndMovable(block);
       const locked = isBlockLocked(block);
+      expandBtn.style.display =
+        block.workspace?.options?.collapse && block.isCollapsed?.() ? '' : 'none';
+      unlockBtn.style.display = locked ? '' : 'none';
       duplicateBtn.style.display = '';
       commentBtn.style.display = locked ? 'none' : '';
       detachBtn.style.display = locked || !isDetachable(block) ? 'none' : '';
@@ -1275,6 +1310,18 @@ export function initContextMenus(workspace) {
         updateEnableButton(toolbarBlock);
         updateSimplifiedToolbar();
         scheduleViewMeshRecheck();
+      } else if (
+        e.type === Blockly.Events.BLOCK_CHANGE &&
+        e.element === 'collapsed' &&
+        toolbarBlock &&
+        e.blockId === toolbarBlock.id
+      ) {
+        // Collapsed/expanded some other way (e.g. the right-click menu) while
+        // the toolbar is up: refresh whether the Expand button shows, and
+        // reposition since the block's size just changed.
+        updateSimplifiedToolbar();
+        positionBlockToolbar();
+        if (toolbarKeyboardMode) renderBadges();
       } else if (e.type === Blockly.Events.BLOCK_DRAG) {
         if (e.isStart) {
           // Dragging is not a request for the toolbar, so flag the block for
@@ -1355,6 +1402,31 @@ export function initContextMenus(workspace) {
         handler();
       });
     }
+
+    onToolbarButtonPress(expandBtn, () => {
+      if (!toolbarBlock || !toolbarBlock.isCollapsed?.()) return;
+      const block = toolbarBlock;
+      Blockly.Events.setGroup('toolbar_expand');
+      block.setCollapsed(false);
+      Blockly.Events.setGroup(false);
+      updateSimplifiedToolbar();
+      positionBlockToolbar();
+      if (toolbarKeyboardMode) renderBadges();
+    });
+
+    onToolbarButtonPress(unlockBtn, () => {
+      if (!toolbarBlock) return;
+      const block = toolbarBlock;
+      Blockly.Events.setGroup('toolbar_unlock');
+      setBlockLocked(block, false);
+      Blockly.Events.setGroup(false);
+      deleteBtn.style.display = '';
+      updateSimplifiedToolbar();
+      updateCommentButton(block);
+      updateEnableButton(block);
+      positionBlockToolbar();
+      if (toolbarKeyboardMode) renderBadges();
+    });
 
     onToolbarButtonPress(duplicateBtn, () => {
       if (!toolbarBlock) return;
