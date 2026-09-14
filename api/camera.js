@@ -224,21 +224,7 @@ export const flockCamera = {
       console.warn('[ensureVerticalConstraint] addConstraint failed:', e);
     }
 
-    // --- stabiliser: add only once per mesh to avoid stacking effects after swaps ---
-    if (!mesh.metadata._uprightStabiliser) {
-      mesh.metadata._uprightStabiliser = scene.onAfterPhysicsObservable.add(() => {
-        if (!mesh || mesh.isDisposed() || !mesh.physics || !mesh.physics._pluginData) return;
-        try {
-          // preserve Y motion; zero X/Z linear velocity
-          const v = mesh.physics.getLinearVelocity();
-          mesh.physics.setLinearVelocity(new flock.BABYLON.Vector3(0, v.y, 0));
-
-          mesh.physics.setAngularVelocity(new flock.BABYLON.Vector3(0, 0, 0));
-        } catch (err) {
-          console.warn('Physics body became invalid:', err);
-        }
-      });
-    }
+    flock.ensurePostPhysicsUpkeep(mesh);
   },
   getCamera() {
     return '__active_camera__';
