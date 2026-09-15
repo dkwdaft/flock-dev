@@ -1218,6 +1218,7 @@ export default {
   toolbox_search_results_aria: 'Resultados de búsqueda de la caja de herramientas.', // human
   context_delete_option: 'Eliminar', // human
   context_delete_all_blocks_option: 'Eliminar todos los bloques',
+  context_cleanup_option: 'Limpiar',
   context_inline_inputs_option: 'Entradas horizontales',
   context_external_inputs_option: 'Entradas verticales',
   context_collapse_option: 'Contraer',
@@ -1226,8 +1227,6 @@ export default {
   context_expand_all_option: 'Expandir todo',
   context_disable_option: 'Deshabilitar',
   context_enable_option: 'Habilitar',
-  add_comment: 'Añadir comentario',
-  delete_comment: 'Eliminar comentario',
   comment_text_label: 'Texto del comentario', // ai
   view_in_canvas: 'Ver en el lienzo',
   exit_canvas_view: 'Dejar de orbitar el objeto',
@@ -1516,8 +1515,6 @@ export default {
   shortcut_block_info: 'Mostrar/ocultar la información del bloque', // ai
   shortcut_duplicate_block: 'Duplicar bloque',
   shortcut_detach_block: 'Desconectar bloque',
-  shortcut_comment_block: 'Mostrar/ocultar comentario',
-  shortcut_delete_comment: 'Eliminar comentario',
   shortcut_enable_disable_block: 'Habilitar/deshabilitar bloque',
   shortcut_start_move_block: 'Mover bloque',
   shortcut_move_arrows: 'Mover: a conexión',

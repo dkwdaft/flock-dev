@@ -207,6 +207,9 @@ export default {
   for_loop2: 'for each %1 from %2 to %3 by %4 do %5',
   for_loop: 'for each %1 from %2 to %3 by %4 do %5',
   get_lexical_variable: '%1',
+  folder: 'folder %1',
+  folder_default_name: 'Folder',
+  folder_toggle_alt: 'expand or collapse folder',
 
   // Custom block translations - Effects blocks
   main_light: 'light intensity: %1 color: %2 ground: %3',
@@ -495,6 +498,7 @@ export default {
   for_loop_tooltip:
     'Loop from a starting number to an ending number by a given step. Click on the dropdown to get the loop variable to use in your code.',
   get_lexical_variable_tooltip: 'Get the value of a lexical variable.',
+  folder_tooltip: 'Organize related blocks.',
 
   // Tooltip translations - Effects blocks
   main_light_tooltip: 'Set the intensity and diffuse and ground colors of the main light.',
@@ -1206,6 +1210,7 @@ export default {
   toolbox_search_results_aria: 'Toolbox search results.',
   context_delete_option: 'Delete',
   context_delete_all_blocks_option: 'Delete all blocks',
+  context_cleanup_option: 'Cleanup',
   context_inline_inputs_option: 'Horizontal inputs',
   context_external_inputs_option: 'Vertical inputs',
   context_collapse_option: 'Collapse',
@@ -1214,8 +1219,6 @@ export default {
   context_expand_all_option: 'Expand all',
   context_disable_option: 'Disable',
   context_enable_option: 'Enable',
-  add_comment: 'Add comment',
-  delete_comment: 'Delete comment',
   comment_text_label: 'Comment text',
   view_in_canvas: 'View in canvas',
   exit_canvas_view: 'Stop orbiting object',
@@ -1497,8 +1500,6 @@ export default {
   shortcut_block_info: 'Show/hide block info',
   shortcut_duplicate_block: 'Duplicate block',
   shortcut_detach_block: 'Detach block',
-  shortcut_comment_block: 'Show/hide comment',
-  shortcut_delete_comment: 'Delete comment',
   shortcut_enable_disable_block: 'Enable/disable block',
   shortcut_start_move_block: 'Move block',
   shortcut_move_arrows: 'Move: to connection',

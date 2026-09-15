@@ -107,6 +107,59 @@ if (!fieldColourPrototype[flockAriaPatchKey]) {
   fieldColourPrototype[flockAriaPatchKey] = true;
 }
 
+// A `lists_create_with` whose items are all one output type reads better in
+// that type's category colour than the generic list colour — it visually
+// *is* a list of colours, or a list of numbers, not a generic list.
+const flockListCreateWithStylePatchKey = Symbol.for('flock.listCreateWithStylePatch');
+const listCreateWithBlockType = Blockly.Blocks['lists_create_with'];
+if (listCreateWithBlockType && !listCreateWithBlockType[flockListCreateWithStylePatchKey]) {
+  const stylesByOutputCheck = [
+    { check: 'Colour', style: 'materials_blocks' },
+    { check: 'Number', style: 'math_blocks' },
+    { check: 'String', style: 'text_blocks' },
+  ];
+
+  const styleForChildren = (block) => {
+    let matchedStyle = null;
+    for (const input of block.inputList) {
+      if (!input.name?.startsWith('ADD')) continue;
+      const target = input.connection?.targetBlock();
+      if (!target) return null;
+      const check = target.outputConnection?.getCheck();
+      const match = stylesByOutputCheck.find(
+        ({ check: c }) => Array.isArray(check) && check.includes(c)
+      );
+      if (!match || (matchedStyle && match.style !== matchedStyle)) return null;
+      matchedStyle = match.style;
+    }
+    return matchedStyle;
+  };
+
+  const updateListStyle = (block) => {
+    const style = styleForChildren(block) || 'list_blocks';
+    if (block.flockListStyle === style) return;
+    block.setStyle(style);
+    block.flockListStyle = style;
+  };
+
+  const originalInit = listCreateWithBlockType.init;
+  listCreateWithBlockType.init = function () {
+    originalInit.call(this);
+
+    const eventTypes = [
+      Blockly.Events.BLOCK_CREATE,
+      Blockly.Events.BLOCK_CHANGE,
+      Blockly.Events.BLOCK_MOVE,
+      Blockly.Events.BLOCK_DELETE,
+    ];
+    this.setOnChange((changeEvent) => {
+      if (!eventTypes.includes(changeEvent.type)) return;
+      updateListStyle(this);
+    });
+  };
+  listCreateWithBlockType[flockListCreateWithStylePatchKey] = true;
+}
+
 // When the colour picker is open, sniff pointerdown (fires before the picker's
 // capture-phase click handler) to check whether the pointer landed on a colour
 // field's SVG click target.  The result is stored as a flag on the picker so
@@ -1146,6 +1199,17 @@ class CustomRenderInfo extends Blockly.zelos.RenderInfo {
         }
       }
     }
+
+    if (this.block_.type === 'folder') {
+      const desired = this.block_.desiredMouthHeight_ || 0;
+      for (const row of this.rows) {
+        if (row.hasStatement && desired > row.height) {
+          row.height = desired;
+          row.minHeight = desired;
+          break;
+        }
+      }
+    }
   }
 }
 
@@ -1210,6 +1274,19 @@ class CustomZelosDrawer extends Blockly.zelos.Drawer {
     }
 
     super.drawBottom_();
+  }
+
+  // drawStatementInput_ always draws a connector notch, even when the input
+  // can never actually connect - skip it for folder blocks.
+  drawStatementInput_(row) {
+    if (this.block_?.type !== 'folder') {
+      super.drawStatementInput_(row);
+      return;
+    }
+    const input = row.getLastInput();
+    if (!input) return;
+    this.outlinePath_ += `H ${input.xPos} v ${row.height} H ${row.xPos + row.width}`;
+    this.positionStatementInputConnection_(row);
   }
 
   colorizeAxisInput_() {

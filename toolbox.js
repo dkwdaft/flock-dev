@@ -2551,6 +2551,11 @@ const toolboxControl = {
         },
       },
     },
+    {
+      kind: 'block',
+      type: 'folder',
+      keyword: 'folder',
+    },
   ],
 };
 
@@ -3495,6 +3500,14 @@ const toolboxMaterials = {
       kind: 'block',
       type: 'colour',
       keyword: 'setcol',
+    },
+    {
+      kind: 'block',
+      type: 'skin_colour',
+      keyword: 'skincol',
+      fields: {
+        COLOR: '#A15C33',
+      },
     },
     {
       kind: 'block',

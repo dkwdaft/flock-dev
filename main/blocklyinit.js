@@ -37,6 +37,7 @@ import { defineConnectBlocks } from '../blocks/connect.js';
 import { defineCombineBlocks } from '../blocks/combine.js';
 import { defineTransformBlocks } from '../blocks/transform.js';
 import { defineControlBlocks } from '../blocks/control.js';
+import { defineFolderBlock } from '../blocks/folder.js';
 import { defineConditionBlocks } from '../blocks/condition.js';
 import { defineAnimateBlocks } from '../blocks/animate.js';
 import { defineSoundBlocks } from '../blocks/sound.js';
@@ -45,17 +46,10 @@ import { defineColourBlocks } from '../blocks/colour.js';
 import { defineSensingBlocks } from '../blocks/sensing.js';
 import { defineTextBlocks } from '../blocks/text.js';
 import { defineGenerators } from '../generators/generators.js';
-import { registerCustomCommentIcon } from './customCommentIcon.js';
 import { patchWarningIconSize } from './customWarningIcon.js';
 import { initContextMenus } from '../ui/contextmenu.js';
 import { initListReorder } from '../ui/listReorder.js';
-import {
-  applyBlockLockState,
-  stripLockState,
-  isBlockLocked,
-  toggleCommentBubble,
-  deleteBlockComment,
-} from '../ui/blocklyutil.js';
+import { applyBlockLockState, stripLockState, isBlockLocked } from '../ui/blocklyutil.js';
 import { toolbox as toolboxDef } from '../toolbox.js';
 import { installDropdownTypeahead } from './dropdownTypeahead.js';
 
@@ -267,6 +261,7 @@ export function initializeBlocks() {
   defineCombineBlocks();
   defineTransformBlocks();
   defineControlBlocks();
+  defineFolderBlock();
   defineConditionBlocks();
   defineAnimateBlocks();
   defineSoundBlocks();
@@ -360,6 +355,15 @@ function initializeIfClauseConnectionChecker(workspace) {
     // Get the blocks involved
     const blockA = a.getSourceBlock();
     const blockB = b.getSourceBlock();
+
+    // A block with check=null on its own connection (e.g. a toggled 'forever')
+    // wildcard-matches everything, so a check-type mismatch alone can't stop it
+    // from connecting to the folder's otherwise-never-connected DO input.
+    const isFolderDo = (block, connection) =>
+      block.type === 'folder' && block.getInput?.('DO')?.connection === connection;
+    if (isFolderDo(blockA, a) || isFolderDo(blockB, b)) {
+      return false;
+    }
 
     // Check if either block is an if_clause
     const aIsIfClause = blockA.type === 'if_clause';
@@ -629,7 +633,7 @@ export function initializeWorkspace() {
       shadow.setAttribute('inline', 'true');
 
       const mutation = document.createElement('mutation');
-      mutation.setAttribute('items', '2');
+      mutation.setAttribute('items', String(values.length));
       shadow.appendChild(mutation);
 
       values.forEach((value, index) => {
@@ -1538,72 +1542,7 @@ function installShadowNavigationPatch(ws) {
     }
   );
 
-  // K toggles the comment bubble, Shift+K deletes it (N, the natural mnemonic, is already
-  // Blockly's next_stack key). No built-in shortcut exists, so unlike X/D/Delete these
-  // resolve their own target.
-  {
-    const commentTargetBlock = (scope) => {
-      const node = scope?.focusedNode;
-      // A focused block exposes getCommentText; a focused field unwraps via getSourceBlock.
-      if (node) {
-        if (typeof node.getCommentText === 'function') return node;
-        if (typeof node.getSourceBlock === 'function') {
-          const block = node.getSourceBlock();
-          if (block) return block;
-        }
-      }
-      return focusedFieldBlock();
-    };
-    const commentEditable = (ws, block) =>
-      !!block &&
-      !fieldEditorOpen() &&
-      !ws.isDragging?.() &&
-      !ws.isReadOnly?.() &&
-      !block.isShadow?.() &&
-      !isBlockLocked(block);
-
-    shortcutRegistry.register({
-      name: 'comment_block',
-      keyCodes: [shortcutRegistry.createSerializedKey(Blockly.utils.KeyCodes.K)],
-      preconditionFn: (ws, scope) => commentEditable(ws, commentTargetBlock(scope)),
-      callback: (_ws, event, _shortcut, scope) => {
-        const block = commentTargetBlock(scope);
-        if (!block || block.isShadow?.() || isBlockLocked(block)) return false;
-        // Cancel the keystroke's default text input; otherwise the 'k' that
-        // triggered this lands in the comment editor we're about to focus.
-        event?.preventDefault?.();
-        Blockly.Events.setGroup('comment_shortcut');
-        // The undoable create runs synchronously before toggleCommentBubble awaits, so it
-        // lands in this group; the bubble open/focus that follows is UI state.
-        toggleCommentBubble(block);
-        Blockly.Events.setGroup(false);
-        return true;
-      },
-    });
-
-    shortcutRegistry.register({
-      name: 'delete_comment_block',
-      keyCodes: [
-        shortcutRegistry.createSerializedKey(Blockly.utils.KeyCodes.K, [
-          Blockly.utils.KeyCodes.SHIFT,
-        ]),
-      ],
-      preconditionFn: (ws, scope) => {
-        const block = commentTargetBlock(scope);
-        return commentEditable(ws, block) && block.getCommentText?.() !== null;
-      },
-      callback: (_ws, _event, _shortcut, scope) => {
-        const block = commentTargetBlock(scope);
-        if (!block || block.getCommentText?.() === null || isBlockLocked(block)) return false;
-        Blockly.Events.setGroup('delete_comment_shortcut');
-        deleteBlockComment(block);
-        Blockly.Events.setGroup(false);
-        return true;
-      },
-    });
-  }
-
-  // No built-in shortcut exists for this, so it resolves its own target like K above.
+  // No built-in shortcut exists for this, so it resolves its own target.
   {
     const enableTargetBlock = (scope) => {
       const node = scope?.focusedNode;
@@ -1708,7 +1647,6 @@ export function createBlocklyWorkspace() {
     CustomZelosRenderer
   );
 
-  registerCustomCommentIcon();
   patchWarningIconSize();
 
   // Manually create a navigation-deferring toolbox
