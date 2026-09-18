@@ -5,7 +5,12 @@ import { initializeTheme } from './themes.js';
 import { translate } from './translation.js';
 import { focusRememberedWorkspaceNode } from './workspaceFocus.js';
 import { setBlockHintsSuppressed } from '../ui/blockHint.js';
-import { matchBlockDefinitions, indexesFieldValues } from './blocksearch.js';
+import {
+  matchBlockDefinitions,
+  indexesFieldValues,
+  PROCEDURE_SEARCH_BLOCKS,
+  procedureDefDefaultFields,
+} from './blocksearch.js';
 import {
   options,
   defineBlocks,
@@ -854,10 +859,58 @@ export function initializeWorkspace() {
   // Toolbox search input: placeholder + accessible name, reapplied whenever
   // the toolbox rebuilds (theme change, language change, etc.)
   requestAnimationFrame(() => {
+    const getSearchCategory = () =>
+      workspace
+        ?.getToolbox?.()
+        ?.getToolboxItems?.()
+        ?.find((item) => item.getId?.() === 'toolbox-search-input');
+
+    const attachSearchSelectBehavior = (input) => {
+      if (input.__flockSearchSelectInstalled) return;
+      input.__flockSearchSelectInstalled = true;
+      // Re-clicking the active search row lets Blockly's toolbox handler
+      // swallow the pointer event, collapsing native text selection.
+      input.addEventListener('pointerdown', (e) => {
+        if (workspace.getToolbox?.()?.getSelectedItem?.() === getSearchCategory()) {
+          e.stopPropagation();
+        }
+        input.__flockHadFocusOnPointerDown = document.activeElement === input;
+        input.__flockPointerMoved = false;
+      });
+      input.addEventListener('pointermove', (e) => {
+        if (input.__flockHadFocusOnPointerDown === false && e.buttons !== 0) {
+          input.__flockPointerMoved = true;
+        }
+      });
+      // First click in selects all for easy replace; the mouseup default
+      // would otherwise collapse it to the click point.
+      input.addEventListener('mouseup', (e) => {
+        if (
+          input.__flockHadFocusOnPointerDown === false &&
+          input.__flockPointerMoved === false &&
+          document.activeElement === input &&
+          input.value
+        ) {
+          e.preventDefault();
+          input.select?.();
+        }
+        input.__flockHadFocusOnPointerDown = null;
+        input.__flockPointerMoved = null;
+      });
+      // Keyboard entry (Ctrl+F etc.) selects all for easy replace.
+      // Mouse entry is covered by mouseup above so dblclick word-select keeps working.
+      input.addEventListener('focus', (e) => {
+        if (e.relatedTarget instanceof Element && input.contains(e.relatedTarget)) return;
+        if (input.__flockHadFocusOnPointerDown === false) return;
+        if (input.value) requestAnimationFrame(() => input.select?.());
+      });
+    };
+
     let searchInput = document.querySelector(".blocklyToolbox input[type='search']");
     if (!searchInput) return;
     searchInput.placeholder = translate('toolbox_search_placeholder');
     fixSearchCategoryAria(searchInput);
+    attachSearchSelectBehavior(searchInput);
 
     const toolboxEl = document.querySelector('.blocklyToolbox');
     if (toolboxEl) {
@@ -867,6 +920,7 @@ export function initializeWorkspace() {
         if (!newInput) return;
         newInput.placeholder = translate('toolbox_search_placeholder');
         fixSearchCategoryAria(newInput);
+        attachSearchSelectBehavior(newInput);
         searchInput = newInput;
       }).observe(toolboxEl, { childList: true, subtree: true });
     }
@@ -1687,6 +1741,29 @@ export function createBlocklyWorkspace() {
     let selectedBlock = null;
     let flyoutSelected = null;
 
+    // While a drop that starts over an *unselected* flyout block is in flight,
+    // the pointer is scroll-only (handed to Blockly's flyout gesture above).
+    // This candidate records where it started so the pointerup handler can
+    // tell a genuine tap (which highlights the block) from a scroll (which
+    // does not). Flagged as a drag once the pointer moves past the flyout
+    // drag radius. Bound to one pointer: extra touches are ignored while it
+    // is active, and only its own release settles it.
+    let flyoutTapCandidate = null;
+    const flyoutTapRadius = Blockly.config.flyoutDragRadius;
+
+    // The workspace has two flyouts (toolbox and trashcan). Resolve the one
+    // that owns the touched block so scroll gestures and hover cleanup
+    // target the right workspace.
+    const getOwningFlyout = (blockRoot) => {
+      const flyoutEl = blockRoot?.closest('.blocklyFlyout');
+      if (!flyoutEl) return null;
+      return (
+        [workspace.getFlyout(), trashcanFlyout].find(
+          (f) => f?.getWorkspace?.().getParentSvg?.() === flyoutEl
+        ) ?? null
+      );
+    };
+
     // Drop the flyout half of the tap helper by removing the highlight class we
     // managed; the flyout's own focus state is left untouched.
     const clearFlyoutSelection = () => {
@@ -1697,10 +1774,41 @@ export function createBlocklyWorkspace() {
       workspace.flyoutTapSelectedId = null;
     };
 
+    // Drop Blockly's own hover selection from flyout blocks. While a touch
+    // moves, Blockly highlights each block under the pointer, even when the
+    // gesture becomes a scroll — and the highlight sticks after release.
+    // A scroll must leave nothing behind; a tap leaves only our blue.
+    const removeFlyoutHover = (blockRoot) => {
+      const blockId = blockRoot?.getAttribute('data-id');
+      if (!blockId) return;
+      const owned =
+        getOwningFlyout(blockRoot)?.getWorkspace?.().getBlockById(blockId) ?? null;
+      if (owned) {
+        owned.removeSelect();
+        return;
+      }
+      for (const flyout of [workspace.getFlyout(), trashcanFlyout]) {
+        const block = flyout?.getWorkspace?.().getBlockById(blockId);
+        if (block) {
+          block.removeSelect();
+          return;
+        }
+      }
+    };
+    const clearFlyoutHoverSelection = () => {
+      for (const root of blocklyDiv.querySelectorAll(
+        '.blocklyFlyout .blocklyDraggable.blocklySelected'
+      )) {
+        removeFlyoutHover(root);
+      }
+    };
+
     blocklyDiv.addEventListener(
       'pointerdown',
       (e) => {
         if (e.pointerType !== 'touch') return;
+        // One tap at a time: a second finger must not steal the candidate.
+        if (flyoutTapCandidate && e.pointerId !== flyoutTapCandidate.pointerId) return;
         const blockRoot = e.target.closest('.blocklyDraggable');
         const inFlyout = blockRoot?.closest('.blocklyFlyout') != null;
         // Workspace selection is Blockly's own; the flyout's is the block whose
@@ -1711,28 +1819,40 @@ export function createBlocklyWorkspace() {
           : blockRoot?.classList.contains('blocklySelected');
 
         if (blockRoot && !alreadySelected) {
-          // First tap only selects the block (workspace or flyout); a second
-          // tap or a drag after selection performs the real action.
-          e.stopPropagation();
+          // A first touch over an unselected block never performs the real
+          // action; a second tap or a drag after selection does. A touch that
+          // merely starts on the block is not a selection either — flyout
+          // blocks are recreated whenever the flyout reopens, so they are
+          // tracked here (see flyoutTapCandidate below). The workspace half
+          // keeps selecting on the first tap; the flyout half defers it so a
+          // drop-start scrolls the flyout instead.
           const blockId = blockRoot.getAttribute('data-id');
           if (!blockId) return;
           if (inFlyout) {
-            // Highlight the block with the same blue a focused block gets.
-            // The class is applied directly — not via Blockly's focus
-            // manager — because driving the focus machinery here moves DOM
-            // focus, whose focusin/focusout guard promptly hands the
-            // highlight to a different block. Blockly's own flyout
-            // bookkeeping still strips the class after some taps, so the
-            // observer below re-asserts it.
-            const path = blockRoot.querySelector(':scope > .blocklyPath');
-            if (flyoutSelected && flyoutSelected !== blockRoot && flyoutSelected.isConnected) {
-              flyoutSelected.querySelector(':scope > .blocklyPath')?.classList.remove('blocklyActiveFocus');
+            // Drop-start on a flyout block is a scroll, same as dropping on
+            // the flyout background: hand the pointer to Blockly's flyout
+            // gesture, which scrolls once the drop exceeds the drag radius.
+            // The blue highlight is applied only when the interaction settles
+            // as a genuine tap (see the pointerup handler below).
+            const gesture = workspace.getGesture(e);
+            const flyout = getOwningFlyout(blockRoot) ?? workspace.getFlyout();
+            if (gesture && flyout) {
+              e.stopPropagation();
+              gesture.handleFlyoutStart(e, flyout);
             }
-            flyoutSelected = blockRoot;
-            workspace.flyoutTapSelectedId = blockId;
-            path?.classList.add('blocklyActiveFocus');
+            flyoutTapCandidate = {
+              blockRoot,
+              blockId,
+              pointerId: e.pointerId,
+              startX: e.clientX,
+              startY: e.clientY,
+              asDrag: false,
+            };
             return;
           }
+          // Workspace selection is Blockly's own: tap selects now, a second
+          // tap or a drag performs the real action.
+          e.stopPropagation();
           const block = workspace.getBlockById(blockId);
           if (block) {
             clearFlyoutSelection();
@@ -1745,6 +1865,76 @@ export function createBlocklyWorkspace() {
           selectedBlock = null;
           clearFlyoutSelection();
         }
+      },
+      true
+    );
+
+    // Settle a drop that started over an unselected flyout block. Past the
+    // drag radius it is a scroll, so the candidate is flagged and nothing is
+    // highlighted. Otherwise it was a tap, applied here at pointerup.
+    document.addEventListener(
+      'pointermove',
+      (e) => {
+        const candidate = flyoutTapCandidate;
+        if (!candidate || e.pointerType !== 'touch') return;
+        if (e.pointerId !== candidate.pointerId) return;
+        const dx = e.clientX - candidate.startX;
+        const dy = e.clientY - candidate.startY;
+        if (Math.hypot(dx, dy) > flyoutTapRadius) candidate.asDrag = true;
+      },
+      true
+    );
+    // Blockly highlights each flyout block under a moving pointer, including
+    // the first millimetres of a scroll. Strip that hover selection back off
+    // — this listener runs on bubble, after the block's own move listener
+    // re-adds it each move, and before paint, so a scroll never flashes the
+    // start block. Scoped to the undecided candidate so real block drags
+    // (second tap, workspace) are untouched.
+    document.addEventListener(
+      'pointermove',
+      (e) => {
+        const candidate = flyoutTapCandidate;
+        if (!candidate || e.pointerType !== 'touch') return;
+        if (e.pointerId !== candidate.pointerId) return;
+        const blockRoot = e.target?.closest?.('.blocklyDraggable');
+        if (!blockRoot || !blockRoot.classList.contains('blocklySelected')) return;
+        if (blockRoot.closest('.blocklyFlyout') == null) return;
+        removeFlyoutHover(blockRoot);
+      },
+      false
+    );
+    document.addEventListener(
+      'pointerup',
+      (e) => {
+        if (e.pointerType !== 'touch') return;
+        clearFlyoutHoverSelection();
+        const candidate = flyoutTapCandidate;
+        if (!candidate || e.pointerId !== candidate.pointerId) return;
+        flyoutTapCandidate = null;
+        if (candidate.asDrag) return;
+        const blockRoot = candidate.blockRoot;
+        if (!blockRoot?.isConnected || !blockRoot.closest('.blocklyFlyout')) return;
+        // Highlight the block with the same blue a focused block gets. The
+        // class is applied directly — not via Blockly's focus manager —
+        // because driving the focus machinery here moves DOM focus, whose
+        // focusin/focusout guard promptly hands the highlight to a different
+        // block. Blockly's own flyout bookkeeping still strips the class
+        // after some taps, so the observer below re-asserts it.
+        clearFlyoutSelection();
+        selectedBlock?.unselect();
+        selectedBlock = null;
+        flyoutSelected = blockRoot;
+        workspace.flyoutTapSelectedId = candidate.blockId;
+        blockRoot.querySelector(':scope > .blocklyPath')?.classList.add('blocklyActiveFocus');
+      },
+      true
+    );
+    document.addEventListener(
+      'pointercancel',
+      (e) => {
+        if (e.pointerType !== 'touch') return;
+        clearFlyoutHoverSelection();
+        if (flyoutTapCandidate?.pointerId === e.pointerId) flyoutTapCandidate = null;
       },
       true
     );
@@ -2386,6 +2576,22 @@ export function overrideSearchPlugin(workspace) {
       collectBlocks(item);
     });
 
+    // The Functions category is a dynamic `custom: 'PROCEDURE'` flyout with no
+    // static entries, so the walk above finds nothing for it. Add the
+    // definition blocks explicitly so they stay searchable; callers are added
+    // per procedure at match time (procedureBlockDefinitions in blocksearch.js).
+    for (const procedureBlock of PROCEDURE_SEARCH_BLOCKS) {
+      if (!seenTypes.has(procedureBlock.type)) {
+        seenTypes.add(procedureBlock.type);
+        toolboxBlocks.push({
+          type: procedureBlock.type,
+          text: procedureBlock.type,
+          full: procedureBlock,
+          keyword: procedureBlock.keyword,
+        });
+      }
+    }
+
     return toolboxBlocks;
   }
 
@@ -2579,50 +2785,85 @@ export function overrideSearchPlugin(workspace) {
           searchTerms.add(keyword);
         }
 
-        const block = blockCreationWorkspace.newBlock(type);
+        // Fresh definition blocks have a blank name; the Functions flyout
+        // fills in the default ("do something"), so index and serve them the
+        // same way. Rebuilt on language change, so this tracks translations.
+        const defaultFields = blockInfo.full ? procedureDefDefaultFields(blockInfo.full) : null;
+        const full = defaultFields
+          ? { ...blockInfo.full, fields: { ...(blockInfo.full.fields ?? {}), ...defaultFields } }
+          : (blockInfo.full ?? blockInfo);
+
+        let block = null;
+        try {
+          block = blockCreationWorkspace.newBlock(type);
+        } catch (error) {
+          console.warn(`Search index: could not instantiate ${type}`, error);
+        }
         if (!block) {
+          // Still index the type and keyword so the block stays reachable
+          // even when it cannot be instantiated headlessly (e.g. a call
+          // block with no procedure model yet).
+          indexedBlocks.push({
+            ...blockInfo,
+            full,
+            text: Array.from(searchTerms).join(' ').toLowerCase(),
+            outputCheck: type === 'procedures_callreturn' ? null : false,
+          });
           return;
         }
-        applyFieldValues(block, blockInfo.full?.fields);
+        applyFieldValues(block, full?.fields);
 
-        const labelText = typeof block.toString === 'function' ? block.toString().trim() : '';
-        if (labelText) {
-          searchTerms.add(labelText);
-        } else {
-          const fallbackMessage = getBlockMessage(type);
-          if (fallbackMessage) searchTerms.add(fallbackMessage);
-        }
+        try {
+          const labelText = typeof block.toString === 'function' ? block.toString().trim() : '';
+          if (labelText) {
+            searchTerms.add(labelText);
+          } else {
+            const fallbackMessage = getBlockMessage(type);
+            if (fallbackMessage) searchTerms.add(fallbackMessage);
+          }
 
-        const blockLabel = buildBlockLabel(block) || getBlockMessage(type) || '';
+          const blockLabel = buildBlockLabel(block) || getBlockMessage(type) || '';
 
-        addBlockFieldTerms(block, searchTerms, runDebugFields);
+          addBlockFieldTerms(block, searchTerms, runDebugFields);
 
-        const inputDefinitions = blockInfo.full?.inputs;
-        if (inputDefinitions) {
-          Object.values(inputDefinitions).forEach((definition) => {
-            const shadowType = definition?.shadow?.type;
-            if (!shadowType) {
-              return;
-            }
+          const inputDefinitions = full?.inputs;
+          if (inputDefinitions) {
+            Object.values(inputDefinitions).forEach((definition) => {
+              const shadowType = definition?.shadow?.type;
+              if (!shadowType) {
+                return;
+              }
 
-            const shadowBlock = blockCreationWorkspace.newBlock(shadowType);
-            if (!shadowBlock) {
-              return;
-            }
-            applyFieldValues(shadowBlock, definition?.shadow?.fields);
-            addBlockFieldTerms(shadowBlock, searchTerms, runDebugFields);
-            shadowBlock.dispose(true);
+              const shadowBlock = blockCreationWorkspace.newBlock(shadowType);
+              if (!shadowBlock) {
+                return;
+              }
+              applyFieldValues(shadowBlock, definition?.shadow?.fields);
+              addBlockFieldTerms(shadowBlock, searchTerms, runDebugFields);
+              shadowBlock.dispose(true);
+            });
+          }
+
+          (workspace.flockBlockLabelMap ??= new Map()).set(type, blockLabel);
+          indexedBlocks.push({
+            ...blockInfo,
+            full,
+            text: Array.from(searchTerms).join(' ').toLowerCase(),
+            // What the block can plug into: false for a statement, null for an
+            // untyped output. Used to filter the value-socket block picker.
+            outputCheck: block.outputConnection
+              ? (block.outputConnection.getCheck() ?? null)
+              : false,
+          });
+        } catch (error) {
+          console.warn(`Search index: could not index ${type}`, error);
+          indexedBlocks.push({
+            ...blockInfo,
+            full,
+            text: Array.from(searchTerms).join(' ').toLowerCase(),
+            outputCheck: type === 'procedures_callreturn' ? null : false,
           });
         }
-
-        (workspace.flockBlockLabelMap ??= new Map()).set(type, blockLabel);
-        indexedBlocks.push({
-          ...blockInfo,
-          text: Array.from(searchTerms).join(' ').toLowerCase(),
-          // What the block can plug into: false for a statement, null for an
-          // untyped output. Used to filter the value-socket block picker.
-          outputCheck: block.outputConnection ? (block.outputConnection.getCheck() ?? null) : false,
-        });
       });
     } finally {
       blockCreationWorkspace.dispose();
