@@ -1,4 +1,5 @@
 import * as Blockly from 'blockly';
+import { FieldMultilineInput } from '@blockly/field-multilineinput';
 import { workspace } from './blocklyinit.js';
 import { translate } from './translation.js';
 import { blockHandlerRegistry, refreshReporterAriaLabels, applyInputHint } from '../blocks/blocks.js';
@@ -7,11 +8,11 @@ import { TOP_BLOCK_TYPES } from '../config.js';
 import { showBlockHint, clearBlockHint } from '../ui/blockHint.js';
 import { ensureBlockSearchIndex, isCompactSearchLayout } from './blocksearch.js';
 import {
-  attachFolderBehaviour,
+  attachSectionBehaviour,
   buildContainedIdSet,
-  layoutFolderChildren,
-  setFolderReflowHook,
-} from '../blocks/folderContainment.js';
+  layoutSectionChildren,
+  setSectionReflowHook,
+} from '../blocks/sectionContainment.js';
 
 function asBlocklyBlock(candidate) {
   if (!candidate || typeof candidate !== 'object') {
@@ -69,21 +70,25 @@ function getBodySlot(block) {
   return input?.connection ?? null;
 }
 
+function findFieldForEditor(editor) {
+  for (const block of workspace.getAllBlocks(false)) {
+    for (const input of block.inputList) {
+      for (const field of input.fieldRow) {
+        if (field.htmlInput_ === editor) return field;
+      }
+    }
+  }
+  return null;
+}
+
 // Clicking a shadow block selects its parent, so the number the user is typing
 // in is only reachable through the field editor that click opened.
 function getBlockBeingEdited() {
   const editor = document.activeElement;
   if (!editor?.classList?.contains('blocklyHtmlInput')) return null;
 
-  for (const block of workspace.getAllBlocks(false)) {
-    if (block.type.startsWith('keyword')) continue;
-    for (const input of block.inputList) {
-      for (const field of input.fieldRow) {
-        if (field.htmlInput_ === editor) return block;
-      }
-    }
-  }
-  return null;
+  const block = findFieldForEditor(editor)?.getSourceBlock() ?? null;
+  return block && !block.type.startsWith('keyword') ? block : null;
 }
 
 function getViewportCenterCoordinates(activeWorkspace) {
@@ -96,7 +101,14 @@ function getBlocklyFocusManager() {
   return Blockly.getFocusManager?.() || Blockly.common?.getFocusManager?.();
 }
 
-function focusBlocklyBlock(block) {
+const undoFocusTargets = new Map(); // event group id -> block id to refocus if that group is undone
+
+export function rememberUndoFocusTarget(groupId, blockId) {
+  if (!groupId || !blockId) return;
+  undoFocusTargets.set(groupId, blockId);
+}
+
+export function focusBlocklyBlock(block) {
   const previouslySelected = Blockly.common?.getSelected?.();
   if (previouslySelected && previouslySelected !== block) {
     previouslySelected.unselect?.();
@@ -309,6 +321,17 @@ function initializeFlyoutHints() {
   });
   flyoutSvg.addEventListener('pointerleave', () => {
     hoveredBlock = null;
+    // A tap-selected flyout block keeps its hint in the box: mobile users
+    // lift the finger (firing pointerleave) to read the help, and the
+    // workspace selection a tap just made is usually none.
+    const tapSelectedId = workspace.flyoutTapSelectedId;
+    if (tapSelectedId) {
+      const tapSelected = flyoutWorkspace.getBlockById(tapSelectedId);
+      if (tapSelected && !tapSelected.isDisposed()) {
+        showFlyoutHint(tapSelected);
+        return;
+      }
+    }
     showSelectedBlockHint();
   });
 }
@@ -316,7 +339,7 @@ function initializeFlyoutHints() {
 export function initializeBlockHandling() {
   observeBlocklyInputs();
   initializeFlyoutHints();
-  attachFolderBehaviour(workspace);
+  attachSectionBehaviour(workspace);
 
   // Capture-phase so this runs before Blockly's own gesture handling decides
   // whether the click selects a block or just edits a field in place.
@@ -440,7 +463,7 @@ export function initializeBlockHandling() {
           const dy = cursorY - xy.y;
           if (dx || dy) block.moveBy(dx, dy);
 
-          if (block.type === 'folder') layoutFolderChildren(block);
+          if (block.type === 'section') layoutSectionChildren(block);
           const h = block.getHeightWidth?.().height || 40;
           cursorY += h + spacing;
         } catch (error) {
@@ -490,7 +513,7 @@ export function initializeBlockHandling() {
     }
   }
 
-  setFolderReflowHook(layoutTopLevelBlocks);
+  setSectionReflowHook(layoutTopLevelBlocks);
   // Exposed so the Mod+. keyword-block shortcut (createKeywordBlockIn /
   // createKeywordBlockAtViewportCenter, below) can resolve stack overlap the
   // instant it inserts a block, the same way this fires straight after a
@@ -510,6 +533,9 @@ export function initializeBlockHandling() {
   // matter how undo was triggered.
   const workspaceUndo = workspace.undo.bind(workspace);
   workspace.undo = function (redo) {
+    const stack = redo ? this.getRedoStack?.() : this.getUndoStack?.();
+    const undoneGroup = stack?.[stack.length - 1]?.group;
+
     const beforeIds = new Set(this.getAllBlocks(false).map((b) => b.id));
     const result = workspaceUndo(redo);
     const recreated = this.getAllBlocks(false).find(
@@ -533,6 +559,18 @@ export function initializeBlockHandling() {
         if (recreated.isDisposed()) return;
         focusKeywordField(recreated);
       }, 0);
+    } else if (!redo && undoneGroup && undoFocusTargets.has(undoneGroup)) {
+      const targetId = undoFocusTargets.get(undoneGroup);
+      undoFocusTargets.delete(undoneGroup);
+      const target = this.getBlockById(targetId);
+      if (target && !target.isDisposed?.()) {
+        focusBlocklyBlock(target);
+        // Same dispose()-queued setTimeout(…, 0) race as the keyword-block
+        // case above: queue ours after it to have the last word.
+        setTimeout(() => {
+          if (!target.isDisposed?.()) focusBlocklyBlock(target);
+        }, 0);
+      }
     }
     return result;
   };
@@ -769,8 +807,8 @@ export function initializeBlockHandling() {
     }
 
     // Immediate cleanup when a top-level block is collapsed/expanded via
-    // Blockly's own native collapse (a folder's own toggle reflows via
-    // setFolderReflowHook instead).
+    // Blockly's own native collapse (a section's own toggle reflows via
+    // setSectionReflowHook instead).
     if (event.type === Blockly.Events.BLOCK_CHANGE && event.element === 'collapsed') {
       const block = workspace.getBlockById(event.blockId);
       if (block && !block.getParent()) {
@@ -797,6 +835,134 @@ export function initializeBlockHandling() {
   });
 }
 
+// Rebuilds from a stashed pristine original each call, so HMR re-applies
+// the latest wrapper instead of skipping (guard flag) or double-wrapping.
+function patchMethod(proto, methodName, buildWrapper) {
+  if (!proto?.[methodName]) return;
+  const originalKey = `__original_${methodName}`;
+  if (!proto[originalKey]) proto[originalKey] = proto[methodName];
+  proto[methodName] = buildWrapper(proto[originalKey]);
+}
+
+// 1pt = 4/3px, matching the getComputedStyle check in enforceMinimumFontSize.
+const MIN_EDIT_FONT_PX = 16;
+const MIN_EDIT_LINES = 3;
+
+function patchFieldMinimumEditSize(FieldClass) {
+  patchMethod(FieldClass?.prototype, 'updateSize_', (originalUpdateSize) =>
+    function (...args) {
+      originalUpdateSize.apply(this, args);
+      if (!this.isBeingEdited_) return;
+
+      const constants = this.getConstants();
+      const scale = this.workspace_?.getScale?.();
+      if (!constants || !scale) return;
+
+      const naturalRealPx = constants.FIELD_TEXT_FONTSIZE * scale * (4 / 3);
+      if (naturalRealPx < MIN_EDIT_FONT_PX) {
+        const ratio = MIN_EDIT_FONT_PX / naturalRealPx;
+        this.size_.width *= ratio;
+        this.size_.height *= ratio;
+      }
+
+      if (typeof this.setMaxLines === 'function') {
+        const lineHeight = constants.FIELD_TEXT_HEIGHT + constants.FIELD_BORDER_RECT_Y_PADDING;
+        const minHeight =
+          lineHeight * MIN_EDIT_LINES + constants.FIELD_BORDER_RECT_Y_PADDING * 2;
+        if (this.size_.height < minHeight) this.size_.height = minHeight;
+      }
+
+      if (this.borderRect_) {
+        this.borderRect_.setAttribute('width', this.size_.width);
+        this.borderRect_.setAttribute('height', this.size_.height);
+      }
+    }
+  );
+}
+
+patchFieldMinimumEditSize(FieldMultilineInput);
+patchFieldMinimumEditSize(Blockly.FieldTextInput);
+
+function wrapLineToMaxLength(line, maxLength) {
+  if (line.length <= maxLength) return [line];
+
+  const wrapped = [];
+  let current = '';
+  for (const word of line.split(' ')) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (candidate.length > maxLength && current) {
+      wrapped.push(current);
+      current = word;
+    } else {
+      current = candidate;
+    }
+    while (current.length > maxLength) {
+      wrapped.push(current.slice(0, maxLength));
+      current = current.slice(maxLength);
+    }
+  }
+  if (current) wrapped.push(current);
+  return wrapped;
+}
+
+function patchFieldWrapWhenStatic(FieldClass) {
+  patchMethod(FieldClass?.prototype, 'getDisplayText_', (originalGetDisplayText) =>
+    function (...args) {
+      if (this.isBeingEdited_) return originalGetDisplayText.apply(this, args);
+
+      const text = this.getText();
+      if (!text) return Blockly.Field.NBSP;
+
+      const wrapped = text
+        .split('\n')
+        .flatMap((line) => wrapLineToMaxLength(line, this.maxDisplayLength))
+        .map((line) => line.replace(/\s/g, Blockly.Field.NBSP))
+        .join('\n');
+
+      return this.getSourceBlock()?.RTL ? wrapped + '‏' : wrapped;
+    }
+  );
+}
+
+patchFieldWrapWhenStatic(FieldMultilineInput);
+
+function patchFieldFlatWhenStatic(FieldClass) {
+  patchMethod(FieldClass?.prototype, 'render_', (originalRender) =>
+    function (...args) {
+      originalRender.apply(this, args);
+
+      const block = this.getSourceBlock();
+      const blockPath = block?.isShadow() ? block.pathObject?.svgPath : null;
+
+      if (!this.borderRect_) return;
+
+      this.borderRect_.setAttribute('rx', 4);
+      this.borderRect_.setAttribute('ry', 4);
+      blockPath?.style.setProperty('fill', 'transparent', 'important');
+      blockPath?.style.setProperty('stroke', 'transparent', 'important');
+
+      if (this.isBeingEdited_) {
+        this.borderRect_.style.removeProperty('fill');
+        this.borderRect_.style.removeProperty('stroke');
+      } else {
+        const blockColour = block?.getColour() ?? 'var(--color-text-primary)';
+        this.borderRect_.style.setProperty(
+          'fill',
+          `color-mix(in srgb, ${blockColour} 25%, var(--color-bg))`,
+          'important'
+        );
+        this.borderRect_.style.setProperty(
+          'stroke',
+          `color-mix(in srgb, ${blockColour} 45%, var(--color-bg))`,
+          'important'
+        );
+      }
+    }
+  );
+}
+
+patchFieldFlatWhenStatic(FieldMultilineInput);
+
 // Function to enforce minimum font size and delay the focus to prevent zoom
 function enforceMinimumFontSize(input) {
   // The block picker sets its own size to match the toolbox search box; on
@@ -805,12 +971,26 @@ function enforceMinimumFontSize(input) {
     return;
   }
 
-  const currentFontSize = parseFloat(input.style.fontSize);
+  const currentFontSize = parseFloat(getComputedStyle(input).fontSize);
 
-  // Set font size immediately if it's less than 16px
-  if (currentFontSize < 16) {
-    input.style.fontSize = '16px';
+  if (currentFontSize > 0 && currentFontSize < MIN_EDIT_FONT_PX) {
+    const ratio = MIN_EDIT_FONT_PX / currentFontSize;
+    input.style.fontSize = `${MIN_EDIT_FONT_PX}px`;
     input.offsetHeight; // Force reflow to apply the font size change
+
+    if (!(findFieldForEditor(input) instanceof FieldMultilineInput)) {
+      requestAnimationFrame(() => {
+        const widgetDiv = input.closest('.blocklyWidgetDiv');
+        if (!widgetDiv) return;
+        const currentWidth = parseFloat(widgetDiv.style.width);
+        if (currentWidth) widgetDiv.style.width = `${currentWidth * ratio}px`;
+
+        input.offsetHeight;
+
+        const neededHeight = input.scrollHeight;
+        if (neededHeight) widgetDiv.style.height = `${neededHeight}px`;
+      });
+    }
   }
 
   // Delay focus to prevent zoom

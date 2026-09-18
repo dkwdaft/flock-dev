@@ -179,7 +179,7 @@ export default {
 
   // Custom block translations - Camera blocks
   camera_control: 'camera %1 %2',
-  camera_follow: 'camera follow %1 with radius %2 front %3',
+  camera_follow: 'camera follow %1 with radius %2 angle %3 front %4',
   get_camera: 'get camera as %1',
 
   // Custom block translations - Combine blocks
@@ -207,9 +207,9 @@ export default {
   for_loop2: 'for each %1 from %2 to %3 by %4 do %5',
   for_loop: 'for each %1 from %2 to %3 by %4 do %5',
   get_lexical_variable: '%1',
-  folder: 'folder %1',
-  folder_default_name: 'Folder',
-  folder_toggle_alt: 'expand or collapse folder',
+  section: 'section %1',
+  section_default_name: 'Section',
+  section_toggle_alt: 'expand or collapse section',
 
   // Custom block translations - Effects blocks
   main_light: 'light intensity: %1 color: %2 ground: %3',
@@ -463,7 +463,7 @@ export default {
   // Tooltip translations - Camera blocks
   camera_control_tooltip: 'Bind a specific key to a camera control action.',
   camera_follow_tooltip:
-    'Make the camera follow an object with a customizable distance (radius) from the target.',
+    'Make the camera follow an object with a customizable distance (radius) and angle from the target.',
   get_camera_tooltip: 'Get the current scene camera.',
 
   // Tooltip translations - Combine blocks
@@ -498,7 +498,7 @@ export default {
   for_loop_tooltip:
     'Loop from a starting number to an ending number by a given step. Click on the dropdown to get the loop variable to use in your code.',
   get_lexical_variable_tooltip: 'Get the value of a lexical variable.',
-  folder_tooltip: 'Organize related blocks.',
+  section_tooltip: 'Organize related blocks.',
 
   // Tooltip translations - Effects blocks
   main_light_tooltip: 'Set the intensity and diffuse and ground colors of the main light.',
