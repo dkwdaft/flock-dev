@@ -2,6 +2,12 @@ import { expect } from 'chai';
 import * as Blockly from 'blockly';
 import { initContextMenus } from '../ui/contextmenu.js';
 import { setBlockLocked, isBlockLocked } from '../ui/blocklyutil.js';
+import {
+  insertBlockSnapshot,
+  captureStackAnchor,
+  reattachBlockToAnchor,
+  chainBlockAfter,
+} from '../ui/blocklyutil.js';
 import { defineControlBlocks } from '../blocks/control.js';
 import { translate } from '../main/translation.js';
 
@@ -282,6 +288,91 @@ export function runContextMenuTests(_flock) {
       });
     });
 
+    describe('canvas clipboard stack anchor', function () {
+      const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+      function chain(count = 3) {
+        const blocks = [];
+        for (let i = 0; i < count; i++) blocks.push(makeBlock());
+        for (let i = 0; i + 1 < count; i++) {
+          blocks[i].nextConnection.connect(blocks[i + 1].previousConnection);
+        }
+        return blocks;
+      }
+
+      function snapshotOf(block) {
+        const snapshot = Blockly.serialization.blocks.save(block, { includeShadows: true });
+        if (snapshot.next) delete snapshot.next;
+        return snapshot;
+      }
+
+      it('captureStackAnchor records the parent and next block', function () {
+        const [a, b, c] = chain();
+        const anchor = captureStackAnchor(b);
+        expect(anchor.parentId).to.equal(a.id);
+        expect(anchor.inputName).to.equal(null);
+        expect(anchor.nextId).to.equal(c.id);
+      });
+
+      it('cut-style paste reinserts the block into its stack position', async function () {
+        const [a, b, c] = chain();
+        const snapshot = snapshotOf(b);
+        const anchor = captureStackAnchor(b);
+        b.dispose(true);
+        createdBlocks = createdBlocks.filter((x) => x !== b);
+        expect(a.getNextBlock()).to.equal(c);
+
+        const pasted = insertBlockSnapshot(snapshot, workspace, { x: 0, y: 0, z: 0 }, null);
+        createdBlocks.push(pasted);
+        expect(reattachBlockToAnchor(workspace, pasted, anchor)).to.equal(true);
+        expect(a.getNextBlock()).to.equal(pasted);
+        expect(pasted.getNextBlock()).to.equal(c);
+        await flush();
+      });
+
+      it('reattach leaves the block detached when the parent is gone', async function () {
+        const [a, b] = chain(2);
+        const snapshot = snapshotOf(b);
+        const anchor = captureStackAnchor(b);
+        b.dispose(true);
+        createdBlocks = createdBlocks.filter((x) => x !== b);
+        a.dispose();
+        createdBlocks = createdBlocks.filter((x) => x !== a);
+
+        const pasted = insertBlockSnapshot(snapshot, workspace, { x: 0, y: 0, z: 0 }, null);
+        createdBlocks.push(pasted);
+        expect(reattachBlockToAnchor(workspace, pasted, anchor)).to.equal(false);
+        expect(pasted.getParent()).to.equal(null);
+        await flush();
+      });
+
+      it('chainBlockAfter inserts between a target and its next block', async function () {
+        const [a, c] = chain(2);
+        const loose = makeBlock();
+        expect(chainBlockAfter(workspace, a, loose)).to.equal(true);
+        expect(a.getNextBlock()).to.equal(loose);
+        expect(loose.getNextBlock()).to.equal(c);
+        await flush();
+      });
+
+      it('cut lone block then paste chains after the selected block', async function () {
+        const lone = makeBlock();
+        const snapshot = snapshotOf(lone);
+        const anchor = captureStackAnchor(lone);
+        expect(anchor).to.equal(null);
+        lone.dispose();
+        createdBlocks = createdBlocks.filter((x) => x !== lone);
+
+        const target = makeBlock();
+        const pasted = insertBlockSnapshot(snapshot, workspace, { x: 0, y: 0, z: 0 }, null);
+        createdBlocks.push(pasted);
+        expect(reattachBlockToAnchor(workspace, pasted, anchor)).to.equal(false);
+        expect(chainBlockAfter(workspace, target, pasted)).to.equal(true);
+        expect(target.getNextBlock()).to.equal(pasted);
+        await flush();
+      });
+    });
+
     describe('floating block toolbar', function () {
       // Blockly fires its change events asynchronously.
       const flush = () => new Promise((resolve) => setTimeout(resolve, 50));
@@ -305,6 +396,93 @@ export function runContextMenuTests(_flock) {
         block.select();
         await settle();
         expect(blockToolbar.classList.contains('visible')).to.equal(false);
+      });
+
+      it('opens via a click on the block itself', async function () {
+        const block = makeBlock();
+        try {
+          block
+            .getSvgRoot()
+            .dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+          block.select();
+          await flush();
+          document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+          expect(blockToolbar.classList.contains('visible')).to.equal(true);
+        } finally {
+          window.flockBlockToolbar?.hide();
+        }
+      });
+
+      it('hides when a toolbox category opens on narrow screens', async function () {
+        const block = makeBlock();
+        const origMatchMedia = window.matchMedia;
+        const origGetToolbox = workspace.getToolbox;
+        try {
+          block
+            .getSvgRoot()
+            .dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+          block.select();
+          await flush();
+          document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+          expect(blockToolbar.classList.contains('visible')).to.equal(true);
+
+          window.matchMedia = () => ({ matches: true });
+          workspace.getToolbox = () => ({ getFlyout: () => ({ isVisible: () => true }) });
+          workspace.fireChangeListener({
+            type: Blockly.Events.TOOLBOX_ITEM_SELECT,
+            newItem: 'Logic',
+          });
+          expect(blockToolbar.classList.contains('visible')).to.equal(false);
+        } finally {
+          window.matchMedia = origMatchMedia;
+          workspace.getToolbox = origGetToolbox;
+          window.flockBlockToolbar?.hide();
+        }
+      });
+
+      it('stays open on toolbox selection when the flyout is shut', async function () {
+        const block = makeBlock();
+        const origGetToolbox = workspace.getToolbox;
+        try {
+          block
+            .getSvgRoot()
+            .dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+          block.select();
+          await flush();
+          document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+          expect(blockToolbar.classList.contains('visible')).to.equal(true);
+
+          workspace.getToolbox = () => ({ getFlyout: () => ({ isVisible: () => false }) });
+          workspace.fireChangeListener({
+            type: Blockly.Events.TOOLBOX_ITEM_SELECT,
+            newItem: null,
+          });
+          expect(blockToolbar.classList.contains('visible')).to.equal(true);
+        } finally {
+          workspace.getToolbox = origGetToolbox;
+          window.flockBlockToolbar?.hide();
+        }
+      });
+
+      it('does not open while the toolbox flyout is open on narrow screens', async function () {
+        const block = makeBlock();
+        const origMatchMedia = window.matchMedia;
+        const origGetToolbox = workspace.getToolbox;
+        try {
+          block
+            .getSvgRoot()
+            .dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+          block.select();
+          await flush();
+          window.matchMedia = () => ({ matches: true });
+          workspace.getToolbox = () => ({ getFlyout: () => ({ isVisible: () => true }) });
+          document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+          expect(blockToolbar.classList.contains('visible')).to.equal(false);
+        } finally {
+          window.matchMedia = origMatchMedia;
+          workspace.getToolbox = origGetToolbox;
+          window.flockBlockToolbar?.hide();
+        }
       });
     });
   });
