@@ -86,6 +86,7 @@ let orbitViewObserver = null; // Unused; orbit no longer tracks selection
 let orbitDisposeObserver = null; // Dispose handle for the orbited mesh
 let orbitDisposeMesh = null; // Mesh the orbit camera targets (window.orbitMesh)
 let orbitPreviousGizmoType = null; // Gizmo active before entering orbit, restored on exit
+let orbitRetargetObserver = null; // Pointer observer that lets a canvas click switch orbit target
 
 // Tools that keep the orbit camera active.
 const ORBIT_COMPATIBLE_GIZMOS = new Set(['position', 'rotation', 'scale', 'duplicate', 'select']);
@@ -246,11 +247,11 @@ function registerBindings() {
   const noMod = (fn) => (e) => {
     if (!e.ctrlKey && !e.altKey && !e.metaKey) fn(e);
   };
-  // Focus on mesh with V or F key
+  // Focus on mesh with F key
   KeyboardDispatcher.on(
     'GIZMO',
     'KeyF',
-    noMod(() => focusCameraOnMesh())
+    noMod(() => focusOnMesh())
   );
   KeyboardDispatcher.on(
     'GIZMO',
@@ -746,7 +747,7 @@ export function pasteCanvasClipboard() {
   }
   if (!newBlock) return false;
   highlightBlockById(workspace, newBlock);
-  attachPastedMesh(newBlock);
+  selectMeshForBlock(newBlock);
   return true;
 }
 
@@ -766,7 +767,11 @@ export function clearCanvasClipboard() {
   canvasClipboard = null;
 }
 
-function attachPastedMesh(newBlock) {
+// Attach the gizmo/bounding box to the mesh for a just-created block, once its
+// mesh exists. Blockly fires the create event synchronously but the
+// corresponding mesh is built asynchronously (see applyLiveRotationWhenReady
+// in ui/addmenu.js for the same pattern), so poll a few frames for it.
+export function selectMeshForBlock(newBlock) {
   if (!gizmoManager) return;
   let attempts = 0;
   const tryAttach = () => {
@@ -785,23 +790,15 @@ function attachPastedMesh(newBlock) {
   requestAnimationFrame(tryAttach);
 }
 
-function focusCameraOnMesh(overrideMesh) {
-  let mesh = overrideMesh ?? gizmoManager.attachedMesh;
-  if (mesh && mesh.name === 'ground') mesh = null;
-  if (!mesh && window.currentBlock) {
-    mesh = getMeshFromBlock(window.currentBlock);
-    if (mesh && mesh.name === 'ground') mesh = null;
-  }
-  if (!mesh) return;
+// Reframe the free/fly camera directly on the mesh. Only valid when no
+// follow camera is active — focusOnMesh() below routes to
+// movePlayerToFaceMesh() instead whenever one is.
+function frameFreeCameraOnMesh(mesh) {
   applyMeshSelection(mesh);
 
   mesh.computeWorldMatrix(true);
   const { min, max } = mesh.getHierarchyBoundingVectors(true);
   const newTarget = flock.BABYLON.Vector3.Center(min, max);
-
-  if (flock.scene.activeCamera?.metadata?.following) {
-    handleCameraGizmo();
-  }
 
   const camera = flock.scene.activeCamera;
   const currentDistance = camera.radius || 10;
@@ -815,63 +812,10 @@ function focusCameraOnMesh(overrideMesh) {
   camera.setTarget(newTarget);
 }
 
-function applyMeshSelection(pickedMesh, pickedPoint) {
-  if (pickedMesh && pickedMesh.name !== 'ground') {
-    if (pickedMesh.parent) {
-      pickedMesh = getRootMesh(pickedMesh.parent);
-      pickedMesh.visibility = 0.001;
-    }
-    const block = meshMap[pickedMesh?.metadata?.blockKey];
-    highlightBlockById(Blockly.getMainWorkspace(), block);
-    gizmoManager.attachToMesh(pickedMesh);
-    enableBoundingBox(pickedMesh);
-    return;
-  }
-
-  if (pickedMesh && pickedMesh.name === 'ground') {
-    showStatus(positionStatus(pickedPoint), { duration: 10, owner: 'position-readout' });
-  }
-  if (gizmoManager.attachedMesh) {
-    resetChildMeshesOfAttachedMesh();
-    gizmoManager.attachToMesh(null);
-  }
-}
-
-export function viewMeshWithCamera(block) {
-  let mesh;
-  if (block) {
-    mesh = getMeshFromBlock(block);
-    if (mesh?.name === 'ground') mesh = null;
-  } else {
-    mesh = gizmoManager.attachedMesh;
-    if (mesh?.name === 'ground') mesh = null;
-    if (!mesh && window.currentBlock) {
-      mesh = getMeshFromBlock(window.currentBlock);
-      if (mesh?.name === 'ground') mesh = null;
-    }
-  }
-
-  const camera = flock.scene.activeCamera;
-
-  if (!camera?.metadata?.following) {
-    if (camera?.metadata?.orbitView) {
-      // Toggle off on the orbited mesh; switch target on a different one.
-      if (!block || mesh === window.orbitMesh) {
-        disconnectOrbitView();
-        return;
-      }
-      disconnectOrbitView(); // switch target — disconnect first, then fall through
-      // If disconnect failed (orbit camera still active), don't attach a new one on top
-      if (flock.scene.activeCamera?.metadata?.orbitView) {
-        return;
-      }
-    }
-    if (mesh) attachOrbitView(mesh);
-    return;
-  }
-
-  if (!mesh) return;
-
+// Move the followed player to face the mesh, keeping the camera attached to
+// the player throughout — unlike orbit view, which detaches the camera onto
+// its own free-floating ArcRotateCamera.
+function movePlayerToFaceMesh(mesh, camera) {
   const BABYLON = flock.BABYLON;
   const player = camera.metadata.following;
 
@@ -994,6 +938,96 @@ export function viewMeshWithCamera(block) {
   camera.alpha = -chosenYaw - Math.PI / 2;
 }
 
+// Focus on a mesh: when a follow camera is active, moves the followed player
+// to face it (camera stays attached); otherwise reframes the free camera on
+// it directly. Resolves the mesh from `block` when given (context menu),
+// else from the current gizmo selection (keyboard shortcut).
+export function focusOnMesh(block) {
+  let mesh;
+  if (block) {
+    mesh = getMeshFromBlock(block);
+    if (mesh?.name === 'ground') mesh = null;
+  } else {
+    mesh = gizmoManager.attachedMesh;
+    if (mesh?.name === 'ground') mesh = null;
+    if (!mesh && window.currentBlock) {
+      mesh = getMeshFromBlock(window.currentBlock);
+      if (mesh?.name === 'ground') mesh = null;
+    }
+  }
+  if (!mesh) return;
+
+  // Orbit view owns the camera while active; drop out of it first so the
+  // following/free-camera check below runs against the camera orbit was
+  // covering for, instead of mutating the orbit camera directly (which would
+  // desync window.orbitMesh and its disposal observer from what's on screen).
+  let camera = flock.scene.activeCamera;
+  if (camera?.metadata?.orbitView) {
+    disconnectOrbitView();
+    camera = flock.scene.activeCamera;
+    if (camera?.metadata?.orbitView) return; // no valid camera to restore
+  }
+
+  if (camera?.metadata?.following) {
+    movePlayerToFaceMesh(mesh, camera);
+    return;
+  }
+
+  frameFreeCameraOnMesh(mesh);
+}
+
+function applyMeshSelection(pickedMesh, pickedPoint) {
+  if (pickedMesh && pickedMesh.name !== 'ground') {
+    if (pickedMesh.parent) {
+      pickedMesh = getRootMesh(pickedMesh.parent);
+      pickedMesh.visibility = 0.001;
+    }
+    const block = meshMap[pickedMesh?.metadata?.blockKey];
+    highlightBlockById(Blockly.getMainWorkspace(), block);
+    gizmoManager.attachToMesh(pickedMesh);
+    enableBoundingBox(pickedMesh);
+    return;
+  }
+
+  if (pickedMesh && pickedMesh.name === 'ground') {
+    showStatus(positionStatus(pickedPoint), { duration: 10, owner: 'position-readout' });
+  }
+  if (gizmoManager.attachedMesh) {
+    resetChildMeshesOfAttachedMesh();
+    gizmoManager.attachToMesh(null);
+  }
+}
+
+export function viewMeshWithCamera(block) {
+  let mesh;
+  if (block) {
+    mesh = getMeshFromBlock(block);
+    if (mesh?.name === 'ground') mesh = null;
+  } else {
+    mesh = gizmoManager.attachedMesh;
+    if (mesh?.name === 'ground') mesh = null;
+    if (!mesh && window.currentBlock) {
+      mesh = getMeshFromBlock(window.currentBlock);
+      if (mesh?.name === 'ground') mesh = null;
+    }
+  }
+
+  const camera = flock.scene.activeCamera;
+  if (camera?.metadata?.orbitView) {
+    // Toggle off on the orbited mesh; switch target on a different one.
+    if (!block || mesh === window.orbitMesh) {
+      disconnectOrbitView();
+      return;
+    }
+    disconnectOrbitView(); // switch target — disconnect first, then fall through
+    // If disconnect failed (orbit camera still active), don't attach a new one on top
+    if (flock.scene.activeCamera?.metadata?.orbitView) {
+      return;
+    }
+  }
+  if (mesh) attachOrbitView(mesh);
+}
+
 // Attach an ArcRotateCamera that orbits the given mesh (free-camera mode only).
 function attachOrbitView(mesh) {
   const BABYLON = flock.BABYLON;
@@ -1044,6 +1078,9 @@ function attachOrbitView(mesh) {
   orbitSavedCamera = freeCamera;
   freeCamera.detachControl();
   scene.activeCamera = orbitCamera;
+  // Orbit-view keys (WASD/arrows) are read straight off the physical keyboard
+  // by CameraControls, same as fly mode — the project shouldn't see them too.
+  flock.inputManager?.setInputOwner('editor');
   const canvas = scene.getEngine().getRenderingCanvas();
   if (canvas) {
     orbitCamera.attachControl(canvas, false);
@@ -1066,6 +1103,7 @@ function attachOrbitView(mesh) {
   window.orbitBlock = window.currentBlock ?? null;
   window.orbitMesh = selectedMesh;
   setGizmoButtonActive(document.getElementById('eyeButton'), true);
+  watchEyeGizmoRetarget();
 }
 
 // Restore the stashed free camera, disposing the orbit camera. Does not
@@ -1114,9 +1152,11 @@ function disconnectOrbitView() {
   // Scene gone (disposal path): wipe all orbit globals so stale state never
   // persists across a scene reset, even though no camera restore is possible.
   if (!flock.scene?.activeCamera?.metadata?.orbitView) {
+    flock.inputManager?.setInputOwner('project');
     window.orbitViewActive = false;
     window.orbitBlock = null;
     window.orbitMesh = null;
+    clearOrbitRetargetObserver();
     if (orbitDisposeObserver && orbitDisposeMesh) {
       try {
         orbitDisposeMesh.onDisposeObservable.remove(orbitDisposeObserver);
@@ -1134,9 +1174,11 @@ function disconnectOrbitView() {
   // leave all state intact so the caller can see the system is still "stuck"
   // in orbit rather than silently desynchronising flags from camera state.
   if (!restoreFreeCameraFromOrbit()) return;
+  flock.inputManager?.setInputOwner('project');
   window.orbitViewActive = false;
   window.orbitBlock = null;
   window.orbitMesh = null;
+  clearOrbitRetargetObserver();
   setGizmoButtonActive(document.getElementById('eyeButton'), false);
   // Re-attach the orbit target only when nothing else is selected.
   if (!gizmoManager.attachedMesh && prevMesh && !prevMesh.isDisposed?.()) {
@@ -2102,6 +2144,17 @@ export function disableGizmos() {
 
 // Toggle which Gizmo is being used
 export function toggleGizmo(gizmoType) {
+  // The camera button's job while orbiting is just to exit orbit. Must run
+  // before the "already active" / cleanup logic below: cameraButton is never
+  // marked active during orbit (cameraMode stays 'play' throughout), so
+  // without this the general exitGizmoState() cleanup would disconnect orbit
+  // on its own, and by the time handleCameraGizmo() ran its own orbit check
+  // would already see a plain camera and fall through to a play/fly toggle.
+  if (gizmoType === 'camera' && isOrbitViewActive()) {
+    disconnectOrbitView();
+    return;
+  }
+
   // Is this gizmo already active? If so, toggle it off
   const button = document.getElementById(`${gizmoType}Button`);
   if (button?.classList.contains('active')) {
@@ -2194,7 +2247,7 @@ export function toggleGizmo(gizmoType) {
       break;
     */
     case 'focus':
-      focusCameraOnMesh();
+      focusOnMesh();
       break;
     default:
       break;
@@ -2441,7 +2494,10 @@ function handleRotationGizmo() {
   const rotationButton = document.getElementById('rotationButton');
   setGizmoButtonActive(rotationButton, true);
 
-  let savedHudAxis = null;
+  // Default to Y on a fresh activation (most rotations are about the vertical
+  // axis); once the user picks a different axis, re-attaching to another mesh
+  // within this same activation keeps that choice instead of resetting.
+  let savedHudAxis = 'y';
   const mesh = gizmoManager.attachedMesh;
   if (mesh) {
     startRotateKeyboardHandler(mesh, savedHudAxis, (axis) => {
@@ -2775,12 +2831,14 @@ const isTouchDevice = () =>
 
 // Camera: Toggle between play and fly camera modes
 function handleCameraGizmo() {
-  // If orbit-view is active, drop back to the free camera first so the
-  // play/fly swap below operates on the normal camera pair. If there is no
-  // saved play camera to swap to, just stay on the restored free camera.
+  // If orbit-view is active, the camera button's job is just to exit orbit
+  // and return to whichever camera was active before it — the player's
+  // follow camera if that's what was showing, not a fly/play toggle on top
+  // (cameraMode is always 'play' during orbit, so that toggle would always
+  // land on the fly camera regardless of what was really active before).
   if (flock.scene.activeCamera?.metadata?.orbitView) {
     disconnectOrbitView();
-    if (!flock.savedCamera) return;
+    return;
   }
 
   const cameraButton = document.getElementById('cameraButton');
@@ -2876,6 +2934,40 @@ function addUndoHandler() {
       }
     }
   });
+}
+
+// While eye is the only active gizmo, clicking a different mesh in the
+// canvas switches the orbit target to it instead of doing nothing. Once
+// another gizmo (position/rotation/scale/...) is also active, canvas clicks
+// retarget that gizmo instead (see toggleGizmo's preserveOrbit handling), so
+// this stays out of the way in that case.
+function watchEyeGizmoRetarget() {
+  const scene = flock.scene;
+  if (!scene) return;
+  if (orbitRetargetObserver) scene.onPointerObservable.remove(orbitRetargetObserver);
+  orbitRetargetObserver = scene.onPointerObservable.add((event) => {
+    if (event.type !== flock.BABYLON.PointerEventTypes.POINTERPICK) return;
+    if (document.querySelector('.gizmo-button.active:not(#eyeButton)')) return;
+    if (!scene.activeCamera?.metadata?.orbitView) return;
+
+    let pickedMesh = event.pickInfo?.pickedMesh;
+    if (!pickedMesh || pickedMesh.name === 'ground') return;
+    if (pickedMesh.parent) pickedMesh = getRootMesh(pickedMesh.parent);
+    if (!pickedMesh || pickedMesh === window.orbitMesh) return;
+
+    disconnectOrbitView();
+    attachMeshForActiveTool(pickedMesh);
+    attachOrbitView(pickedMesh); // re-registers this observer for the new target
+    showStatus(translate('orbit_mesh_info'), { owner: 'eye-gizmo', hint: true });
+  });
+}
+
+// Detach the eye-gizmo retarget-on-click observer. Called from every path
+// that ends orbit view, so it never outlives the orbit camera it depends on.
+function clearOrbitRetargetObserver() {
+  if (!orbitRetargetObserver) return;
+  flock.scene?.onPointerObservable?.remove(orbitRetargetObserver);
+  orbitRetargetObserver = null;
 }
 
 // Eye: Orbit camera around selected or picked mesh

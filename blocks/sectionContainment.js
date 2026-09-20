@@ -3,6 +3,8 @@ import * as Blockly from 'blockly';
 const CHILD_GAP = 40;
 const TOP_GAP = 8;
 export const SECTION_DO_CHECK = '__section_do_never_connects__';
+// Name-mangling bucket for section NAME fields, same mechanism as procedures.
+export const SECTION_NAME_TYPE = 'section';
 
 function isRendered(block) {
   return !!block && typeof block.getSvgRoot === 'function' && !!block.getSvgRoot();
@@ -50,7 +52,7 @@ export function generateWorkspaceCode(workspace, javascriptGenerator) {
   return code;
 }
 
-function findOwningSection(workspace, blockId) {
+export function findOwningSection(workspace, blockId) {
   for (const section of getAllSectionBlocks(workspace)) {
     if ((section.containedBlockIds_ || []).includes(blockId)) return section;
   }
@@ -137,6 +139,7 @@ export function layoutSectionChildren(section) {
     }
     // Blockly leaves residual row height if the input is merely hidden, not removed.
     if (section.getInput('DO')) section.removeInput('DO');
+    section.commentMinWidth_ = 0;
     section.render();
     return;
   }
@@ -148,13 +151,18 @@ export function layoutSectionChildren(section) {
   doInput.setVisible(true);
 
   const children = ids.map((id) => ws.getBlockById(id)).filter(Boolean);
-  let desired = children.length ? TOP_GAP : 0;
+  let desiredHeight = children.length ? TOP_GAP : 0;
+  let widestChild = 0;
   children.forEach((child, index) => {
     const hw = child.getHeightWidth ? child.getHeightWidth() : { width: 100, height: 40 };
-    desired += hw.height;
-    desired += index < children.length - 1 ? CHILD_GAP : TOP_GAP;
+    desiredHeight += hw.height;
+    desiredHeight += index < children.length - 1 ? CHILD_GAP : TOP_GAP;
+    if (hw.width > widestChild) widestChild = hw.width;
   });
-  section.desiredMouthHeight_ = desired;
+  section.desiredMouthHeight_ = desiredHeight;
+  // Contained blocks are manually positioned, not real connections, so
+  // Blockly won't widen the block for them - stretch the comment field instead.
+  section.commentMinWidth_ = widestChild ? widestChild + TOP_GAP : 0;
   section.render();
 
   const origin = section.getRelativeToSurfaceXY();
@@ -366,6 +374,19 @@ export function endSectionDragFollow(section) {
   }
 }
 
+const SECTION_REFERENCE_TYPES = ['section_control'];
+
+// Nothing repaints a section_control block's dropdown when its target's name
+// changes - force a repaint on every block pointing at the renamed section.
+function refreshSectionReferenceDropdowns(workspace, sectionId) {
+  for (const block of workspace.getAllBlocks(false)) {
+    if (!SECTION_REFERENCE_TYPES.includes(block.type)) continue;
+    const field = block.getField('SECTION');
+    if (field?.getValue() !== sectionId) continue;
+    field.forceRerender();
+  }
+}
+
 export function removeFromAllSections(workspace, blockId) {
   for (const section of getAllSectionBlocks(workspace)) {
     if ((section.containedBlockIds_ || []).includes(blockId)) {
@@ -409,6 +430,20 @@ export function attachSectionBehaviour(workspace) {
           const dy = event.newCoordinate.y - event.oldCoordinate.y;
           if (dx || dy) propagateSectionMove(workspace, section, dx, dy);
         }
+      }
+      resizeOwningSectionsImmediately(workspace, event.blockId);
+      return;
+    }
+
+    if (event.type === Blockly.Events.BLOCK_CHANGE) {
+      // A field edit (comment, name, checkbox, a contained block's own
+      // field...) can change a block's height without moving it, which
+      // BLOCK_MOVE would otherwise have caught - re-layout so contained
+      // blocks aren't left at their old, now-stale position.
+      const block = workspace.getBlockById(event.blockId);
+      if (block?.type === 'section') layoutSectionChildren(block);
+      if (block?.type === 'section' && event.element === 'field' && event.name === 'NAME') {
+        refreshSectionReferenceDropdowns(workspace, block.id);
       }
       resizeOwningSectionsImmediately(workspace, event.blockId);
       return;
