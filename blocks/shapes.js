@@ -607,6 +607,10 @@ export function defineShapeBlocks() {
             name: 'Z',
             check: 'Number',
           },
+          {
+            type: 'field_pick_position',
+            name: 'PICK_POSITION',
+          },
         ],
         previousStatement: null,
         nextStatement: null,
@@ -673,6 +677,10 @@ export function defineShapeBlocks() {
             type: 'input_value',
             name: 'Z',
             check: 'Number',
+          },
+          {
+            type: 'field_pick_position',
+            name: 'PICK_POSITION',
           },
         ],
         previousStatement: null,
@@ -746,6 +754,10 @@ export function defineShapeBlocks() {
             name: 'Z',
             check: 'Number',
           },
+          {
+            type: 'field_pick_position',
+            name: 'PICK_POSITION',
+          },
         ],
         previousStatement: null,
         nextStatement: null,
@@ -807,6 +819,10 @@ export function defineShapeBlocks() {
             type: 'input_value',
             name: 'Z',
             check: 'Number',
+          },
+          {
+            type: 'field_pick_position',
+            name: 'PICK_POSITION',
           },
         ],
         previousStatement: null,
@@ -885,6 +901,10 @@ export function defineShapeBlocks() {
             name: 'Z',
             check: 'Number',
           },
+          {
+            type: 'field_pick_position',
+            name: 'PICK_POSITION',
+          },
         ],
         previousStatement: null,
         nextStatement: null,
@@ -952,6 +972,10 @@ export function defineShapeBlocks() {
             name: 'Z',
             check: 'Number',
           },
+          {
+            type: 'field_pick_position',
+            name: 'PICK_POSITION',
+          },
         ],
         previousStatement: null,
         nextStatement: null,
@@ -1012,6 +1036,10 @@ export function defineShapeBlocks() {
             name: 'Z',
             check: 'Number',
           },
+          {
+            type: 'field_pick_position',
+            name: 'PICK_POSITION',
+          },
         ],
         previousStatement: null,
         nextStatement: null,
@@ -1027,6 +1055,41 @@ export function defineShapeBlocks() {
         handleBlockChange(this, changeEvent, variableNamePrefix)
       );
       // Add the mutator with toggle behaviour.
+      addDoMutatorWithToggleBehavior(this);
+    },
+  };
+
+  Blockly.Blocks['create_group'] = {
+    init: function () {
+      const variableNamePrefix = 'group';
+      let nextVariableName = variableNamePrefix + nextVariableIndexes[variableNamePrefix];
+      this.jsonInit({
+        type: 'create_group',
+        message0: translate('create_group'),
+        args0: [
+          {
+            type: 'field_variable',
+            name: 'ID_VAR',
+            variable: nextVariableName,
+          },
+          {
+            type: 'field_checkbox',
+            name: 'ACTIVE',
+            checked: true,
+          },
+        ],
+        previousStatement: null,
+        nextStatement: null,
+        inputsInline: true,
+        colour: categoryColours['Transform'],
+        tooltip: getTooltip('create_group'),
+      });
+      this.setHelpUrl(getHelpUrlFor(this.type));
+      this.setStyle('transform_blocks');
+
+      registerBlockHandler(this, (changeEvent) =>
+        handleBlockChange(this, changeEvent, variableNamePrefix)
+      );
       addDoMutatorWithToggleBehavior(this);
     },
   };
