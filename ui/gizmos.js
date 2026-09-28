@@ -13,6 +13,7 @@ import {
   unsuppressBlockLiveUpdates,
   getSuppressedHitCount,
   setGroupSelectionFollower,
+  setGroupActiveToggleListener,
 } from './blockmesh.js';
 import {
   highlightBlockById,
@@ -144,7 +145,7 @@ let orbitPreviousGizmoType = null; // Gizmo active before entering orbit, restor
 let orbitRetargetObserver = null; // Pointer observer that lets a canvas click switch orbit target
 
 // Tools that keep the orbit camera active.
-const ORBIT_COMPATIBLE_GIZMOS = new Set(['position', 'rotation', 'scale', 'duplicate', 'select']);
+const ORBIT_COMPATIBLE_GIZMOS = new Set(['position', 'rotation', 'scale', 'duplicate', 'select', 'delete']);
 
 function isOrbitViewActive() {
   return !!flock.scene?.activeCamera?.metadata?.orbitView;
@@ -180,6 +181,7 @@ function createAdaptiveInput({
   stepFast,
   mode,
   showUniform,
+  uniformOnly = false,
   stepLabels,
   onHudHide,
   onAxisChange,
@@ -233,6 +235,7 @@ function createAdaptiveInput({
       stepFast,
       mode,
       showUniform,
+      uniformOnly,
       stepLabels,
       onAxisChange: onHudAxisChange,
       onCollapsedChange: () => reportAxis(visibleAxis()),
@@ -252,6 +255,7 @@ function createAdaptiveInput({
     onAxisChange: onKbAxisChange,
     initialAxis: initialKeyboardAxis,
     allowUniform: showUniform,
+    uniformOnly,
   });
   // The HUD lands on an axis (X by default) and normalises saved ones, so take
   // its choice over the raw value.
@@ -508,6 +512,13 @@ document.addEventListener('DOMContentLoaded', function () {
         // Don't close when clicking the 3D canvas — canvas clicks paint meshes directly
         const canvas = document.getElementById('renderCanvas');
         if (canvas && (canvas === target || canvas.contains(target))) return true;
+        const canvasToggleBtn = document.getElementById('canvasToggleBtn');
+        const codeToggleBtn = document.getElementById('codeToggleBtn');
+        if (
+          (canvasToggleBtn && (canvasToggleBtn === target || canvasToggleBtn.contains(target))) ||
+          (codeToggleBtn && (codeToggleBtn === target || codeToggleBtn.contains(target)))
+        )
+          return true;
         // Don't close for a how-to link that glows one of the picker's own
         // controls (colorpalette/colorrandom/colorwheel/etc. — see
         // wireHowToLinks()/wireHowToButtons() in ui/howToPanel.js, which tag
@@ -771,9 +782,17 @@ function watchClickAwayFromCanvas() {
   if (!canvas) return;
   const onClickAway = (event) => {
     if (colorPicker?.isOpen) return;
-    if (flock.scene?.activeCamera?.metadata?.orbitView) return;
-    if (!document.querySelector('.gizmo-button.active:not(#cameraButton)')) return;
+    const orbiting = isOrbitViewActive();
+    const activeSelector = orbiting
+      ? '.gizmo-button.active:not(#cameraButton):not(#eyeButton)'
+      : '.gizmo-button.active:not(#cameraButton)';
+    if (!document.querySelector(activeSelector)) return;
     if (!eventIsOutOfCanvasBounds(event, canvas.getBoundingClientRect())) return;
+    if (orbiting) {
+      exitTransformState();
+      gizmoManager?.attachToMesh(null);
+      return;
+    }
     exitGizmoState();
     gizmoManager?.attachToMesh(null);
   };
@@ -1835,7 +1854,7 @@ function startRotateKeyboardHandler(mesh, savedHudAxis = null, onHudAxisSaved = 
     syncWorkingToMesh();
     return { ...working };
   };
-  stopAxisKeyboard = createAdaptiveInput({
+  const stopInput = createAdaptiveInput({
     onMove,
     onConfirm,
     onCancel,
@@ -1851,13 +1870,31 @@ function startRotateKeyboardHandler(mesh, savedHudAxis = null, onHudAxisSaved = 
     initialKeyboardAxis,
     initialHudAxis: savedHudAxis,
   });
+  if (mesh?.metadata?.shapeType !== 'Group') {
+    stopAxisKeyboard = stopInput;
+    return;
+  }
+  // Settle at session end, not per step: the slider reads the group's running rotation.
+  stopAxisKeyboard = Object.assign(
+    () => {
+      stopInput();
+      settleGroupRotation(mesh);
+    },
+    {
+      setAxis: stopInput.setAxis,
+      getAxis: stopInput.getAxis,
+      toggleHud: stopInput.toggleHud,
+    }
+  );
 }
 
 // Scale a mesh using the keyboard. Defaults to uniform (=) so the first
 // arrow press scales all axes; the user can then pick X/Y/Z if needed.
 function startScaleKeyboardHandler(mesh, savedHudAxis = null, onHudAxisSaved = null) {
+  const isGroup = mesh?.metadata?.shapeType === 'Group';
   const carriedAxis = stopAxisKeyboard?.getAxis?.() ?? null;
-  const defaultAxis = savedHudAxis ?? carriedAxis ?? 'all';
+  const defaultAxis = isGroup ? 'all' : (savedHudAxis ?? carriedAxis ?? 'all');
+  applyScaleAxisHandles(mesh);
   document.body.style.cursor = 'default';
   cleanupScenePick();
   stopAxisKeyboard?.();
@@ -1876,7 +1913,6 @@ function startScaleKeyboardHandler(mesh, savedHudAxis = null, onHudAxisSaved = n
   }
   if (mesh?.metadata?.shapeType === 'Group') {
     healGroupOrigin(mesh);
-    cacheGroupScaleBaseline(mesh);
   }
 
   const isRadial = RADIAL_BLOCK_TYPES.has(creationBlock?.type);
@@ -1928,6 +1964,7 @@ function startScaleKeyboardHandler(mesh, savedHudAxis = null, onHudAxisSaved = n
     stepFast: FAST_SCALE,
     mode: 'arrows',
     showUniform: true,
+    uniformOnly: isGroup,
     stepLabels: ['-', '+'],
     onAxisChange: (axis) => {
       onHudAxisSaved?.(axis);
@@ -1937,6 +1974,23 @@ function startScaleKeyboardHandler(mesh, savedHudAxis = null, onHudAxisSaved = n
     initialKeyboardAxis: defaultAxis,
     initialHudAxis: defaultAxis,
   });
+}
+
+function applyScaleAxisHandles(mesh) {
+  const sg = gizmoManager?.gizmos?.scaleGizmo;
+  if (!sg) return;
+  const isGroup = mesh?.metadata?.shapeType === 'Group';
+  const isPlane = meshMap[mesh?.metadata?.blockKey]?.type === 'create_plane';
+  const enabled = { x: !isGroup, y: !isGroup, z: !isGroup && !isPlane };
+  for (const [axis, g] of [
+    ['x', sg.xGizmo],
+    ['y', sg.yGizmo],
+    ['z', sg.zGizmo],
+  ]) {
+    if (!g) continue;
+    g.isEnabled = enabled[axis];
+    if (enabled[axis]) g.attachedMesh = gizmoManager.attachedMesh;
+  }
 }
 
 // Set a single numeric axis input on a block (e.g. "X", "Y", or "Z")
@@ -2255,31 +2309,6 @@ function findOrCreateResizeBlock(mesh) {
   return resizeBlock;
 }
 
-// Update blockly block after a scale
-// Baseline world sizes captured when a group scale begins (scale-drag-start
-// / keyboard-scale setup), keyed by member blockKey. bakeGroupScale consumes
-// them to turn the group's node scale into member size/position block values.
-let groupScaleBaseline = null;
-
-export function cacheGroupScaleBaseline(groupMesh) {
-  const groupKey = groupMesh?.metadata?.blockKey;
-  if (!groupKey) return;
-  const sizes = new Map();
-  for (const m of groupMesh.getChildMeshes?.(false) || []) {
-    if (!m || m.isDisposed?.() || m.metadata?.shapeType === 'Group') continue;
-    const key = m.metadata?.blockKey;
-    if (!key || sizes.has(key)) continue;
-    m.computeWorldMatrix(true);
-    const bounds = flock.getEffectiveWorldBounds(m);
-    sizes.set(key, {
-      x: bounds.max.x - bounds.min.x,
-      y: bounds.max.y - bounds.min.y,
-      z: bounds.max.z - bounds.min.z,
-    });
-  }
-  groupScaleBaseline = { groupKey, sizes };
-}
-
 // Blocks hold 1dp values; after a bake rounds member values, snap the live
 // meshes back onto them so the scene is exactly what Play rebuilds. Sizes
 // stay exact (like every plain-mesh scale): rebuilding geometry here would
@@ -2301,48 +2330,48 @@ function snapMemberPositionToBlock(member) {
   flock.updatePhysics?.(member);
 }
 
-// Multiply a member's size inputs by per-axis factors, mirroring the
+// Multiply a member's size inputs by a uniform factor, mirroring the
 // updateScaleBlock cases. Models keep their size in a resize block; its id
 // needs suppressing too (the entity's own block is covered by the caller).
-function scaleMemberSizeInputs(mesh, fx, fy, fz, suppress) {
+function scaleMemberSizeInputs(mesh, factor, suppress) {
   const block = meshMap[mesh?.metadata?.blockKey];
   if (!block || block.disposed) return;
-  const mul = (target, name, f) => {
+  const mul = (target, name) => {
     const cur = getNumberInput(target, name);
-    if (Number.isFinite(cur)) setNumberInputs(target, { [name]: cur * f });
+    if (Number.isFinite(cur)) setNumberInputs(target, { [name]: cur * factor });
   };
   switch (block.type) {
     case 'create_plane':
-      mul(block, 'WIDTH', fx);
-      mul(block, 'HEIGHT', fy);
+      mul(block, 'WIDTH');
+      mul(block, 'HEIGHT');
       break;
     case 'create_box':
     case 'create_wedge':
-      mul(block, 'WIDTH', fx);
-      mul(block, 'HEIGHT', fy);
-      mul(block, 'DEPTH', fz);
+      mul(block, 'WIDTH');
+      mul(block, 'HEIGHT');
+      mul(block, 'DEPTH');
       break;
     case 'create_capsule':
-      mul(block, 'HEIGHT', fy);
-      mul(block, 'DIAMETER', fx);
+      mul(block, 'HEIGHT');
+      mul(block, 'DIAMETER');
       break;
     case 'create_donut':
-      mul(block, 'DIAMETER', fx);
-      mul(block, 'THICKNESS', fy);
+      mul(block, 'DIAMETER');
+      mul(block, 'THICKNESS');
       break;
     case 'create_cylinder':
-      mul(block, 'HEIGHT', fy);
-      mul(block, 'DIAMETER_TOP', fx);
-      mul(block, 'DIAMETER_BOTTOM', fx);
+      mul(block, 'HEIGHT');
+      mul(block, 'DIAMETER_TOP');
+      mul(block, 'DIAMETER_BOTTOM');
       break;
     case 'create_sphere':
-      mul(block, 'DIAMETER_X', fx);
-      mul(block, 'DIAMETER_Y', fy);
-      mul(block, 'DIAMETER_Z', fz);
+      mul(block, 'DIAMETER_X');
+      mul(block, 'DIAMETER_Y');
+      mul(block, 'DIAMETER_Z');
       break;
     case 'create_3d_text':
-      mul(block, 'SIZE', fy);
-      mul(block, 'DEPTH', fz);
+      mul(block, 'SIZE');
+      mul(block, 'DEPTH');
       break;
     case 'load_model':
     case 'load_multi_object':
@@ -2355,9 +2384,9 @@ function scaleMemberSizeInputs(mesh, fx, fy, fz, suppress) {
       if (!resizeBlock) break;
       suppress?.(resizeBlock.id);
       if (existed) {
-        mul(resizeBlock, 'X', fx);
-        mul(resizeBlock, 'Y', fy);
-        mul(resizeBlock, 'Z', fz);
+        mul(resizeBlock, 'X');
+        mul(resizeBlock, 'Y');
+        mul(resizeBlock, 'Z');
       }
       break;
     }
@@ -2392,6 +2421,57 @@ export function healGroupOrigin(groupMesh) {
   }
 }
 
+export function settleGroupRotation(groupMesh) {
+  if (!groupMesh || groupMesh.isDisposed?.() || groupMesh.metadata?.shapeType !== 'Group') return;
+  const groups = [
+    groupMesh,
+    ...(groupMesh.getChildMeshes?.(false) || []).filter(
+      (m) => m?.metadata?.shapeType === 'Group' && !m.isDisposed?.()
+    ),
+  ];
+  const isIdentity = (q) =>
+    !q || (Math.abs(q.x) < 1e-6 && Math.abs(q.y) < 1e-6 && Math.abs(q.z) < 1e-6);
+  if (groups.every((g) => isIdentity(g.rotationQuaternion) && g.rotation.lengthSquared() < 1e-12)) {
+    return;
+  }
+
+  const entities = [];
+  const collectEntities = (node) => {
+    for (const m of node.getChildMeshes?.(true) || []) {
+      if (!m || m.isDisposed?.()) continue;
+      if (m.metadata?.shapeType === 'Group') collectEntities(m);
+      else entities.push(m);
+    }
+  };
+  collectEntities(groupMesh);
+
+  const parents = new Map(entities.map((m) => [m, m.parent]));
+  entities.forEach((m) => m.setParent(null));
+  try {
+    for (const g of groups) {
+      g.rotation.set(0, 0, 0);
+      g.rotationQuaternion = flock.BABYLON.Quaternion.Identity();
+      g.computeWorldMatrix(true);
+    }
+  } finally {
+    entities.forEach((m) => {
+      if (!m.isDisposed?.()) m.setParent(parents.get(m) ?? null);
+    });
+  }
+
+  const depthOf = (m) => {
+    let d = 0;
+    for (let p = m.parent; p; p = p.parent) d++;
+    return d;
+  };
+  groups
+    .slice(1)
+    .sort((a, b) => depthOf(b) - depthOf(a))
+    .forEach((g) => flock.recomputeGroupGeometry(g));
+  flock.recomputeGroupGeometry(groupMesh);
+  flock.updatePhysics?.(groupMesh);
+}
+
 // Blockly dispatches the bake's field-change events several frames late, so
 // suppression lifts only after QUIET_FRAMES with no new interceptions
 // (polling getSuppressedHitCount), capped at MAX_WAIT_FRAMES. Scoped to the
@@ -2421,10 +2501,8 @@ function deferClearSuppressedBlocks(blockIds) {
   requestAnimationFrame(tick);
 }
 
-// Fold a group's node scale into its members; the group returns to scale 1.
-// Returns false when there is nothing to bake, or a non-uniform scale meets
-// rotated transforms unexpressible in member inputs (the caller then falls
-// back to the legacy group resize block).
+// Fold a group's uniform scale into its members; the group returns to scale 1.
+// Returns false when there is nothing to bake.
 export function bakeGroupScale(groupMesh) {
   const groupKey = groupMesh?.metadata?.blockKey;
   if (!groupKey) return false;
@@ -2451,78 +2529,18 @@ export function bakeGroupScale(groupMesh) {
     return true;
   }
 
-  const isUniform = (v) =>
-    Math.abs(v.x - v.y) <= 1e-4 * Math.max(1, v.x, v.y, v.z) &&
-    Math.abs(v.y - v.z) <= 1e-4 * Math.max(1, v.x, v.y, v.z);
-  const worldQuatIdentity = (m) => {
-    m.computeWorldMatrix(true);
-    const scale = new flock.BABYLON.Vector3();
-    const quat = new flock.BABYLON.Quaternion();
-    const pos = new flock.BABYLON.Vector3();
-    m.getWorldMatrix().decompose(scale, quat, pos);
-    return Math.abs(quat.x) < 1e-3 && Math.abs(quat.y) < 1e-3 && Math.abs(quat.z) < 1e-3;
-  };
-  // Per-member scale factors, most exact source first: uniform ancestor
-  // scales commute through rotation and nesting; otherwise the subtree must
-  // be axis-aligned for component-wise factors, else baseline ratios.
   const factors = new Map();
   const seenKeys = new Set();
-  const chainScales = (leaf) => {
-    const acc = { x: 1, y: 1, z: 1 };
-    let uniform = true;
-    let p = leaf.parent;
-    while (p) {
-      const ps = p.scaling;
-      if (p.metadata?.shapeType === 'Group') {
-        if (!isUniform(ps)) uniform = false;
-        acc.x *= ps.x;
-        acc.y *= ps.y;
-        acc.z *= ps.z;
-      }
-      p = p.parent;
-    }
-    return { acc, uniform };
-  };
-  const baseline = groupScaleBaseline;
-  const baselineUsable =
-    baseline && baseline.groupKey === groupKey
-      ? baseline
-      : null;
-  let subtreeUnrotated = null;
   for (const m of entities) {
     const key = m.metadata?.blockKey;
     if (!key || seenKeys.has(key)) return false;
     seenKeys.add(key);
-    const { acc, uniform } = chainScales(m);
-    if (uniform) {
-      factors.set(key, { x: acc.x, y: acc.y, z: acc.z });
-      continue;
+    let factor = 1;
+    for (let p = m.parent; p; p = p.parent) {
+      if (p.metadata?.shapeType === 'Group') factor *= p.scaling.x;
     }
-    if (subtreeUnrotated === null) {
-      subtreeUnrotated =
-        worldQuatIdentity(groupMesh) &&
-        descendants.every(
-          (d) => !d || d.isDisposed?.() || worldQuatIdentity(d)
-        );
-    }
-    if (subtreeUnrotated) {
-      factors.set(key, { x: acc.x, y: acc.y, z: acc.z });
-      continue;
-    }
-    if (!baselineUsable) return false;
-    const oldSize = baselineUsable.sizes.get(key);
-    if (!oldSize) return false;
-    m.computeWorldMatrix(true);
-    const bounds = flock.getEffectiveWorldBounds(m);
-    const size = {
-      x: bounds.max.x - bounds.min.x,
-      y: bounds.max.y - bounds.min.y,
-      z: bounds.max.z - bounds.min.z,
-    };
-    const ratio = (a, b) => (Number.isFinite(a) && Number.isFinite(b) && b > 1e-9 ? a / b : 1);
-    factors.set(key, { x: ratio(size.x, oldSize.x), y: ratio(size.y, oldSize.y), z: ratio(size.z, oldSize.z) });
+    factors.set(key, factor);
   }
-  groupScaleBaseline = null;
 
   const groupId = Blockly.utils.idGenerator.genUid();
   Blockly.Events.setGroup(groupId);
@@ -2553,8 +2571,7 @@ export function bakeGroupScale(groupMesh) {
     }
     for (const m of entities) {
       const key = m.metadata?.blockKey;
-      const f = factors.get(key);
-      scaleMemberSizeInputs(m, f.x, f.y, f.z, suppress);
+      scaleMemberSizeInputs(m, factors.get(key), suppress);
       const childBlock = meshMap[key];
       if (childBlock && !childBlock.disposed) {
         const pos = flock.getBlockPositionFromMesh(m);
@@ -2624,9 +2641,6 @@ export function bakeGroupScale(groupMesh) {
     deferClearSuppressedBlocks(touchedBlockIds);
     Blockly.Events.setGroup(false);
   }
-  // Re-baseline to the baked state so repeated commits chain instead of
-  // falling back to a group resize block.
-  cacheGroupScaleBaseline(groupMesh);
   return true;
 }
 
@@ -2726,19 +2740,15 @@ export function updateScaleBlock(mesh, originalBottomY = null) {
         break;
       }
 
+      // Groups never keep a scale of their own: fold it into the members.
+      case 'create_group':
+        bakeGroupScale(mesh);
+        break;
+
       case 'load_model':
       case 'load_multi_object':
       case 'load_object':
-      case 'load_character':
-      case 'create_group': {
-        // Groups never keep a scale of their own: fold it into the members.
-        // Only an unexpressible scale (non-uniform over rotated transforms
-        // with no baseline) falls back to a group resize block.
-        if (block.type === 'create_group') {
-          if (bakeGroupScale(mesh)) break;
-          const sc = mesh.scaling;
-          if ([sc.x, sc.y, sc.z].every((v) => Math.abs(v - 1) < 1e-4)) break;
-        }
+      case 'load_character': {
         const resizeBlock = findOrCreateResizeBlock(mesh);
         if (!resizeBlock) break;
 
@@ -2968,6 +2978,14 @@ export function disableGizmos() {
   stopCanvasKeyboardMode();
 }
 
+function clearSelection() {
+  if (!isOrbitedMesh(gizmoManager?.attachedMesh)) {
+    resetBoundingBoxVisibilityIfManuallyChanged(gizmoManager?.attachedMesh);
+  }
+  resetAttachedMeshIfMeshAttached();
+  gizmoManager?.attachToMesh(null);
+}
+
 // Toggle which Gizmo is being used
 export function toggleGizmo(gizmoType) {
   // The camera button's job while orbiting is just to exit orbit. Must run
@@ -3003,25 +3021,18 @@ export function toggleGizmo(gizmoType) {
     if (ORBIT_COMPATIBLE_GIZMOS.has(gizmoType) && isOrbitViewActive()) {
       exitGizmoState({ preserveOrbit: true });
       if (gizmoManager) gizmoManager.usePointerToAttachGizmos = false;
-      if (gizmoType === 'select') {
-        resetBoundingBoxVisibilityIfManuallyChanged(gizmoManager?.attachedMesh);
-        resetAttachedMeshIfMeshAttached();
-        gizmoManager?.attachToMesh(null);
-      }
+      clearSelection();
       return;
     }
     exitGizmoState();
-    // Clicking the select tool off deselects whatever it had picked, rather
-    // than leaving the gizmo/bounding box attached with no active tool.
-    if (gizmoType === 'select') {
-      resetBoundingBoxVisibilityIfManuallyChanged(gizmoManager?.attachedMesh);
-      resetAttachedMeshIfMeshAttached();
-      gizmoManager?.attachToMesh(null);
-    }
+    // Clicking a tool off deselects whatever it had picked, rather than
+    // leaving the gizmo/bounding box attached with no active tool.
+    if (gizmoType !== 'camera') clearSelection();
     return;
   }
 
   const preserveOrbit = ORBIT_COMPATIBLE_GIZMOS.has(gizmoType) && isOrbitViewActive();
+  const selectToolActive = !!document.getElementById('selectButton')?.classList.contains('active');
 
   // No buttons should be highlighted
   if (gizmoType === 'eye') {
@@ -3041,6 +3052,7 @@ export function toggleGizmo(gizmoType) {
   // If they abandoned a duplicate half way, remove listener
   if (gizmoType === 'duplicate' && activeDuplicatePickHandler) {
     exitTransformState();
+    clearSelection();
     return;
   }
 
@@ -3058,10 +3070,10 @@ export function toggleGizmo(gizmoType) {
       handleCameraGizmo();
       break;
     case 'delete':
-      handleDeleteGizmo();
+      handleDeleteGizmo(selectToolActive);
       break;
     case 'duplicate':
-      handleDuplicateGizmo();
+      handleDuplicateGizmo(selectToolActive);
       break;
     case 'select':
       handleSelectGizmo();
@@ -3108,6 +3120,7 @@ function handleScaleGizmo() {
   // A locked mesh may already be attached from Select; don't let scale use it.
   detachIfAttachedMeshLocked();
   configureScaleGizmo(gizmoManager);
+  onExit(() => applyScaleAxisHandles(null));
   observeDragAxis(gizmoManager.gizmos.scaleGizmo);
   {
     const usg = gizmoManager.gizmos.scaleGizmo.uniformScaleGizmo;
@@ -3285,7 +3298,6 @@ function handleScaleGizmo() {
     }
     if (mesh?.metadata?.shapeType === 'Group') {
       healGroupOrigin(mesh);
-      cacheGroupScaleBaseline(mesh);
     }
   });
 
@@ -3694,12 +3706,13 @@ function handleSelectGizmo() {
 
 // Duplicate: Create a copy of the selected mesh and its corresponding block,
 // and allow the user to place it by clicking on the canvas
-function handleDuplicateGizmo() {
+function handleDuplicateGizmo(selectToolActive = false) {
   // Set button active state
   const duplicateButton = document.getElementById('duplicateButton');
   setGizmoButtonActive(duplicateButton, true);
 
-  // Check if mesh already selected, if not prompt to select
+  // Only a mesh picked with the select tool is duplicated straight away
+  if (!selectToolActive && gizmoManager.attachedMesh) clearSelection();
   if (!gizmoManager.attachedMesh) {
     pickMeshFromScene(
       (pickedMesh) => {
@@ -3721,7 +3734,7 @@ function handleDuplicateGizmo() {
 }
 
 // Delete: Remove the selected mesh and its corresponding block
-function handleDeleteGizmo() {
+function handleDeleteGizmo(selectToolActive = false) {
   watchClickAwayFromCanvas();
   // Highlight the button
   setGizmoButtonActive(document.getElementById('deleteButton'), true);
@@ -3745,11 +3758,13 @@ function handleDeleteGizmo() {
     }, 0);
   }
 
-  // If a mesh selected, delete it instantly
-  if (gizmoManager.attachedMesh) {
-    applyDelete(gizmoManager.attachedMesh);
+  // Only a mesh picked with the select tool is deleted instantly
+  const attached = gizmoManager.attachedMesh;
+  if (selectToolActive && attached && !isOrbitedMesh(attached)) {
+    applyDelete(attached);
     return;
   }
+  if (attached) clearSelection();
 
   // Explain how to delete
   pickMeshFromScene(applyDelete, false, translate('select_mesh_delete_prompt'));
@@ -4050,6 +4065,13 @@ export function setGizmoManager(value) {
     gizmoManager.attachToMesh(groupMesh);
   });
 
+  setGroupActiveToggleListener((affectedMeshes) => {
+    const attached = gizmoManager?.attachedMesh;
+    if (!attached || !affectedMeshes.includes(attached)) return;
+    exitGizmoState();
+    gizmoManager.attachToMesh(null);
+  });
+
   const originalAttach = gizmoManager.attachToMesh.bind(gizmoManager);
   let attachedMeshDisposeObserver = null;
   let meshWithDisposeObserver = null;
@@ -4090,20 +4112,6 @@ export function setGizmoManager(value) {
 
     if (gizmoManager.attachedMesh) {
       resetAttachedMesh();
-
-      const block = Blockly.getMainWorkspace().getBlockById(mesh?.metadata?.blockKey);
-
-      if (block && gizmoManager.scaleGizmoEnabled) {
-        switch (block.type) {
-          case 'create_plane':
-            gizmoManager.gizmos.scaleGizmo.zGizmo.isEnabled = false;
-
-            break;
-
-          default:
-            gizmoManager.gizmos.scaleGizmo.zGizmo.isEnabled = true;
-        }
-      }
     }
 
     if (mesh && mesh.physics) {

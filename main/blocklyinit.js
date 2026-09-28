@@ -1808,6 +1808,29 @@ export function createBlocklyWorkspace() {
       }
     };
 
+    const getTapUnit = (block) => {
+      let unit = block;
+      while (unit?.isShadow() || unit?.outputConnection?.isConnected()) {
+        const parent = unit.getParent();
+        if (!parent) break;
+        unit = parent;
+      }
+      return unit;
+    };
+    const getSelectedTapUnit = () => {
+      const focusManager = Blockly.getFocusManager();
+      const node = focusManager.getFocusedNode();
+      if (!node) return null;
+      if (node.id && workspace.getBlockById(node.id) === node) {
+        const selected =
+          node.getSvgRoot().classList.contains('blocklySelected') ||
+          focusManager.ephemeralFocusTaken();
+        return selected ? getTapUnit(node) : null;
+      }
+      const source = node.getSourceBlock?.();
+      return source && workspace.getBlockById(source.id) === source ? getTapUnit(source) : null;
+    };
+
     blocklyDiv.addEventListener(
       'pointerdown',
       (e) => {
@@ -1816,13 +1839,19 @@ export function createBlocklyWorkspace() {
         if (flyoutTapCandidate && e.pointerId !== flyoutTapCandidate.pointerId) return;
         const blockRoot = e.target.closest('.blocklyDraggable');
         const inFlyout = blockRoot?.closest('.blocklyFlyout') != null;
+        const tapUnit =
+          blockRoot && !inFlyout
+            ? getTapUnit(workspace.getBlockById(blockRoot.getAttribute('data-id')))
+            : null;
         // Workspace selection is Blockly's own; the flyout's is the block whose
         // SVG root we last focused, kept so the second tap or a drag passes
         // through to Blockly.
         const alreadySelected = inFlyout
           ? flyoutSelected === blockRoot
-          : blockRoot?.classList.contains('blocklySelected');
-
+          : tapUnit
+            ? tapUnit === getSelectedTapUnit() ||
+              tapUnit.getSvgRoot().classList.contains('blocklySelected')
+            : blockRoot?.classList.contains('blocklySelected');
         if (blockRoot && !alreadySelected) {
           // A first touch over an unselected block never performs the real
           // action; a second tap or a drag after selection does. A touch that
@@ -1855,15 +1884,21 @@ export function createBlocklyWorkspace() {
             };
             return;
           }
+          if (window.flockColorPicker?.isOpen) return;
           // Workspace selection is Blockly's own: tap selects now, a second
           // tap or a drag performs the real action.
           e.stopPropagation();
-          const block = workspace.getBlockById(blockId);
-          if (block) {
+          e.preventDefault();
+          const target = tapUnit ?? workspace.getCommentById(blockId);
+          if (target) {
             clearFlyoutSelection();
             selectedBlock?.unselect();
-            block.select();
-            selectedBlock = block;
+            workspace.scrollBoundsIntoView = () => {};
+            Blockly.getFocusManager().focusNode(target);
+            Blockly.renderManagement.finishQueuedRenders().then(() => {
+              delete workspace.scrollBoundsIntoView;
+            });
+            selectedBlock = target;
           }
         } else if (!blockRoot) {
           selectedBlock?.unselect();
