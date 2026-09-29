@@ -178,7 +178,7 @@ export default {
 
   // Custom block translations - Camera blocks
   camera_control: 'Kamera %1 %2',
-  camera_follow: 'Kamera folgt %1 mit Radius %2 Winkel %3 vorne %4',
+  camera_follow: 'Kamera folgt %1 Abstand: %2 Winkel: %3 vorne: %4',
   get_camera: 'Kamera als %1 holen',
 
   // Custom block translations - Combine blocks
@@ -317,7 +317,7 @@ export default {
   ui_input: 'UI‑Eingabe %1 %2 bei x: %3 y: %4\nGröße: %5 Textgröße: %6 Text: %7 Hintergrund: %8',
   describe: 'beschreibe %1 als %2',
   create_3d_text:
-    'Füge 3D‑Text hinzu %1: %2 Schrift: %3 Größe: %4 Farbe: %5\nTiefe: %6 %10 x: %7 y: %8 z: %9',
+    'Füge 3D‑Text hinzu %1: %2 Schrift: %3 Farbe: %5\nGröße: %4 Tiefe: %6 Abstand: %12 waagerecht: %11 %10 x: %7 y: %8 z: %9',
 
   // Math blocks
   random_seeded_int: 'zufällige Ganzzahl von %1 bis %2 Seed: %3',
@@ -1121,8 +1121,8 @@ export default {
   redo_performed: 'Wiederholen ausgeführt',
   camera_moving_forward: 'Kamera bewegt sich vorwärts',
   camera_moving_backward: 'Kamera bewegt sich rückwärts',
-  camera_moving_left: 'Kamera bewegt sich nach links',
-  camera_moving_right: 'Kamera bewegt sich nach rechts',
+  camera_turning_left: 'Kamera dreht sich nach links',
+  camera_turning_right: 'Kamera dreht sich nach rechts',
   moving_forward: 'Bewege mich vorwärts',
   moving_backward: 'Bewege mich rückwärts',
   moving_left: 'Bewege mich nach links',

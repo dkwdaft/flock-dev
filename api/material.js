@@ -155,7 +155,56 @@ function readGradientDirection(value) {
   return Number.isFinite(value.direction) ? value.direction : undefined;
 }
 
+// 3D text takes a plain colour list one letter at a time rather than as a
+// gradient. Returns the list when it applies to this mesh, otherwise null.
+function textLetterColors(mesh, colorInput) {
+  if (!mesh?.metadata?.textLetterIndex) return null;
+  if (readGradientDirection(colorInput) !== undefined) return null;
+  const isDescriptor =
+    typeof colorInput === 'object' && colorInput !== null && !Array.isArray(colorInput);
+  if (isDescriptor) {
+    const texture = colorInput.materialName ?? colorInput.textureSet;
+    if (texture && texture !== 'none.png' && texture !== 'NONE') return null;
+  }
+  const raw = isDescriptor ? (colorInput.color ?? colorInput.baseColor) : colorInput;
+  if (!Array.isArray(raw) || raw.length < 2) return null;
+  return raw.every((c) => typeof c === 'string') ? raw : null;
+}
+
 export const flockMaterial = {
+  _paintTextLetters(mesh, colors) {
+    const letterIndex = mesh.metadata.textLetterIndex;
+    const palette = colors.map((c) =>
+      flock.BABYLON.Color3.FromHexString(flock.getColorFromString(c))
+    );
+    const data = new Float32Array(letterIndex.length * 4);
+    letterIndex.forEach((letter, i) => {
+      const c = palette[letter % palette.length];
+      data.set([c.r, c.g, c.b, 1], i * 4);
+    });
+    mesh.setVerticesData(flock.BABYLON.VertexBuffer.ColorKind, data, true);
+    mesh.metadata.textLetterColors = [...colors];
+  },
+  _clearTextLetters(mesh) {
+    if (!mesh?.metadata?.textLetterColors) return;
+    mesh.removeVerticesData(flock.BABYLON.VertexBuffer.ColorKind);
+    delete mesh.metadata.textLetterColors;
+  },
+  // Paints a colour list onto 3D text letters over a white base material.
+  // Returns false (after clearing any letter colours) when the input is
+  // not a letter list, so the caller applies it normally.
+  _applyTextLetterColors(mesh, colorInput, opts = {}) {
+    const colors = textLetterColors(mesh, colorInput);
+    if (!colors) {
+      flock._clearTextLetters(mesh);
+      return false;
+    }
+    const alpha = colorInput?.alpha ?? opts.alpha;
+    const white = alpha === undefined ? '#ffffff' : { color: '#ffffff', alpha };
+    flock.applyMaterialToHierarchy(mesh, white, { ...opts, applyColor: true });
+    flock._paintTextLetters(mesh, colors);
+    return true;
+  },
   adjustMaterialTilingToMesh(mesh, material, _unitsPerTile = null) {
     return; // Don't scale textures - need to change the mesh UVs instead
   },
@@ -686,6 +735,11 @@ export const flockMaterial = {
       return;
     }
 
+    if (flock._applyTextLetterColors(mesh, color)) {
+      if (mesh.metadata?.glow) flock.glowMesh(mesh);
+      return;
+    }
+
     // One material on every part rather than a colour each. Each mesh in the
     // hierarchy spans the gradient across its own bounds, not the model's.
     if (readGradientDirection(color) !== undefined) {
@@ -749,6 +803,8 @@ export const flockMaterial = {
 
     const normalizedColor = normalizeColorInput(color);
     const colors = Array.isArray(normalizedColor) ? normalizedColor : [normalizedColor];
+
+    const useColorSlots = !isCharacterLike && colors.length > 1;
     let colorIndex = 0;
 
     if (flock.materialsDebug) console.log(` Changing the colour of ${mesh.name} to ${colors}`);
@@ -806,7 +862,9 @@ export const flockMaterial = {
 
     // Start applying colours to the main mesh and its hierarchy
 
-    if (!isCharacterLike) {
+    if (useColorSlots) {
+      flock.applyMaterialToHierarchy(mesh, colors, { applyColor: true, includeRoot: true });
+    } else if (!isCharacterLike) {
       applyColorInOrder(mesh);
     } else {
       const root = getRootMesh(mesh);
@@ -847,7 +905,7 @@ export const flockMaterial = {
     }
 
     // If no material was found, create a new one and set metadata
-    if (materialToColorMap.size === 0) {
+    if (!useColorSlots && materialToColorMap.size === 0) {
       flock.setMaterialWithCleanup(mesh, { color: colors[0] });
       mesh.metadata = mesh.metadata || {};
       if (mesh.metadata.materialIndex === undefined) {
@@ -1685,14 +1743,14 @@ export const flockMaterial = {
     flock.materialCache[cacheKey] = newMat;
     return newMat;
   },
-  getColorSlots(rootMesh) {
+  getColorSlots(rootMesh, { includeRoot = false } = {}) {
     const isTextPlaneMesh = (part) => part?.name === 'textPlane' || part?.metadata?.isTextPlane;
+    const hasGeometry = (n) =>
+      n instanceof flock.BABYLON.Mesh && n.getTotalVertices() > 0 && !isTextPlaneMesh(n);
 
     const geometryMeshes = rootMesh
       .getDescendants(false)
-      .filter(
-        (n) => n instanceof flock.BABYLON.Mesh && n.getTotalVertices() > 0 && !isTextPlaneMesh(n)
-      )
+      .filter(hasGeometry)
       .sort((a, b) =>
         a.name.localeCompare(b.name, undefined, {
           numeric: true,
@@ -1700,7 +1758,12 @@ export const flockMaterial = {
         })
       );
 
-    const targets = geometryMeshes.length ? geometryMeshes : [rootMesh];
+    // Creation leaves a model's own root out of the list; changeColor keeps
+    // a primitive parent that has geometry of its own as the first slot.
+    const rootIsSlot =
+      includeRoot && hasGeometry(rootMesh) && rootMesh.metadata?.shapeType !== 'Group';
+    const withRoot = rootIsSlot ? [rootMesh, ...geometryMeshes] : geometryMeshes;
+    const targets = withRoot.length ? withRoot : [rootMesh];
 
     // Character models split a single logical part (e.g. the shorts) across
     // several sub-meshes. Group those by canonical part name so the whole
@@ -1734,8 +1797,9 @@ export const flockMaterial = {
   applyMaterialToHierarchy(rootMesh, colorInput, opts = {}) {
     const applyColor = opts.applyColor ?? true;
     if (!applyColor || !rootMesh || !colorInput) return rootMesh;
+    if (flock._applyTextLetterColors(rootMesh, colorInput, opts)) return rootMesh;
 
-    const slots = flock.getColorSlots(rootMesh);
+    const slots = flock.getColorSlots(rootMesh, { includeRoot: opts.includeRoot });
 
     const isMaterialDescriptor = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
 

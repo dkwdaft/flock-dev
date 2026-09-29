@@ -110,6 +110,7 @@ export const multiObjectNames = [
   'window_only.glb',
   'window_stairs.glb',
   'window_door.glb',
+  'window_door_reversed.glb',
   'pond.glb',
   'boat.glb',
   'airplane.glb',
@@ -261,6 +262,7 @@ export const objectColours = {
   'window_only.glb': ['#E7A988', '#E74E5F', '#E7E7E7'],
   'window_stairs.glb': ['#E7A988', '#E74E5F', '#E7E7E7'],
   'window_door.glb': ['#E7A988', '#E74E5F', '#E7E7E7'],
+  'window_door_reversed.glb': ['#E7A988', '#E74E5F', '#E7E7E7'],
   'boat.glb': [
     '#4F8A46',
     '#E7D48E',
@@ -334,6 +336,7 @@ export function mapNames() {
     getDropdownOption('Islands.png'),
     getDropdownOption('Lookout.png'),
     getDropdownOption('Valley.png'),
+    getDropdownOption('Basin.png'),
   ];
 }
 
@@ -348,6 +351,8 @@ export function animationNames() {
     getDropdownOption('Duck'),
     getDropdownOption('Fall'),
     getDropdownOption('Fly'),
+    getDropdownOption('Swim'),
+    getDropdownOption('Tread_Water'),
     getDropdownOption('Jump'),
     getDropdownOption('JumpUp'),
     getDropdownOption('JumpIdle'),

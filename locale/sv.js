@@ -173,7 +173,7 @@ export default {
 
   // Custom block translations - Camera blocks
   camera_control: 'kamera %1 %2',
-  camera_follow: 'kamera följ %1 med radie %2 vinkel %3 fram %4',
+  camera_follow: 'kamera följ %1 avstånd: %2 vinkel: %3 fram: %4',
   get_camera: 'hämta kamera som %1',
 
   // Custom block translations - Combine blocks
@@ -311,7 +311,7 @@ export default {
   ui_input: 'ui inmatning %1 %2 vid x: %3 y: %4\nstorlek: %5 textstorlek: %6 text: %7 bakgrund: %8',
   describe: 'beskriv %1 som %2',
   create_3d_text:
-    'lägg till %1 3D text: %2 font: %3 storlek: %4 färg: %5\ndjup: %6 %10 x: %7 y: %8 z: %9 ',
+    'lägg till %1 3D text: %2 font: %3 färg: %5\nstorlek: %4 djup: %6 avstånd: %12 horisontell: %11 %10 x: %7 y: %8 z: %9 ',
 
   // Custom block translations - Math blocks
   random_seeded_int: 'slumpmässigt heltal från %1 till %2 frö: %3',
@@ -1132,8 +1132,8 @@ export default {
   redo_performed: 'Gör om utförd',
   camera_moving_forward: 'Kameran rör sig framåt',
   camera_moving_backward: 'Kameran rör sig bakåt',
-  camera_moving_left: 'Kameran rör sig åt vänster',
-  camera_moving_right: 'Kameran rör sig åt höger',
+  camera_turning_left: 'Kameran svänger åt vänster',
+  camera_turning_right: 'Kameran svänger åt höger',
   moving_forward: 'Rör mig framåt',
   moving_backward: 'Rör mig bakåt',
   moving_left: 'Rör mig åt vänster',

@@ -179,7 +179,7 @@ export default {
 
   // Custom block translations - Camera blocks
   camera_control: 'camera %1 %2',
-  camera_follow: 'camera follow %1 with radius %2 angle %3 front %4',
+  camera_follow: 'camera follow %1 distance: %2 angle: %3 front: %4',
   get_camera: 'get camera as %1',
 
   // Custom block translations - Combine blocks
@@ -359,7 +359,7 @@ export default {
   ui_input: 'ui input %1 %2 at x: %3 y: %4\nsize: %5 text size: %6 text: %7 on: %8',
   describe: 'describe %1 as %2',
   create_3d_text:
-    'add %1 3D text: %2 font: %3 size: %4 color: %5\ndepth: %6 %10 x: %7 y: %8 z: %9 ',
+    'add %1 3D text: %2 font: %3 color: %5\nsize: %4 depth: %6 spacing: %12 horizontal: %11 %10 x: %7 y: %8 z: %9 ',
 
   // Custom block translations - Math blocks
   random_seeded_int: 'random integer from %1 to %2 seed: %3',
@@ -1073,6 +1073,7 @@ export default {
   Islands_png_option: 'islands',
   Lookout_png_option: 'lookout',
   Valley_png_option: 'valley',
+  Basin_png_option: 'basin',
 
   Idle_option: 'idle',
   Walk_option: 'walk',
@@ -1083,6 +1084,8 @@ export default {
   Duck_option: 'duck',
   Fall_option: 'fall',
   Fly_option: 'fly',
+  Swim_option: 'swim',
+  Tread_Water_option: 'tread water',
   Jump_option: 'jump',
   Flip_option: 'flip',
   Dance1_option: 'dance1',
@@ -1289,8 +1292,8 @@ export default {
   redo_performed: 'Redo performed',
   camera_moving_forward: 'Camera moving forward',
   camera_moving_backward: 'Camera moving backward',
-  camera_moving_left: 'Camera moving left',
-  camera_moving_right: 'Camera moving right',
+  camera_turning_left: 'Camera turning left',
+  camera_turning_right: 'Camera turning right',
   moving_forward: 'Moving forward',
   moving_backward: 'Moving backward',
   moving_left: 'Moving left',
@@ -1596,6 +1599,7 @@ export default {
   shortcut_delete_object: 'Delete object',
   shortcut_fly_move: 'Fly camera: move',
   shortcut_fly_height: 'Fly camera: up / down',
+  shortcut_fly_turn: 'Fly camera: turn left / right',
   shortcut_orbit_rotate: 'Orbit camera: rotate around object',
   shortcut_orbit_zoom: 'Orbit camera: zoom in / out',
 

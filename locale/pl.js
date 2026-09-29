@@ -175,7 +175,7 @@ export default {
 
   // Custom block translations - Camera blocks
   camera_control: 'kamera %1 %2',
-  camera_follow: 'kamera śledzi %1, promień: %2, kąt: %3, przód: %4',
+  camera_follow: 'kamera śledzi %1, odległość: %2, kąt: %3, przód: %4',
   get_camera: 'pobierz kamerę jako %1',
 
   // Custom block translations - Combine blocks
@@ -314,7 +314,7 @@ export default {
   ui_input: 'wejście UI %1 %2 w x: %3 y: %4\nrozmiar: %5 rozmiar tekstu: %6 tekst: %7 tło: %8',
   describe: 'opisz %1 jako %2',
   create_3d_text:
-    'dodaj tekst 3D %1: %2 czcionka: %3 rozmiar: %4 kolor: %5\ngłębokość: %6 %10 x: %7 y: %8 z: %9',
+    'dodaj tekst 3D %1: %2 czcionka: %3 kolor: %5\nrozmiar: %4 głębokość: %6 odstęp: %12 poziomo: %11 %10 x: %7 y: %8 z: %9',
 
   // Custom block translations - Math blocks
   random_seeded_int: 'losowa liczba całkowita od %1 do %2 z ziarnem: %3',
@@ -1135,8 +1135,8 @@ export default {
   redo_performed: 'Ponowiono',
   camera_moving_forward: 'Kamera porusza się do przodu',
   camera_moving_backward: 'Kamera porusza się do tyłu',
-  camera_moving_left: 'Kamera porusza się w lewo',
-  camera_moving_right: 'Kamera porusza się w prawo',
+  camera_turning_left: 'Kamera obraca się w lewo',
+  camera_turning_right: 'Kamera obraca się w prawo',
   moving_forward: 'Poruszanie do przodu',
   moving_backward: 'Poruszanie do tyłu',
   moving_left: 'Poruszanie w lewo',

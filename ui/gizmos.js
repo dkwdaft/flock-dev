@@ -7,6 +7,7 @@ import {
   getMeshFromBlockKey,
   getMeshFromBlock,
   getRootMesh,
+  getOwnVar,
   getXYZFromBlock,
   updateBlockColorAndHighlight,
   suppressBlockLiveUpdates,
@@ -19,6 +20,7 @@ import {
   highlightBlockById,
   getCanvasXAndCanvasYValues,
   setBlockXYZ,
+  findOrCreateDoBlock,
   duplicateBlockAndInsert,
   insertBlockSnapshot,
   captureStackAnchor,
@@ -116,14 +118,14 @@ const MODEL_BLOCK_TYPES = new Set([
 
 // Block types with no dimension fields of their own: like models, they get a
 // resize block instead. A group is an empty container sized by its children.
-const RESIZE_BLOCK_TYPES = new Set([...MODEL_BLOCK_TYPES, 'create_group']);
+const RESIZE_BLOCK_TYPES = new Set([...MODEL_BLOCK_TYPES, 'create_group', 'clone_mesh']);
 
 window.selectedColor = '#ffffff'; // Default color
 let colorPicker = null;
 
 // Which scale gizmo handle is being dragged ('x' | 'y' | 'z' | 'uniform')
 let scaleDragAxis = null;
-let textOrigScaleZ = 1;
+let textOrigScale = { x: 1, y: 1, z: 1 };
 
 // Round shapes have a single horizontal dimension: X and Z always match.
 const RADIAL_BLOCK_TYPES = new Set(['create_capsule', 'create_cylinder']);
@@ -620,6 +622,15 @@ function pickMeshFromCanvas() {
   }, 200);
 }
 
+// Which letter of a 3D text mesh the ray hits, from the picked triangle.
+function pickedTextLetter(mesh, pickRay, scene) {
+  const letters = mesh.metadata?.textLetterIndex;
+  if (!letters) return undefined;
+  const hit = scene.pickWithRay(pickRay, (m) => m === mesh);
+  if (!hit?.hit || hit.faceId < 0) return undefined;
+  return letters[mesh.getIndices()[hit.faceId * 3]];
+}
+
 function applyColorAtPosition(canvasX, canvasY) {
   const scene = flock.scene;
 
@@ -646,7 +657,9 @@ function applyColorAtPosition(canvasX, canvasY) {
   }
 
   if (target) {
-    updateBlockColorAndHighlight(target, window.selectedColor);
+    updateBlockColorAndHighlight(target, window.selectedColor, {
+      letter: pickedTextLetter(target, pickRay, scene),
+    });
   } else {
     flock.setSky(window.selectedColor);
     updateBlockColorAndHighlight(meshMap?.['sky'], window.selectedColor);
@@ -1653,9 +1666,13 @@ function getScaledSize(mesh) {
 // what the mesh looks like after the block updates and the program re-runs.
 // Delegates to flock.retilePrimitiveUVs so the gizmo and resize() stay in sync.
 function retilePrimitiveUVsForScale(mesh) {
-  if (!mesh) return;
+  if (!mesh) return false;
   const size = getScaledSize(mesh); // world dimensions = local size * scaling
-  flock.retilePrimitiveUVs(mesh, { width: size.x, height: size.y, depth: size.z }, mesh.scaling);
+  return flock.retilePrimitiveUVs(
+    mesh,
+    { width: size.x, height: size.y, depth: size.z },
+    mesh.scaling
+  );
 }
 
 // Clean up gizmo state if aborted
@@ -1734,7 +1751,7 @@ function startMoveKeyboardHandler(mesh, savedHudAxis = null, onHudAxisSaved = nu
     try {
       if (block && !block.disposed) {
         const pos = flock.getBlockPositionFromMesh(mesh);
-        setBlockXYZ(block, pos.x, pos.y, pos.z);
+        writePositionToBlock(block, pos);
       }
       updateChildBlockPositions(mesh);
     } finally {
@@ -1900,6 +1917,11 @@ function startScaleKeyboardHandler(mesh, savedHudAxis = null, onHudAxisSaved = n
   stopAxisKeyboard?.();
   stopAxisKeyboard = null;
 
+  if (isGroupClone(mesh)) {
+    showNotAllowedCursor();
+    return;
+  }
+
   const creationBlock = meshMap[mesh?.metadata?.blockKey];
   if (creationBlock) {
     if (creationBlock.type === 'create_group') {
@@ -1989,16 +2011,30 @@ function startScaleKeyboardHandler(mesh, savedHudAxis = null, onHudAxisSaved = n
   });
 }
 
+// A cloned group's members have no blocks to bake a scale into, and groups
+// never keep a scale of their own, so its size can't be saved.
+function isGroupClone(mesh) {
+  return (
+    mesh?.metadata?.shapeType === 'Group' && meshMap[mesh.metadata.blockKey]?.type === 'clone_mesh'
+  );
+}
+
 function applyScaleAxisHandles(mesh) {
   const sg = gizmoManager?.gizmos?.scaleGizmo;
   if (!sg) return;
   const isGroup = mesh?.metadata?.shapeType === 'Group';
   const isPlane = meshMap[mesh?.metadata?.blockKey]?.type === 'create_plane';
-  const enabled = { x: !isGroup, y: !isGroup, z: !isGroup && !isPlane };
+  const enabled = {
+    x: !isGroup,
+    y: !isGroup,
+    z: !isGroup && !isPlane,
+    uniform: !isGroupClone(mesh),
+  };
   for (const [axis, g] of [
     ['x', sg.xGizmo],
     ['y', sg.yGizmo],
     ['z', sg.zGizmo],
+    ['uniform', sg.uniformScaleGizmo],
   ]) {
     if (!g) continue;
     g.isEnabled = enabled[axis];
@@ -2019,7 +2055,7 @@ function setBlockAxisValue(block, inputName, value) {
 function _findExistingRotateBlock(mesh) {
   const block = meshMap[mesh?.metadata?.blockKey];
   if (!block) return null;
-  const modelVariable = block.getFieldValue('ID_VAR');
+  const modelVariable = getOwnVar(block);
   const statementConnection = block.getInput('DO')?.connection;
   if (!statementConnection) return null;
   let current = statementConnection.targetBlock();
@@ -2054,7 +2090,7 @@ function findOrCreateRotateBlock(mesh) {
   }
 
   let rotateBlock = null;
-  const modelVariable = block.getFieldValue('ID_VAR');
+  const modelVariable = getOwnVar(block);
   const statementConnection = block.getInput('DO').connection;
   if (statementConnection?.targetBlock()) {
     let currentBlock = statementConnection.targetBlock();
@@ -2105,6 +2141,37 @@ function findOrCreateRotateBlock(mesh) {
 
   Blockly.Events.setGroup(null);
   return rotateBlock;
+}
+
+function findOrCreateMoveBlock(block) {
+  const zero = { shadow: { type: 'math_number', fields: { NUM: 0 } } };
+  const {
+    block: moveBlock,
+    created,
+    addedDoSection,
+  } = findOrCreateDoBlock(
+    block,
+    {
+      type: 'move_to_xyz',
+      varField: 'MODEL',
+      varId: getOwnVar(block),
+      inputs: { X: zero, Y: zero, Z: zero },
+    },
+    { atStart: true }
+  );
+  if (created) {
+    gizmoCreatedBlocks.set(moveBlock.id, {
+      parentId: block.id,
+      createdDoSection: addedDoSection,
+      timestamp: Date.now(),
+    });
+  }
+  return moveBlock;
+}
+
+function writePositionToBlock(block, pos) {
+  const target = block.type === 'clone_mesh' ? findOrCreateMoveBlock(block) : block;
+  setBlockXYZ(target, pos.x, pos.y, pos.z);
 }
 
 // Update the blockly block after a rotation.
@@ -2205,10 +2272,15 @@ function pickMeshFromScene(onPicked, persistent = false, prompt = null) {
 }
 
 // Find an existing resize block in mesh's DO section without creating one.
+function supportsResizeBlock(block, mesh) {
+  if (!block || !RESIZE_BLOCK_TYPES.has(block.type)) return false;
+  return block.type !== 'clone_mesh' || mesh?.metadata?.shapeType !== 'Group';
+}
+
 function findExistingResizeBlock(mesh) {
   const block = meshMap[mesh?.metadata?.blockKey];
-  if (!block || !RESIZE_BLOCK_TYPES.has(block.type)) return null;
-  const modelVariable = block.getFieldValue('ID_VAR');
+  if (!supportsResizeBlock(block, mesh)) return null;
+  const modelVariable = getOwnVar(block);
   const stmt = block.getInput('DO')?.connection?.targetBlock?.();
   for (let cur = stmt; cur; cur = cur.getNextBlock?.()) {
     if (cur.type === 'resize' && cur.getFieldValue?.('BLOCK_NAME') === modelVariable) {
@@ -2222,7 +2294,7 @@ function findExistingResizeBlock(mesh) {
 // Returns the resizeBlock, or null if mesh's block type has no resize support.
 function findOrCreateResizeBlock(mesh) {
   const block = meshMap[mesh?.metadata?.blockKey];
-  if (!block || !RESIZE_BLOCK_TYPES.has(block.type)) return null;
+  if (!supportsResizeBlock(block, mesh)) return null;
 
   const groupId = Blockly.utils.idGenerator.genUid();
   Blockly.Events.setGroup(groupId);
@@ -2239,7 +2311,7 @@ function findOrCreateResizeBlock(mesh) {
     addedDoSection = true;
   }
 
-  const modelVariable = block.getFieldValue('ID_VAR');
+  const modelVariable = getOwnVar(block);
   const stmt = block.getInput('DO')?.connection?.targetBlock?.();
   let resizeBlock = null;
   for (let cur = stmt; cur; cur = cur.getNextBlock?.()) {
@@ -2382,10 +2454,17 @@ function scaleMemberSizeInputs(mesh, factor, suppress) {
       mul(block, 'DIAMETER_Y');
       mul(block, 'DIAMETER_Z');
       break;
-    case 'create_3d_text':
+    case 'create_3d_text': {
       mul(block, 'SIZE');
       mul(block, 'DEPTH');
+      const depthList = block.getInputTargetBlock('DEPTH');
+      if (depthList?.type === 'lists_create_with') {
+        depthList.inputList
+          .filter((input) => input.name?.startsWith('ADD'))
+          .forEach((input) => mul(depthList, input.name));
+      }
       break;
+    }
     case 'load_model':
     case 'load_multi_object':
     case 'load_object':
@@ -2588,7 +2667,7 @@ export function bakeGroupScale(groupMesh) {
       const childBlock = meshMap[key];
       if (childBlock && !childBlock.disposed) {
         const pos = flock.getBlockPositionFromMesh(m);
-        setBlockXYZ(childBlock, pos.x, pos.y, pos.z);
+        writePositionToBlock(childBlock, pos);
       }
     }
     groupMesh.scaling.set(1, 1, 1);
@@ -2618,7 +2697,7 @@ export function bakeGroupScale(groupMesh) {
       } finally {
         m.setParent(parent);
       }
-      setBlockXYZ(childBlock, pos.x, pos.y, pos.z);
+      writePositionToBlock(childBlock, pos);
       snappedSubs.push(m);
     }
     // Snap live members onto the rounded blocks (positions only; sizes stay
@@ -2746,10 +2825,22 @@ export function updateScaleBlock(mesh, originalBottomY = null) {
       case 'create_3d_text': {
         const currentSize = getNumberInput(block, 'SIZE');
         const currentDepth = getNumberInput(block, 'DEPTH');
+        // Horizontal text's letter height runs along Z and its depth along Y.
+        const horizontal = block.getFieldValue('HORIZONTAL') === 'TRUE';
+        const depthScale = horizontal ? mesh.scaling.y : mesh.scaling.z;
         setNumberInputs(block, {
-          SIZE: currentSize * mesh.scaling.y,
-          DEPTH: currentDepth * mesh.scaling.z,
+          SIZE: currentSize * (horizontal ? mesh.scaling.z : mesh.scaling.y),
+          DEPTH: currentDepth * depthScale,
         });
+        const depthList = block.getInputTargetBlock('DEPTH');
+        if (depthList?.type === 'lists_create_with') {
+          for (const input of depthList.inputList) {
+            const depth = input.name?.startsWith('ADD') && getNumberInput(depthList, input.name);
+            if (Number.isFinite(depth)) {
+              setNumberInputs(depthList, { [input.name]: depth * depthScale });
+            }
+          }
+        }
         break;
       }
 
@@ -2761,7 +2852,8 @@ export function updateScaleBlock(mesh, originalBottomY = null) {
       case 'load_model':
       case 'load_multi_object':
       case 'load_object':
-      case 'load_character': {
+      case 'load_character':
+      case 'clone_mesh': {
         const resizeBlock = findOrCreateResizeBlock(mesh);
         if (!resizeBlock) break;
 
@@ -2776,6 +2868,16 @@ export function updateScaleBlock(mesh, originalBottomY = null) {
         });
         break;
       }
+    }
+
+    // The drag re-anchors the world bottom, which on a rotated mesh is not
+    // the unrotated base Play positions by - persist where it ended up.
+    if (block.type !== 'create_group' && block.type !== 'clone_mesh') {
+      const pos = flock.getBlockPositionFromMesh(mesh);
+      const stale = ['x', 'y', 'z'].some(
+        (axis) => getNumberInput(block, axis.toUpperCase()) !== roundToOneDecimal(pos[axis])
+      );
+      if (stale) writePositionToBlock(block, pos);
     }
   } catch (e) {
     console.error('Error updating block values:', e);
@@ -2813,7 +2915,7 @@ function updateChildBlockPositions(mesh) {
       child.setParent(childParent);
     }
 
-    setBlockXYZ(childBlock, pos.x, pos.y, pos.z);
+    writePositionToBlock(childBlock, pos);
   });
 }
 
@@ -3243,37 +3345,44 @@ function handleScaleGizmo() {
           mesh.scaling.z = diameter;
           break;
         }
-        case 'create_3d_text':
-          if (scaleDragAxis === 'z') {
-            // Z handle: depth only — lock X and Y
+        case 'create_3d_text': {
+          // The depth handle changes depth only; any other handle changes the
+          // letter size, keeping the two size axes equal and depth locked.
+          const horizontal = block.getFieldValue('HORIZONTAL') === 'TRUE';
+          const depthAxis = horizontal ? 'y' : 'z';
+          const heightAxis = horizontal ? 'z' : 'y';
+          if (scaleDragAxis === depthAxis) {
             mesh.scaling.x = 1;
-            mesh.scaling.y = 1;
-          } else if (scaleDragAxis === 'x' || scaleDragAxis === 'uniform') {
-            // X or uniform: size only — keep Y = X, lock Z
-            mesh.scaling.y = mesh.scaling.x;
-            mesh.scaling.z = textOrigScaleZ;
-          } else if (scaleDragAxis === 'y') {
-            // Y handle: size only — keep X = Y, lock Z
-            mesh.scaling.x = mesh.scaling.y;
-            mesh.scaling.z = textOrigScaleZ;
+            mesh.scaling[heightAxis] = 1;
+          } else if (scaleDragAxis) {
+            const sizeScale =
+              scaleDragAxis === heightAxis ? mesh.scaling[heightAxis] : mesh.scaling.x;
+            mesh.scaling.x = sizeScale;
+            mesh.scaling[heightAxis] = sizeScale;
+            mesh.scaling[depthAxis] = textOrigScale[depthAxis];
           }
           break;
+        }
       }
     }
 
     // Re-tile textures live so materials don't stretch while dragging.
-    if (block && MODEL_BLOCK_TYPES.has(block.type)) {
+    const applyModelTiling = () => {
       // Models use uScale/vScale tiling; the formula matches
       // flock.resize()'s maintainTextureScale so the look stays consistent.
       const size = getScaledSize(mesh);
       flock.applyTextureScaleToMesh(mesh, size.x, size.y, size.z);
+    };
+    if (block && MODEL_BLOCK_TYPES.has(block.type)) {
+      applyModelTiling();
     } else {
       // Primitives use size-based per-vertex UVs (set at creation / on block
       // edit via TILE_SIZE = 4). Re-run that mapping with the live scaling
       // folded in so the tile size stays constant in world units instead of
       // stretching with the geometry. Passing the scaled (world) size plus the
       // scale makes the live result match a re-baked mesh / program re-run.
-      retilePrimitiveUVsForScale(mesh);
+      const retiled = retilePrimitiveUVsForScale(mesh);
+      if (!retiled && block?.type === 'clone_mesh') applyModelTiling();
     }
   });
 
@@ -3283,7 +3392,7 @@ function handleScaleGizmo() {
     const mesh = gizmoManager.attachedMesh;
     flock.ensureUniqueGeometry(mesh);
     originalBottomY = flock.getEffectiveWorldBounds(mesh).min.y;
-    textOrigScaleZ = mesh.scaling.z;
+    textOrigScale = mesh.scaling.clone();
     scaleDragAxis = null;
 
     const motionType = isBodyAlive(mesh.physics) ? mesh.physics.getMotionType() : undefined;
@@ -3504,7 +3613,7 @@ export function updateChildBlockRotations(mesh) {
     if (isGroupRoot && pos) {
       memberBlock = meshMap[key];
       if (memberBlock && !memberBlock.disposed) {
-        setBlockXYZ(memberBlock, pos.x, pos.y, pos.z);
+        writePositionToBlock(memberBlock, pos);
       }
     }
     // Snap live onto the rounded blocks: set the world orientation while
@@ -3643,7 +3752,7 @@ function handlePositionGizmo() {
     try {
       if (block && !block.disposed) {
         const blockPosition = flock.getBlockPositionFromMesh(mesh);
-        setBlockXYZ(block, blockPosition.x, blockPosition.y, blockPosition.z);
+        writePositionToBlock(block, blockPosition);
       }
       updateChildBlockPositions(mesh);
     } finally {
@@ -3688,7 +3797,7 @@ function _handleBoundsGizmo() {
 
     if (block && !block.disposed) {
       const blockPosition = flock.getBlockPositionFromMesh(mesh);
-      setBlockXYZ(block, blockPosition.x, blockPosition.y, blockPosition.z);
+      writePositionToBlock(block, blockPosition);
     }
   });
 }

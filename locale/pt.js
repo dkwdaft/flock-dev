@@ -174,7 +174,7 @@ export default {
 
   // Custom block translations - Camera blocks
   camera_control: 'câmera %1 %2',
-  camera_follow: 'câmera segue %1 com raio %2 ângulo %3 frente %4',
+  camera_follow: 'câmera segue %1 distância: %2 ângulo: %3 frente: %4',
   get_camera: 'obter câmera como %1',
 
   // Custom block translations - Combine blocks
@@ -315,7 +315,7 @@ export default {
     'campo de entrada UI %1 %2 em x: %3 y: %4\ntamanho: %5 tamanho do texto: %6 texto: %7 fundo: %8',
   describe: 'descrever %1 como %2',
   create_3d_text:
-    'adicionar texto 3D %1: %2 fonte: %3 tamanho: %4 cor: %5\nprofundidade: %6 %10 x: %7 y: %8 z: %9',
+    'adicionar texto 3D %1: %2 fonte: %3 cor: %5\ntamanho: %4 profundidade: %6 espaçamento: %12 horizontal: %11 %10 x: %7 y: %8 z: %9',
 
   // Custom block translations - Math blocks
   random_seeded_int: 'inteiro aleatório de %1 a %2 semente: %3',
@@ -1138,8 +1138,8 @@ export default {
   redo_performed: 'Refazer concluído',
   camera_moving_forward: 'Câmera movendo-se para frente',
   camera_moving_backward: 'Câmera movendo-se para trás',
-  camera_moving_left: 'Câmera movendo-se para a esquerda',
-  camera_moving_right: 'Câmera movendo-se para a direita',
+  camera_turning_left: 'Câmera girando para a esquerda',
+  camera_turning_right: 'Câmera girando para a direita',
   moving_forward: 'Movendo-se para frente',
   moving_backward: 'Movendo-se para trás',
   moving_left: 'Movendo-se para a esquerda',

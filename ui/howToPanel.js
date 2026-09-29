@@ -65,24 +65,24 @@ const HOW_TOS = [
   { slug: 'design-a-character', i18nKey: 'howto_design_a_character_ui', tone: 6, tags: ['character'] },
   { slug: 'look-around', i18nKey: 'howto_look_around_ui', tone: 5, tags: ['camera'] },
   { slug: 'fly-camera', i18nKey: 'howto_fly_camera_ui', tone: 13, tags: ['gizmo', 'camera'], icon: 'cameragizmo' },
-  { slug: 'walk-around', i18nKey: 'howto_walk_around_ui', tone: 7, tags: ['camera'] },
+  { slug: 'walk-around', i18nKey: 'howto_walk_around_ui', tone: 7, tags: ['character', 'camera'] },
   { slug: 'view-an-object', i18nKey: 'howto_view_an_object_ui', tone: 12, tags: ['gizmo', 'camera'], icon: 'viewgizmo' },
 ];
 
-// How-to text lives in docs/how-tos/<lang>/<slug>.html — one locale folder
+// How-to text lives in src/how-tos/<lang>/<slug>.html — one locale folder
 // per language, so it can be edited (and translated) without touching code;
 // bundled at build time (?raw) rather than fetched, so it works offline in
 // the PWA. English-only for now — any language without a folder falls back to
 // en/, same as the Help panel falling back to en.html.
-const HOWTO_CONTENT = import.meta.glob('../docs/how-tos/*/*.html', {
+const HOWTO_CONTENT = import.meta.glob('../src/how-tos/*/*.html', {
   query: '?raw',
   import: 'default',
   eager: true,
 });
 
 const howToContentFor = (slug, lang) =>
-  HOWTO_CONTENT[`../docs/how-tos/${lang}/${slug}.html`] ??
-  HOWTO_CONTENT[`../docs/how-tos/en/${slug}.html`] ??
+  HOWTO_CONTENT[`../src/how-tos/${lang}/${slug}.html`] ??
+  HOWTO_CONTENT[`../src/how-tos/en/${slug}.html`] ??
   '';
 
 // <link-to target="…"> in how-to content becomes a button wired to one of
@@ -153,6 +153,8 @@ const HOWTO_LINK_TARGETS = {
   // workspace (added via the snippet above), so "change the color" isn't
   // left to a screenshot's worth of imagination. No-ops if the reader hasn't
   // added the block (or deleted it) — nothing to glow yet.
+  moveforwardsnippet: () => glowMovementSnippet(0),
+  moveallsnippet: () => glowMovementSnippet(1),
   skyblock: () => drawAttention(findMainWorkspaceBlock('set_sky_color')?.getSvgRoot?.()),
   mapblock: () => drawAttention(findMainWorkspaceBlock('create_map')?.getSvgRoot?.()),
   // Points at the "+" toolbar button that opens the Add menu (shapes, models,
@@ -460,6 +462,18 @@ function findSnippetsCategory() {
   );
 }
 
+function glowMovementSnippet(index) {
+  const workspace = Blockly.getMainWorkspace();
+  const flyout = workspace?.getFlyout?.();
+  const selected = workspace?.getToolbox?.()?.getSelectedItem?.();
+  if (!flyout?.isVisible?.() || selected?.getName?.() !== Blockly.Msg['CATEGORY_MOVEMENT']) {
+    glowToolboxCategory('MOVEMENT');
+    return;
+  }
+  const block = flyout.getWorkspace?.()?.getTopBlocks(true)?.[index];
+  drawAttention(block?.getSvgRoot?.());
+}
+
 function findMainWorkspaceBlock(type) {
   return Blockly.getMainWorkspace()
     ?.getAllBlocks(false)
@@ -722,14 +736,14 @@ function wireHowToRelated(root, onOpenHowTo) {
 }
 
 // How-to snippet blocks — Blockly JSON, one file per snippet, shared by
-// every language (see docs/how-tos/snippets/README.md for why this is
+// every language (see src/how-tos/snippets/README.md for why this is
 // rendered live rather than shipped as a picture).
-const SNIPPET_JSON = import.meta.glob('../docs/how-tos/snippets/*.json', {
+const SNIPPET_JSON = import.meta.glob('../src/how-tos/snippets/*.json', {
   eager: true,
   import: 'default',
 });
 
-const snippetJsonFor = (name) => SNIPPET_JSON[`../docs/how-tos/snippets/${name}.json`];
+const snippetJsonFor = (name) => SNIPPET_JSON[`../src/how-tos/snippets/${name}.json`];
 
 // A single hidden, off-screen Blockly workspace reused to render every
 // snippet — off-screen rather than display:none, since Blockly needs the SVG
@@ -768,6 +782,18 @@ function getSnippetWorkspace() {
 // top-level block — the snippet still crops to the top block's full bbox
 // (generateSVG still gets `block`), only the glow moves to the child. Falls
 // back to the top block if that input has nothing connected.
+function stackAriaLabel(block) {
+  const labels = [];
+  for (let current = block; current; current = current.getNextBlock()) {
+    labels.push(current.getAriaLabel(Blockly.utils.aria.Verbosity.STANDARD));
+    for (const input of current.inputList) {
+      const child = input.type === Blockly.inputs.inputTypes.STATEMENT && input.connection?.targetBlock();
+      if (child) labels.push(stackAriaLabel(child));
+    }
+  }
+  return labels.filter(Boolean).join(', ');
+}
+
 async function renderSnippetSVG(blockJson, { selected = false, highlightInput = null } = {}) {
   const ws = getSnippetWorkspace();
   const block = Blockly.serialization.blocks.append(blockJson, ws, { recordUndo: false });
@@ -779,7 +805,9 @@ async function renderSnippetSVG(blockJson, { selected = false, highlightInput = 
       : block;
     const highlight = selected || !!highlightInput;
     if (highlight) blockToHighlight.select();
-    return await generateSVG(block, { rasterSafe: true, keepSelected: highlight });
+    const label = stackAriaLabel(block);
+    const svg = await generateSVG(block, { rasterSafe: true, keepSelected: highlight });
+    return { svg, label };
   } finally {
     block.dispose();
   }
@@ -802,15 +830,21 @@ function wireHowToSnippets(root) {
 
     const blockJson = snippetJsonFor(src);
     if (!blockJson) {
-      console.error(`How-to snippet "${src}" has no matching docs/how-tos/snippets/*.json`);
+      console.error(`How-to snippet "${src}" has no matching src/how-tos/snippets/*.json`);
       return;
     }
     renderSnippetSVG(blockJson, { selected, highlightInput })
-      .then((svg) => {
+      .then(({ svg, label }) => {
         figure.insertAdjacentHTML('afterbegin', svg);
         // The figcaption (when present) is the accessible description; the
-        // picture itself is decorative on top of that.
+        // picture itself is decorative on top of that. Without one, the
+        // figure reads out the blocks the same way Blockly does on the
+        // workspace.
         figure.querySelector('svg')?.setAttribute('aria-hidden', 'true');
+        if (!caption && label) {
+          figure.setAttribute('role', 'img');
+          figure.setAttribute('aria-label', label);
+        }
       })
       .catch((e) => console.error(`Failed to render how-to snippet "${src}"`, e));
   });

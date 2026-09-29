@@ -666,7 +666,7 @@ export function initializeBlockHandling() {
   // Global keyboard shortcuts
   document.addEventListener('keydown', function (event) {
     // Skip to main content (Alt+M)
-    if (event.altKey && event.key.toLowerCase() === 'm') {
+    if (event.altKey && event.key?.toLowerCase() === 'm') {
       event.preventDefault();
       const mainContent = document.getElementById('maincontent');
       if (mainContent) {
@@ -754,7 +754,7 @@ export function initializeBlockHandling() {
         focusKeywordField(keywordBlock);
       }, 100);
     }
-  });
+  }, true);
 
   workspace.addChangeListener((event) => {
     // Track the currently selected block.

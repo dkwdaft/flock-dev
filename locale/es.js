@@ -175,7 +175,7 @@ export default {
 
   // Custom block translations - Camera blocks
   camera_control: 'cámara %1 %2', // human
-  camera_follow: 'cámara sigue a %1 con radio %2 ángulo %3 frente %4', // human
+  camera_follow: 'cámara sigue a %1 distancia: %2 ángulo: %3 frente: %4', // human
   get_camera: 'obtener cámara como %1', // human
 
   // Custom block translations - Combine blocks
@@ -354,7 +354,7 @@ export default {
   ui_input: 'UI aporte %1 %2 en x: %3 y: %4\ntamaño: %5 tamaño del texto: %6 texto: %7 en: %8', // human
   describe: 'describir %1 como %2', // human
   create_3d_text:
-    'añadir %1 texto 3D: %2 fuente: %3 tamaño: %4 color: %5\nprofundidad: %6 %10 x: %7 y: %8 z: %9', // human
+    'añadir %1 texto 3D: %2 fuente: %3 color: %5\ntamaño: %4 profundidad: %6 espaciado: %12 horizontal: %11 %10 x: %7 y: %8 z: %9', // human
 
   // Custom block translations - Math blocks
   random_seeded_int: 'numero entero aleatorio de %1 a %2 semilla: %3', // human
@@ -1270,8 +1270,8 @@ export default {
   redo_performed: 'Rehacer realizado', // human
   camera_moving_forward: 'Cámara moviéndose hacia adelante', // human
   camera_moving_backward: 'Cámara moviéndose hacia atrás', // human
-  camera_moving_left: 'Cámara moviéndose a la izquierda', // human
-  camera_moving_right: 'Cámara moviéndose a la derecha', // human
+  camera_turning_left: 'Cámara girando a la izquierda', // ai
+  camera_turning_right: 'Cámara girando a la derecha', // ai
   moving_forward: 'Moviéndose hacia adelante', // human
   moving_backward: 'Moviéndose hacia atrás', // human
   moving_left: 'Moviéndose a la izquierda', // human
