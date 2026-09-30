@@ -2,6 +2,105 @@ let flock;
 
 export const isBodyAlive = (body) => !!body?._pluginData?.hpBodyId;
 
+const activeDrives = new WeakMap();
+
+const isPhysicsEnabled = (mesh) =>
+  isBodyAlive(mesh?.physics) && mesh.metadata?.physicsType !== 'NONE';
+
+const applyDrivenState = (body) => {
+  body.disablePreStep = false;
+  body.setPrestepType(flock.BABYLON.PhysicsPrestepType.ACTION);
+  body.setMotionType(flock.BABYLON.PhysicsMotionType.ANIMATED);
+};
+
+const teleportOne = (mesh) => {
+  if (!isPhysicsEnabled(mesh)) return;
+  const body = mesh.physics;
+  mesh.computeWorldMatrix(true);
+  const prestepType = body.getPrestepType();
+  body.setPrestepType(flock.BABYLON.PhysicsPrestepType.TELEPORT);
+  flock.hk.setPhysicsBodyTransformation(body, mesh);
+  body.setPrestepType(prestepType);
+};
+
+const driveOne = (mesh) => {
+  let drive = activeDrives.get(mesh);
+  if (!drive) {
+    const body = mesh.physics;
+    drive = {
+      count: 0,
+      motionType: body.getMotionType(),
+      disablePreStep: body.disablePreStep,
+      prestepType: body.getPrestepType(),
+      teleportQueued: false,
+      observer: flock.scene.onAfterAnimationsObservable.add(() => mesh.computeWorldMatrix(true)),
+    };
+    activeDrives.set(mesh, drive);
+    applyDrivenState(body);
+  }
+  drive.count += 1;
+
+  let released = false;
+  return {
+    teleport() {
+      if (released || drive.teleportQueued) return;
+      drive.teleportQueued = true;
+      flock.scene.onBeforePhysicsObservable.addOnce(() => {
+        drive.teleportQueued = false;
+        if (released || !isBodyAlive(mesh.physics)) return;
+        mesh.physics.setLinearVelocity(flock.BABYLON.Vector3.Zero());
+        mesh.physics.setAngularVelocity(flock.BABYLON.Vector3.Zero());
+        teleportOne(mesh);
+      });
+    },
+    release() {
+      if (released) return;
+      released = true;
+      drive.count -= 1;
+      if (drive.count > 0) return;
+      activeDrives.delete(mesh);
+      flock.scene.onAfterAnimationsObservable.remove(drive.observer);
+      const body = mesh.physics;
+      if (!isBodyAlive(body)) return;
+      body.setMotionType(drive.motionType);
+      body.setPrestepType(drive.prestepType);
+      body.disablePreStep = drive.disablePreStep;
+      body.setLinearVelocity(flock.BABYLON.Vector3.Zero());
+      body.setAngularVelocity(flock.BABYLON.Vector3.Zero());
+      teleportOne(mesh);
+    },
+  };
+};
+
+const adoptPhysicsChangeDuringDrive = (mesh) => {
+  const drive = activeDrives.get(mesh);
+  const body = mesh.physics;
+  if (!drive || !isBodyAlive(body)) return;
+  drive.motionType = body.getMotionType();
+  drive.disablePreStep = body.disablePreStep;
+  drive.prestepType = body.getPrestepType();
+  applyDrivenState(body);
+};
+
+const withPhysicsDescendants = (mesh) =>
+  mesh ? [mesh, ...mesh.getChildMeshes(false)].filter(isPhysicsEnabled) : [];
+
+export const teleportBodyToMesh = (mesh) => {
+  withPhysicsDescendants(mesh).forEach(teleportOne);
+};
+
+export const driveBody = (mesh) => {
+  const drives = withPhysicsDescendants(mesh).map(driveOne);
+  return {
+    teleport() {
+      drives.forEach((drive) => drive.teleport());
+    },
+    release() {
+      drives.forEach((drive) => drive.release());
+    },
+  };
+};
+
 // Restitution lives on the shape material, not mass properties. Reads
 // metadata.bounciness (default 0), so it survives shape/body rebuilds. Combine
 // is MAXIMUM (bounciest surface wins) and must match on every material — objects
@@ -293,6 +392,83 @@ export function setFlockReference(ref) {
   flock = ref;
 }
 
+const PICK_TRIGGER_NAMES = [
+  'OnPickTrigger',
+  'OnLeftPickTrigger',
+  'OnDoublePickTrigger',
+  'OnPickDownTrigger',
+  'OnPickUpTrigger',
+];
+
+function isDescendantOf(mesh, ancestor) {
+  let node = mesh?.parent;
+  while (node) {
+    if (node === ancestor) return true;
+    node = node.parent;
+  }
+  return false;
+}
+
+// A group shell encloses its members, so a ray aimed at a member hits
+// the (invisible) shell first and Babylon routes the click to the
+// shell. Give a member with its own trigger for this event first
+// refusal. Returns the mesh whose manager should fire instead, or
+// null when the owner itself should handle the click.
+function resolveDelegatedMesh(owner, triggerId, evt) {
+  if (owner?.metadata?.shapeType !== 'Group' && owner?.visibility !== 0) return null;
+  const x = evt?.pointerX;
+  const y = evt?.pointerY;
+  if (typeof x !== 'number' || typeof y !== 'number') return null;
+  if (typeof flock.scene?.multiPick !== 'function') return null;
+  let hits;
+  try {
+    hits = flock.scene.multiPick(
+      x,
+      y,
+      (m) => m.isPickable && m.isVisible && m.isEnabled?.() !== false
+    );
+  } catch {
+    return null;
+  }
+  if (!hits?.length) return null;
+  const ownerManager = owner.actionManager;
+  let candidate = null;
+  for (const hit of hits) {
+    const m = hit?.pickedMesh;
+    if (!m || m === owner) continue;
+    if (!isDescendantOf(m, owner)) break;
+    const mgr =
+      typeof m._getActionManagerForTrigger === 'function'
+        ? m._getActionManagerForTrigger(triggerId)
+        : null;
+    if (mgr && mgr !== ownerManager) {
+      // Nearest mesh up from the hit owning that manager (the hit
+      // itself, or an intermediate group). Fired with a delegated flag
+      // so it runs directly instead of re-delegating.
+      let o = m;
+      while (o && o !== owner && o.actionManager !== mgr) o = o.parent;
+      candidate = o && o !== owner ? o : m;
+      if (m.visibility !== 0) break;
+    } else if (m.visibility !== 0) {
+      break;
+    }
+  }
+  return candidate;
+}
+
+function shellHasRealTrigger(shell, triggerId) {
+  const actions = shell?.actionManager?.actions;
+  if (!actions) return false;
+  return actions.some((a) => a && a.trigger === triggerId && !a._flockForwarder);
+}
+
+function hasRealPickTrigger(mesh) {
+  const manager = mesh?.actionManager;
+  if (!manager?.hasPickTriggers) return false;
+  const ids = PICK_TRIGGER_NAMES.map((name) => flock.BABYLON.ActionManager[name]);
+  return (manager.actions || []).some((a) => a && ids.includes(a.trigger) && !a._flockForwarder);
+}
+
 export const flockPhysics = {
   createPhysicsBody(mesh, shape, motionType = flock.BABYLON.PhysicsMotionType.STATIC) {
     const physicsBody = new flock.BABYLON.PhysicsBody(mesh, motionType, false, flock.scene);
@@ -335,13 +511,14 @@ export const flockPhysics = {
     const width = boundingBox.maximumWorld.x - boundingBox.minimumWorld.x;
     const height = boundingBox.maximumWorld.y - boundingBox.minimumWorld.y;
     const depth = boundingBox.maximumWorld.z - boundingBox.minimumWorld.z;
+    const center = boundingBox.center.multiply(mesh.scaling);
 
     let newShape;
     let detectedShapeType;
     if (physicsShape instanceof flock.BABYLON.PhysicsShapeBox) {
       detectedShapeType = 'BOX';
       newShape = new flock.BABYLON.PhysicsShapeBox(
-        flock.BABYLON.Vector3.Zero(),
+        center,
         new flock.BABYLON.Quaternion(0, 0, 0, 1),
         new flock.BABYLON.Vector3(width, height, depth),
         flock.scene
@@ -349,15 +526,15 @@ export const flockPhysics = {
     } else if (physicsShape instanceof flock.BABYLON.PhysicsShapeSphere) {
       detectedShapeType = 'SPHERE';
       newShape = new flock.BABYLON.PhysicsShapeSphere(
-        flock.BABYLON.Vector3.Zero(),
+        center,
         Math.max(width, height, depth) / 2,
         flock.scene
       );
     } else if (physicsShape instanceof flock.BABYLON.PhysicsShapeCylinder) {
       detectedShapeType = 'CYLINDER';
       newShape = new flock.BABYLON.PhysicsShapeCylinder(
-        new flock.BABYLON.Vector3(0, -height / 2, 0),
-        new flock.BABYLON.Vector3(0, height / 2, 0),
+        new flock.BABYLON.Vector3(center.x, center.y - height / 2, center.z),
+        new flock.BABYLON.Vector3(center.x, center.y + height / 2, center.z),
         Math.max(width, depth) / 2,
         flock.scene
       );
@@ -573,6 +750,7 @@ export const flockPhysics = {
         break;
     }
 
+    adoptPhysicsChangeDuringDrive(mesh);
     flock._syncTeleportMeshHierarchy?.(mesh);
     return mesh;
   },
@@ -717,6 +895,39 @@ export const flockPhysics = {
     }
     return false;
   },
+  hasRealPickTrigger,
+  ensureGroupPickForwarder(shell) {
+    if (!shell || shell.metadata?.shapeType !== 'Group') return;
+    if (shell.isDisposed?.()) return;
+    const scene = shell.getScene?.() || flock.scene;
+    if (!scene) return;
+    if (!shell.actionManager) shell.actionManager = new flock.BABYLON.ActionManager(scene);
+    shell.actionManager.isRecursive = true;
+    if (shell.metadata._pickForwarded) return;
+    shell.metadata._pickForwarded = true;
+    // A trigger-less shell still occludes its members (it encloses them),
+    // so member clicks would die on the shell without ever reaching a
+    // handler. Forward them to the deepest member with a real trigger.
+    // Once the group itself gets a real trigger, its own handler takes
+    // over (member-first delegation) and the forwarders stand down.
+    for (const name of PICK_TRIGGER_NAMES) {
+      const triggerId = flock.BABYLON.ActionManager[name];
+      const forward = new flock.BABYLON.ExecuteCodeAction(triggerId, (evt) => {
+        if (shellHasRealTrigger(shell, triggerId)) return;
+        const clicked = evt?.meshUnderPointer || evt?.source;
+        if (clicked !== shell) return;
+        const member = resolveDelegatedMesh(shell, triggerId, evt);
+        member?.actionManager?.processTrigger(triggerId, {
+          ...evt,
+          source: member,
+          meshUnderPointer: member,
+          __flockDelegated: true,
+        });
+      });
+      forward._flockForwarder = true;
+      shell.actionManager.registerAction(forward);
+    }
+  },
   onTrigger(
     meshName,
     {
@@ -833,7 +1044,11 @@ export const flockPhysics = {
           mesh.isPickable = true;
           if (!mesh.actionManager)
             mesh.actionManager = new flock.BABYLON.ActionManager(flock.scene);
-          mesh.actionManager.isRecursive = false; // 🛡️ Fix for sibling bleed
+          // Let clicks on members without their own trigger bubble to a
+          // group/parent handler. Babylon routes a pick to the nearest
+          // ancestor whose manager has this specific trigger, so a member
+          // with its own handler still wins and nothing fires twice.
+          mesh.actionManager.isRecursive = true;
 
           let actionSequence = new flock.BABYLON.ExecuteCodeAction(
             flock.BABYLON.ActionManager[trigger],
@@ -864,9 +1079,6 @@ export const flockPhysics = {
         }
 
         async function executeAction(meshId) {
-          // 🛡️ THE ROOT CAUSE FIX: Identity Guard
-          if (meshId !== target.name) return;
-
           if (mode === 'once' && hasExecuted) return;
           if (mode === 'wait' && isExecuting) return;
           if (mode === 'once') hasExecuted = true;
@@ -888,9 +1100,32 @@ export const flockPhysics = {
 
         if (target instanceof flock.BABYLON.AbstractMesh) {
           registerMeshAction(target, trigger, async (evt) => {
-            const clickedMesh = evt?.source || evt?.meshUnderPointer;
-            const meshId = clickedMesh ? clickedMesh.name : target.name;
-            await executeAction(meshId);
+            const clickedMesh = evt?.meshUnderPointer || evt?.source || target;
+            if (clickedMesh === target) {
+              if (!evt?.__flockDelegated) {
+                const delegatedMesh = resolveDelegatedMesh(
+                  target,
+                  flock.BABYLON.ActionManager[trigger],
+                  evt
+                );
+                if (delegatedMesh?.actionManager) {
+                  delegatedMesh.actionManager.processTrigger(flock.BABYLON.ActionManager[trigger], {
+                    ...evt,
+                    source: delegatedMesh,
+                    meshUnderPointer: delegatedMesh,
+                    __flockDelegated: true,
+                  });
+                  return;
+                }
+              }
+              await executeAction(target.name);
+              return;
+            }
+            // Bubbled from a member without its own trigger for this event.
+            if (isDescendantOf(clickedMesh, target)) {
+              await executeAction(target.name);
+            }
+            // Anything else is an unrelated mesh — ignore it.
           });
 
           // XR case

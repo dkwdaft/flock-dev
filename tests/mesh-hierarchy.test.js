@@ -131,6 +131,58 @@ export function runMeshHierarchyTests(flock) {
         expect(childMesh.position.x).to.be.closeTo(1, 0.01);
         expect(childMesh.position.z).to.be.closeTo(0, 0.01);
       });
+
+      it("should place the child's anchor on an anchored parent's anchor", async function () {
+        const parentId = 'hierarchyAnchoredParent';
+        const childId = 'hierarchyAnchoredChild';
+
+        await flock.createBox(parentId, {
+          width: 1,
+          height: 1,
+          depth: 1,
+          position: [0, 0, 0],
+        });
+        await flock.createBox(childId, {
+          width: 0.5,
+          height: 0.5,
+          depth: 0.5,
+          position: [3, 0, 3],
+        });
+        meshIds.push(parentId, childId);
+
+        await flock.setAnchor(parentId, { xPivot: 'MIN', yPivot: 'MIN', zPivot: 'MIN' });
+        await flock.parentChild(parentId, childId);
+
+        const childMesh = flock.scene.getMeshByName(childId);
+        childMesh.computeWorldMatrix(true);
+        const { minimumWorld, maximumWorld } = childMesh.getBoundingInfo().boundingBox;
+        expect((minimumWorld.x + maximumWorld.x) / 2).to.be.closeTo(0, 0.01);
+        expect(minimumWorld.y).to.be.closeTo(0, 0.01);
+        expect((minimumWorld.z + maximumWorld.z) / 2).to.be.closeTo(0, 0.01);
+      });
+
+      it('should offset a plane child from its centre', async function () {
+        const parentId = 'hierarchyPlaneHinge';
+        const childId = 'hierarchyPlaneCard';
+
+        await flock.createSphere(parentId, {
+          diameterX: 0.01,
+          diameterY: 0.01,
+          diameterZ: 0.01,
+          position: [-3, -1, -0.01],
+        });
+        await flock.createPlane(childId, { width: 6, height: 8, position: [0, -1, 0] });
+        meshIds.push(parentId, childId);
+
+        await flock.parentChild(parentId, childId, 3, 0, -0.01);
+
+        const childMesh = flock.scene.getMeshByName(childId);
+        childMesh.computeWorldMatrix(true);
+        const center = childMesh.getBoundingInfo().boundingBox.centerWorld;
+        expect(center.x).to.be.closeTo(0, 0.01);
+        expect(center.y).to.be.closeTo(-1, 0.01);
+        expect(center.z).to.be.closeTo(-0.02, 0.01);
+      });
     });
 
     describe('createGroup', function () {
@@ -1565,44 +1617,43 @@ export function runMeshHierarchyTests(flock) {
 
         await flock.rotateTo(groupName, { x: 0, y: 30, z: 0 });
 
-        // Stand-in for a live body: records what it is told to target. The
-        // real Havok body would fling the mesh toward a wrong (local) target
-        // on the next step; here the captured target itself is the assert.
-        const fake = {
-          disablePreStep: true,
-          captured: null,
-          getMotionType: () => flock.BABYLON.PhysicsMotionType.ANIMATED,
-          setTargetTransform(p, q) {
-            this.captured = { p: p.clone(), q: q.clone() };
-          },
-        };
-        childMesh.physics = fake;
-        try {
-          await flock.positionAt(childName, { x: 2, y: 0, z: 0, useY: true });
+        const settle = () => new Promise((resolve) => setTimeout(resolve, 200));
+        const expectBodyAtWorldPose = (label) => {
           childMesh.computeWorldMatrix(true);
+          const [bodyPosition, bodyRotation] = flock.hk._hknp.HP_Body_GetQTransform(
+            childMesh.physics._pluginData.hpBodyId
+          )[1];
+          const origin = childMesh.physics._pluginData.worldRegion?.floatingOrigin ?? {
+            x: 0,
+            y: 0,
+            z: 0,
+          };
           const worldPos = childMesh.getAbsolutePosition();
-          expect(fake.captured, 'positionAt targeted').to.exist;
-          expect(fake.captured.p.x).to.be.closeTo(worldPos.x, 1e-4);
-          expect(fake.captured.p.y).to.be.closeTo(worldPos.y, 1e-4);
-          expect(fake.captured.p.z).to.be.closeTo(worldPos.z, 1e-4);
-          // Local and world differ here (translated, rotated group) - a
-          // local target would be nowhere near the world pose.
-          expect(fake.captured.p.x).to.not.be.closeTo(childMesh.position.x, 0.1);
+          expect(bodyPosition[0] + origin.x, `${label} x`).to.be.closeTo(worldPos.x, 1e-3);
+          expect(bodyPosition[1] + origin.y, `${label} y`).to.be.closeTo(worldPos.y, 1e-3);
+          expect(bodyPosition[2] + origin.z, `${label} z`).to.be.closeTo(worldPos.z, 1e-3);
+          const worldRot = childMesh.absoluteRotationQuaternion;
+          const dot =
+            bodyRotation[0] * worldRot.x +
+            bodyRotation[1] * worldRot.y +
+            bodyRotation[2] * worldRot.z +
+            bodyRotation[3] * worldRot.w;
+          expect(Math.abs(dot), `${label} rotation`).to.be.closeTo(1, 1e-3);
+          return worldPos;
+        };
 
-          await flock.rotateTo(childName, { x: 0, y: 45, z: 0 });
-          const expected = flock.eulerDegreesToQuat(0, 45, 0);
-          expect(fake.captured, 'rotateTo targeted').to.exist;
-          expect(
-            Math.abs(flock.BABYLON.Quaternion.Dot(fake.captured.q, expected))
-          ).to.be.closeTo(1, 1e-4);
-          childMesh.computeWorldMatrix(true);
-          const worldPos2 = childMesh.getAbsolutePosition();
-          expect(fake.captured.p.x).to.be.closeTo(worldPos2.x, 1e-4);
-          expect(fake.captured.p.y).to.be.closeTo(worldPos2.y, 1e-4);
-          expect(fake.captured.p.z).to.be.closeTo(worldPos2.z, 1e-4);
-        } finally {
-          delete childMesh.physics;
-        }
+        expect(childMesh.physics, 'child physics body').to.exist;
+
+        await flock.positionAt(childName, { x: 2, y: 0, z: 0, useY: true });
+        await settle();
+        const worldPos = expectBodyAtWorldPose('positionAt');
+        // Local and world differ here (translated, rotated group) - a body
+        // placed at the local pose would be nowhere near the world pose.
+        expect(worldPos.x).to.not.be.closeTo(childMesh.position.x, 0.1);
+
+        await flock.rotateTo(childName, { x: 0, y: 45, z: 0 });
+        await settle();
+        expectBodyAtWorldPose('rotateTo');
       });
 
       it('should fold a group scale into a model-type member exactly once', async function () {

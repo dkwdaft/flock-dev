@@ -526,7 +526,7 @@
                     "type": "math_number",
                     "id": "HLRyF5K~nZAus+#M|#{y",
                     "fields": {
-                      "NUM": 1.5
+                      "NUM": 2.75
                     }
                   }
                 },
@@ -2423,6 +2423,15 @@
                                 "id": "$J9zG_OfF?_/*|=wi7p!",
                                 "fields": {
                                   "NUM": 7
+                                }
+                              }
+                            },
+                            "ANGLE": {
+                              "shadow": {
+                                "type": "math_number",
+                                "id": "1wvpwf@WFM{~d%vk&ZtO",
+                                "fields": {
+                                  "NUM": 90
                                 }
                               }
                             }
