@@ -26,6 +26,7 @@ export default {
   CATEGORY_FUNCTIONS: 'Funktionen',
   CATEGORY_SNIPPETS: 'Snippets',
   CATEGORY_MOVEMENT: 'Bewegung',
+  CATEGORY_BUILDING: 'Gebäude',
 
   // Color picker translations
   choose_a_color: 'Wähle eine Farbe',
@@ -178,7 +179,7 @@ export default {
 
   // Custom block translations - Camera blocks
   camera_control: 'Kamera %1 %2',
-  camera_follow: 'Kamera folgt %1 Abstand: %2 Winkel: %3 vorne: %4 als %5', // AI-generated; needs validation
+  camera_follow: 'Kamera %5 folgt %1 Abstand: %2 Winkel: %3 vorne: %4', // AI-generated; needs validation
   get_camera: 'Kamera als %1 holen',
   create_fly_camera: 'Flugkamera hinzufügen %1 \n%6 x: %2 y: %3 z: %4 sichtbar: %5 %7', // AI-generated; needs validation
   create_follow_camera: 'Folgekamera hinzufügen %1 auf %2 \n%7 Abstand: %3 hoch: %4 rundum: %5 sichtbar: %6 %8', // AI-generated; needs validation
@@ -1029,6 +1030,12 @@ export default {
   shape_push_ui: 'Form schieben',
   alien_planet_ui: 'Alien-Planet',
   boat_trip_ui: 'Boat trip',
+  space_scene_ui: 'Weltraumszene',
+  snowman_glide_ui: 'Schneemann-Gleiten',
+  pancake_flip_ui: 'Pfannkuchen wenden',
+  grid_race_ui: 'Gitterrennen',
+  escape_room_ui: 'Escape-Room',
+  toy_finder_ui: 'Spielzeugsuche',
 
   main_menu_ui: 'Hauptmenü',
   menu_button_sr_label_ui: 'Menü',
@@ -1097,6 +1104,7 @@ export default {
   toolbox_search_results_aria: 'Toolbox-Suchergebnisse.',
   context_delete_option: 'Löschen',
   context_delete_all_blocks_option: 'Alle Blöcke löschen',
+  context_tidy_workspace_option: 'Aufräumen',
   context_cleanup_option: 'Aufräumen',
   context_inline_inputs_option: 'Horizontale Eingaben',
   context_external_inputs_option: 'Vertikale Eingaben',

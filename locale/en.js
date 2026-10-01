@@ -26,6 +26,7 @@ export default {
   CATEGORY_FUNCTIONS: 'Functions',
   CATEGORY_SNIPPETS: 'Snippets',
   CATEGORY_MOVEMENT: 'Movement',
+  CATEGORY_BUILDING: 'Building',
 
   // Color picker translations
   choose_a_color: 'Choose a Color',
@@ -179,7 +180,7 @@ export default {
 
   // Custom block translations - Camera blocks
   camera_control: 'camera %1 %2',
-  camera_follow: 'camera follow %1 distance: %2 angle: %3 front: %4 as %5',
+  camera_follow: 'camera %5 follow %1 distance: %2 angle: %3 front: %4',
   get_camera: 'get camera as %1',
   create_fly_camera: 'add fly camera %1 \n%6 x: %2 y: %3 z: %4 visible: %5 %7',
   create_follow_camera:
@@ -218,6 +219,8 @@ export default {
   section_toggle_alt: 'expand or collapse section',
   section_control: 'section',
   section_none_option: 'none',
+  function_row_break_alt: 'start a new row after this input',
+  function_row_join_alt: 'join the next input onto this row',
 
   // Custom block translations - Effects blocks
   main_light: 'light intensity: %1 color: %2 ground: %3 shading %4',
@@ -717,8 +720,13 @@ export default {
   snippet_move8_hint: 'Moves the player forward and backward with the player controls.',
   snippet_move4_hint:
     'Moves the player forward, backward, left and right with the player controls.',
+  snippet_movejump_hint:
+    'Moves the player in four directions, jumps with button 4 and switches between idle, run and jump animations.',
   snippet_skyworld_hint: 'Adds a gradient sky and a ground map to the scene.',
   snippet_player_camera_hint: 'A player character with physics and a camera that follows them.',
+  snippet_hinged_door_hint: 'A room with a door that swings open into the room when clicked, then shuts after a few seconds.',
+  snippet_bookcase_hint: 'A bookcase function. Give it a width, height, depth, number of shelves, material and position. It gives back the bookcase as a group.',
+  snippet_bookcase_call_hint: 'Builds a wooden bookcase with 4 shelves and stores it in bookcase1 so you can move it. Add the bookcase function too.',
 
   // Dropdown option translations
   AWAIT_option: 'await',
@@ -1162,6 +1170,12 @@ export default {
   shape_push_ui: 'Shape push',
   alien_planet_ui: 'Alien planet',
   boat_trip_ui: 'Boat trip',
+  space_scene_ui: 'Space scene',
+  snowman_glide_ui: 'Snowman glide',
+  pancake_flip_ui: 'Pancake flip',
+  grid_race_ui: 'Grid race',
+  escape_room_ui: 'Escape room',
+  toy_finder_ui: 'Toy finder',
   main_menu_ui: 'Main menu',
   menu_button_sr_label_ui: 'Menu',
   project_submenu_ui: 'Project',
@@ -1258,6 +1272,7 @@ export default {
   toolbox_search_results_aria: 'Toolbox search results.',
   context_delete_option: 'Delete',
   context_delete_all_blocks_option: 'Delete all blocks',
+  context_tidy_workspace_option: 'Tidy',
   context_cleanup_option: 'Cleanup',
   context_inline_inputs_option: 'Horizontal inputs',
   context_external_inputs_option: 'Vertical inputs',

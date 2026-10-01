@@ -26,6 +26,7 @@ export default {
   CATEGORY_FUNCTIONS: 'Funktioner',
   CATEGORY_SNIPPETS: 'Snippets',
   CATEGORY_MOVEMENT: 'Rörelse',
+  CATEGORY_BUILDING: 'Bygga',
 
   // Color picker translations
   choose_a_color: 'Välj en färg',
@@ -173,7 +174,7 @@ export default {
 
   // Custom block translations - Camera blocks
   camera_control: 'kamera %1 %2',
-  camera_follow: 'kamera följ %1 avstånd: %2 vinkel: %3 fram: %4 som %5', // AI-generated; needs validation
+  camera_follow: 'kamera %5 följ %1 avstånd: %2 vinkel: %3 fram: %4', // AI-generated; needs validation
   get_camera: 'hämta kamera som %1',
   create_fly_camera: 'lägg till flygkamera %1 \n%6 x: %2 y: %3 z: %4 synlig: %5 %7', // AI-generated; needs validation
   create_follow_camera: 'lägg till följkamera %1 på %2 \n%7 avstånd: %3 upp: %4 runt: %5 synlig: %6 %8', // AI-generated; needs validation
@@ -1016,6 +1017,12 @@ export default {
   shape_push_ui: 'Skjuta form',
   alien_planet_ui: 'Alienplanet',
   boat_trip_ui: 'Boat trip',
+  space_scene_ui: 'Rymdscen',
+  snowman_glide_ui: 'Snögubbe som glider',
+  pancake_flip_ui: 'Pannkaksvändning',
+  grid_race_ui: 'Rutnätsrace',
+  escape_room_ui: 'Escape room',
+  toy_finder_ui: 'Leksaksletare',
   character_designer_ui: 'Karaktärsdesign',
   sit_down_ui: 'Sätt dig',
 
@@ -1107,6 +1114,7 @@ export default {
   toolbox_search_results_aria: 'Verktygslådans sökresultat.',
   context_delete_option: 'Radera',
   context_delete_all_blocks_option: 'Radera alla block',
+  context_tidy_workspace_option: 'Städa',
   context_cleanup_option: 'Städa upp',
   context_inline_inputs_option: 'Horisontella ingångar',
   context_external_inputs_option: 'Vertikala ingångar',

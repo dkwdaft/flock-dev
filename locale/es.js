@@ -26,6 +26,7 @@ export default {
   CATEGORY_FUNCTIONS: 'Funciones', // human
   CATEGORY_SNIPPETS: 'Fragmentos', // human
   CATEGORY_MOVEMENT: 'Movimiento', // human
+  CATEGORY_BUILDING: 'Construcción',
 
   // Color picker translations
   choose_a_color: 'Elige un color', // human
@@ -175,7 +176,7 @@ export default {
 
   // Custom block translations - Camera blocks
   camera_control: 'cámara %1 %2', // human
-  camera_follow: 'cámara sigue a %1 distancia: %2 ángulo: %3 frente: %4 como %5', // AI-generated; needs validation
+  camera_follow: 'cámara %5 sigue a %1 distancia: %2 ángulo: %3 frente: %4', // AI-generated; needs validation
   get_camera: 'obtener cámara como %1', // human
   create_fly_camera: 'añadir cámara de vuelo %1 \n%6 x: %2 y: %3 z: %4 visible: %5 %7', // AI-generated; needs validation
   create_follow_camera: 'añadir cámara que sigue %1 a %2 \n%7 distancia: %3 arriba: %4 alrededor: %5 visible: %6 %8', // AI-generated; needs validation
@@ -1137,6 +1138,12 @@ export default {
   shape_push_ui: 'Empujar forma', // human
   alien_planet_ui: 'Planeta alienígena', // human
   boat_trip_ui: 'Viaje en barco', // human
+  space_scene_ui: 'Escena espacial',
+  snowman_glide_ui: 'Muñeco de nieve deslizante',
+  pancake_flip_ui: 'Voltear tortitas',
+  grid_race_ui: 'Carrera en cuadrícula',
+  escape_room_ui: 'Sala de escape',
+  toy_finder_ui: 'Buscador de juguetes',
   character_designer_ui: 'Diseñador de personajes', // human
   sit_down_ui: 'Siéntate', // human
 
@@ -1235,6 +1242,7 @@ export default {
   toolbox_search_results_aria: 'Resultados de búsqueda de la caja de herramientas.', // human
   context_delete_option: 'Eliminar', // human
   context_delete_all_blocks_option: 'Eliminar todos los bloques',
+  context_tidy_workspace_option: 'Ordenar',
   context_cleanup_option: 'Limpiar',
   context_inline_inputs_option: 'Entradas horizontales',
   context_external_inputs_option: 'Entradas verticales',

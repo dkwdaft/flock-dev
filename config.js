@@ -121,6 +121,8 @@ export const multiObjectNames = [
   'boardwalk_straight.glb',
   'flower.glb',
   'flower2.glb',
+  'mushroom.glb',
+  'mushroom_2.glb',
 ];
 
 export const objectNames = [
@@ -134,7 +136,6 @@ export const objectNames = [
   'Key.glb',
   'Wand.glb',
   'Hat.glb',
-  'mushroom.glb',
   'donut.glb',
   'pumpkin.glb',
   'apple.glb',
@@ -202,6 +203,7 @@ export const objectDisplayNameTranslationKeys = {
   'Hat.glb': 'model_display_hat',
   'donut.glb': 'model_display_donut',
   'mushroom.glb': 'model_display_mushroom',
+  'mushroom_2.glb': 'model_display_mushroom_2',
   'pumpkin.glb': 'model_display_pumpkin',
   'apple.glb': 'model_display_apple',
   'starboppers.glb': 'model_display_starboppers',
@@ -210,6 +212,7 @@ export const objectDisplayNameTranslationKeys = {
   'Flock_Santa.glb': 'model_display_flock_santa',
   'Character.glb': 'model_display_character',
   'rhino.glb': 'model_display_rhino',
+  'camera.glb': 'model_display_camera',
 };
 
 // Per-model collider override for imported GLBs. Currently supports 'BOX'.
@@ -241,10 +244,12 @@ export const objectColours = {
   'Hat.glb': ['#9D3F72', '#B5FDFD', '#3D0073'],
   'donut.glb': ['#f9cb9c', '#fba0c3'],
   'mushroom.glb': ['#ffffff', '#E73A49', '#8F7A61'],
+  'mushroom_2.glb': ['#ffffff', '#E73A49', '#8F7A61'],
   'pumpkin.glb': ['#E78632', '#75430F'],
   'apple.glb': ['#3FAF45', '#A9323F', '#624A20'],
   'starboppers.glb': ['#FFD700', '#FFD700', '#FFD700', '#f9f9f9'],
   'headphones.glb': ['#53E0E7', '#3291E7', '#7D7D7D'],
+  'camera.glb': ['#3A3A3A', '#511D91', '#6A676E', '#D4FBA7'],
 
   'tree.glb': ['#66CDAA', '#CD853F'],
   'tree2.glb': ['#7F9F7F', '#A1623B'],
