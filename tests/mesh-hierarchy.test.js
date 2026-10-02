@@ -76,6 +76,76 @@ export function runMeshHierarchyTests(flock) {
         expect(childMesh.parent).to.equal(parentMesh);
       });
 
+      it('should keep a child turned with a parent rotated before parenting', async function () {
+        const parentId = 'hierarchyPreRotParent';
+        const childId = 'hierarchyPreRotChild';
+        await flock.createBox(parentId, { width: 1, height: 1, depth: 1, position: [0, 0, 0] });
+        await flock.createBox(childId, { width: 0.5, height: 0.5, depth: 0.5, position: [0, 1, 0] });
+        meshIds.push(parentId, childId);
+
+        await flock.rotateTo(parentId, { x: 0, y: 45, z: 0, world: true });
+        await flock.rotateTo(childId, { x: 0, y: 20, z: 0, world: true });
+        await flock.parentChild(parentId, childId);
+        await new Promise((resolve) => setTimeout(resolve, 200));
+
+        const childMesh = flock.scene.getMeshByName(childId);
+        childMesh.computeWorldMatrix(true);
+        const expected = flock.eulerDegreesToQuat(0, 65, 0);
+        const worldRot = childMesh.absoluteRotationQuaternion;
+        expect(
+          Math.abs(flock.BABYLON.Quaternion.Dot(worldRot, expected)),
+          'child world yaw'
+        ).to.be.closeTo(1, 1e-3);
+
+        const [, bodyRotation] = flock.hk._hknp.HP_Body_GetQTransform(
+          childMesh.physics._pluginData.hpBodyId
+        )[1];
+        const dot =
+          bodyRotation[0] * worldRot.x +
+          bodyRotation[1] * worldRot.y +
+          bodyRotation[2] * worldRot.z +
+          bodyRotation[3] * worldRot.w;
+        expect(Math.abs(dot), 'body follows child').to.be.closeTo(1, 1e-3);
+      });
+
+      it("should keep a child's own DO rotation relative when the DO runs after parenting", async function () {
+        const boxId = 'hierarchyLateDoBox';
+        await flock.createBox(boxId, { width: 1, height: 1, depth: 1, position: [0, 0, -1] });
+        let doRan = false;
+        let constructed;
+        const doFinished = new Promise((resolve) => (constructed = resolve));
+        const childId = flock.createObject({
+          modelName: 'Heart.glb',
+          modelId: 'hierarchyLateDoHeart',
+          position: { x: 0, y: 1, z: -1 },
+          callback: async (name) => {
+            doRan = true;
+            await flock.rotateTo(name, { x: 0, y: 57.3, z: 0 });
+            constructed();
+          },
+        });
+        meshIds.push(childId, boxId);
+
+        await pumpAnimation(flock, flock.setParent(boxId, childId));
+        expect(doRan, 'DO still pending when parented').to.equal(false);
+        await flock.rotateTo(boxId, { x: -74.7, y: 0, z: 0 });
+        await pumpAnimation(flock, doFinished);
+
+        const boxMesh = flock.scene.getMeshByName(boxId);
+        const childMesh = flock.scene.getMeshByName(childId);
+        expect(childMesh.parent).to.equal(boxMesh);
+        const sameRotation = (a, b) => Math.abs(flock.BABYLON.Quaternion.Dot(a, b));
+        expect(
+          sameRotation(childMesh.rotationQuaternion, flock.eulerDegreesToQuat(0, 57.3, 0)),
+          'child local rotation'
+        ).to.be.closeTo(1, 1e-3);
+        childMesh.computeWorldMatrix(true);
+        expect(
+          sameRotation(childMesh.absoluteRotationQuaternion, flock.eulerDegreesToQuat(0, 57.3, 0)),
+          'child keeps the box tilt'
+        ).to.be.below(0.99);
+      });
+
       it('should ignore parenting to a non-mesh target', async function () {
         const childId = 'hierarchyChildNonMesh';
         await flock.createBox(childId, {
@@ -262,11 +332,11 @@ export function runMeshHierarchyTests(flock) {
         }
       });
 
-      it('should still write the world rotation for a child created elsewhere', async function () {
+      it('should not write a rotation for a child created elsewhere', async function () {
         const { rotY, cleanup } = await setUp('Outside', false);
         try {
           updateChildBlockRotations(flock.scene.getMeshByName('rotSkipParentOutside'));
-          expect(rotY._v, 'child rotate_to holds world yaw').to.be.closeTo(90, 0.1);
+          expect(rotY._v, 'child rotate_to untouched').to.equal(0);
         } finally {
           cleanup();
         }
@@ -349,6 +419,27 @@ export function runMeshHierarchyTests(flock) {
         expect(groupMesh.position.x).to.be.closeTo(7, 0.01);
         expect(groupMesh.position.y).to.be.closeTo(0.5, 0.01);
         expect(groupMesh.position.z).to.be.closeTo(0, 0.01);
+      });
+
+      it('should parent every child in a list, keeping world positions', async function () {
+        const groupId = 'hierarchyGroupList';
+        const childIdA = 'hierarchyGroupListA';
+        const childIdB = 'hierarchyGroupListB';
+
+        await flock.createGroup(groupId, { position: [2, 0, 0] });
+        await flock.createBox(childIdA, { width: 1, height: 1, depth: 1, position: [0, 1, 0] });
+        await flock.createBox(childIdB, { width: 1, height: 1, depth: 1, position: [3, 1, 0] });
+        meshIds.push(groupId, childIdA, childIdB);
+
+        await flock.setParent(groupId, [childIdA, childIdB]);
+
+        const groupMesh = flock.scene.getMeshByName(groupId);
+        const childMeshA = flock.scene.getMeshByName(childIdA);
+        const childMeshB = flock.scene.getMeshByName(childIdB);
+        expect(childMeshA.parent).to.equal(groupMesh);
+        expect(childMeshB.parent).to.equal(groupMesh);
+        expect(childMeshA.getAbsolutePosition().x).to.be.closeTo(0, 0.01);
+        expect(childMeshB.getAbsolutePosition().x).to.be.closeTo(3, 0.01);
       });
 
       it('should place two children with different world positions at their own correct positions, regardless of add order', async function () {
@@ -2212,6 +2303,76 @@ export function runMeshHierarchyTests(flock) {
         const followerMesh = flock.scene.getMeshByName(followerId);
         expect(followerMesh._followObserver).to.not.exist;
       });
+
+      const followerBounds = async (followerId, targetId, position, offsetY = 0) => {
+        await flock.makeFollow(followerId, targetId, position, 0, offsetY, 0);
+        flock.scene.onBeforeRenderObservable.notifyObservers(flock.scene);
+        return flock.getEffectiveWorldBounds(flock.scene.getMeshByName(followerId));
+      };
+
+      const createFollowPair = async (suffix) => {
+        const followerId = `followerAt${suffix}`;
+        const targetId = `followTargetAt${suffix}`;
+        await flock.createBox(followerId, {
+          width: 0.5,
+          height: 0.5,
+          depth: 0.5,
+          position: [0, 0, 0],
+        });
+        await flock.createBox(targetId, {
+          width: 1,
+          height: 2,
+          depth: 1,
+          position: [3, 0, 1],
+        });
+        meshIds.push(followerId, targetId);
+        return { followerId, targetId };
+      };
+
+      it('should rest the follower base on the top of the target', async function () {
+        const { followerId, targetId } = await createFollowPair('Top');
+        const { min, max } = await followerBounds(followerId, targetId, 'TOP');
+
+        expect(min.y).to.be.closeTo(2, 0.001);
+        expect((min.x + max.x) / 2).to.be.closeTo(3, 0.001);
+        expect((min.z + max.z) / 2).to.be.closeTo(1, 0.001);
+      });
+
+      it('should use the target centre and bottom from its bounds', async function () {
+        const centre = await createFollowPair('Centre');
+        const centreBounds = await followerBounds(centre.followerId, centre.targetId, 'CENTER');
+        expect(centreBounds.min.y).to.be.closeTo(1, 0.001);
+
+        const bottom = await createFollowPair('Bottom');
+        const bottomBounds = await followerBounds(bottom.followerId, bottom.targetId, 'BOTTOM');
+        expect(bottomBounds.min.y).to.be.closeTo(0, 0.001);
+      });
+
+      it('should add the offset to the follow point', async function () {
+        const { followerId, targetId } = await createFollowPair('Offset');
+        const { min } = await followerBounds(followerId, targetId, 'TOP', 0.5);
+
+        expect(min.y).to.be.closeTo(2.5, 0.001);
+      });
+
+      it('should follow the top of a target scaled about its base anchor', async function () {
+        const { followerId, targetId } = await createFollowPair('Scaled');
+        await flock.setAnchor(targetId, { xPivot: 'CENTER', yPivot: 'MIN', zPivot: 'CENTER' });
+        flock.scene.getMeshByName(targetId).scaling.y = 3;
+
+        const { min } = await followerBounds(followerId, targetId, 'TOP');
+
+        expect(min.y).to.be.closeTo(6, 0.001);
+      });
+
+      it('should place the follower by its own anchor', async function () {
+        const { followerId, targetId } = await createFollowPair('Anchor');
+        await flock.setAnchor(followerId, { xPivot: 'CENTER', yPivot: 'CENTER', zPivot: 'CENTER' });
+
+        const { min, max } = await followerBounds(followerId, targetId, 'TOP');
+
+        expect((min.y + max.y) / 2).to.be.closeTo(2, 0.001);
+      });
     });
 
     describe('hold, attach, and drop @slow', function () {
@@ -2225,6 +2386,12 @@ export function runMeshHierarchyTests(flock) {
         flock.engine = new flock.BABYLON.NullEngine();
         flock.scene = new flock.BABYLON.Scene(flock.engine);
         flock.BABYLON.SceneLoader.ShowLoadingScreen = false;
+        // Templates cached by earlier tests died with the old scene.
+        flock.modelCache = {};
+        flock.modelsBeingLoaded = {};
+        flock.geometryCache = {};
+        flock.materialCache = {};
+        flock.physicsShapeCache = {};
 
         new flock.BABYLON.FreeCamera('testCamera', flock.BABYLON.Vector3.Zero(), flock.scene);
 

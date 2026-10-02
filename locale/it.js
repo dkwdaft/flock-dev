@@ -194,6 +194,7 @@ export default {
 
   // Custom block translations - Connect blocks
   parent: 'genitore %1 figlio %2',
+  parent_children: 'genitore %1 figli %2',
   parent_child: 'genitore %1 figlio %2\noffset x: %3 y: %4 z: %5',
   remove_parent: 'rimuovi genitore da %1',
   stop_follow: 'smetti di seguire %1',
@@ -294,7 +295,10 @@ export default {
   Z_option: 'z', // ai
   create_wedge:
     'aggiungi cuneo %1 %2 larghezza: %3 altezza: %4 profondità: %5\npunta: %6 lungo: %7\n%11 x: %8 y: %9 z: %10', // ai
-  create_donut: 'aggiungi ciambella %1 %2 diametro: %3 spessore: %4 lati: %5\n%9 x: %6 y: %7 z: %8', // ai
+  create_donut:
+    'aggiungi ciambella %1 %2 esterno: %3 interno: %4 spessore: %5 lati: %6\n%10 x: %7 y: %8 z: %9', // ai
+  create_ring:
+    'aggiungi anello %1 %2 altezza: %3 esterno: %4 interno: %5 spessore: %6 lati: %7\n%11 x: %8 y: %9 z: %10', // ai
   create_plane: 'aggiungi piano %1 %2 larghezza: %3 altezza: %4 \n%8 x: %5 y: %6 z: %7',
 
   // Custom block translations - Sound blocks
@@ -445,6 +449,8 @@ export default {
   // Tooltip translations - Connect blocks
   parent_tooltip:
     'Imposta una relazione genitore-figlio tra due oggetto mantenendo il figlio in posizione mondiale.',
+  parent_children_tooltip:
+    'Imposta una relazione genitore-figlio tra un oggetto e un elenco di figli mantenendo ogni figlio in posizione mondiale.',
   parent_child_tooltip: 'Imposta una relazione genitore-figlio con offset specificati in x, y e z.',
   remove_parent_tooltip: "Rimuove la relazione di parentela dall'oggetto specificata.",
   stop_follow_tooltip: "Ferma l'oggetto indicato dal seguire un’altra.",
@@ -550,7 +556,9 @@ export default {
   create_wedge_tooltip:
     'Aggiunge un cuneo: un prisma triangolare per costruire rampe, pendii e tetti. Cambia la punta per cambiare la forma: 0 crea una rampa, 0.5 crea un tetto.', // ai
   create_donut_tooltip:
-    'Aggiunge una ciambella: una forma ad anello. Il diametro definisce la larghezza dell’anello, lo spessore quanto è spesso il tubo e i lati quanto appare liscia.', // ai
+    'Aggiunge una forma a ciambella. Esterno e interno sono i diametri della ciambella e del foro; cambiando l’interno o lo spessore, l’altro si aggiorna. I lati definiscono quanto appare liscia.', // ai
+  create_ring_tooltip:
+    'Aggiunge un anello a bordi piatti, come una rondella o un tubo. Esterno e interno sono i diametri dell’anello e del foro; cambiando l’interno o lo spessore, l’altro si aggiorna. L’altezza definisce quanto è alto e i lati quanto appare liscio.', // ai
   create_plane_tooltip: 'Crea un piano 2D colorato con larghezza, altezza e posizione specificate.',
 
   // Tooltip translations - Sound blocks

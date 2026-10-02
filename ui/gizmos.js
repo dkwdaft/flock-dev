@@ -133,7 +133,7 @@ let scaleDragAxis = null;
 let textOrigScale = { x: 1, y: 1, z: 1 };
 
 // Round shapes have a single horizontal dimension: X and Z always match.
-const RADIAL_BLOCK_TYPES = new Set(['create_capsule', 'create_cylinder']);
+const RADIAL_BLOCK_TYPES = new Set(['create_capsule', 'create_cylinder', 'create_ring']);
 
 // Track state
 let cameraMode = 'play';
@@ -1651,7 +1651,7 @@ function applyPositionHandles(mesh) {
   const pg = gizmoManager?.gizmos?.positionGizmo;
   if (!pg) return;
   const enabled = !isUntargetedCameraFrame(mesh);
-  const handles = [pg.xGizmo, pg.yGizmo, pg.zGizmo, pg.xPlaneGizmo, pg.yPlaneGizmo, pg.zPlaneGizmo];
+  const handles = [pg.xGizmo, pg.yGizmo, pg.zGizmo];
   for (const g of handles) {
     if (!g) continue;
     g.isEnabled = enabled;
@@ -2663,6 +2663,20 @@ function snapMemberPositionToBlock(member) {
   flock.updatePhysics?.(member);
 }
 
+function setWallSizeInputs(block, { diameter, thickness, height }) {
+  setNumberInputs(block, { DIAMETER: diameter, HEIGHT: height });
+  setNumberInputs(block, { THICKNESS: thickness }, { decimals: 2 });
+  const roundedDiameter = getNumberInput(block, 'DIAMETER');
+  const roundedThickness = getNumberInput(block, 'THICKNESS');
+  if (Number.isFinite(roundedDiameter) && Number.isFinite(roundedThickness)) {
+    setNumberInputs(
+      block,
+      { INNER_DIAMETER: Math.max(0, roundedDiameter - 2 * roundedThickness) },
+      { decimals: 2 }
+    );
+  }
+}
+
 // Multiply a member's size inputs by a uniform factor, mirroring the
 // updateScaleBlock cases. Models keep their size in a resize block; its id
 // needs suppressing too (the entity's own block is covered by the caller).
@@ -2689,9 +2703,17 @@ function scaleMemberSizeInputs(mesh, factor, suppress) {
       mul(block, 'DIAMETER');
       break;
     case 'create_donut':
-      mul(block, 'DIAMETER');
-      mul(block, 'THICKNESS');
+    case 'create_ring': {
+      const dims = mesh.metadata?.ringDimensions ?? mesh.metadata?.donutDimensions;
+      if (dims) {
+        setWallSizeInputs(block, {
+          diameter: dims.diameter * factor,
+          thickness: dims.thickness * factor,
+          height: dims.height * factor,
+        });
+      }
       break;
+    }
     case 'create_cylinder':
       mul(block, 'HEIGHT');
       mul(block, 'DIAMETER_TOP');
@@ -3025,10 +3047,16 @@ export function updateScaleBlock(mesh, originalBottomY = null) {
         setNumberInputs(block, { HEIGHT: h, DIAMETER: w });
         break;
 
-      // Bounding box is (diameter + thickness) wide and thickness tall.
       case 'create_donut':
-        setNumberInputs(block, { DIAMETER: Math.max(0, w - h), THICKNESS: h });
+        setWallSizeInputs(block, { diameter: w, thickness: h });
         break;
+
+      case 'create_ring': {
+        const dims = mesh.metadata?.ringDimensions;
+        const wallRatio = dims ? dims.thickness / dims.diameter : 0.125;
+        setWallSizeInputs(block, { diameter: w, thickness: w * wallRatio, height: h });
+        break;
+      }
 
       case 'create_cylinder': {
         const newScaledDiameter = w;
@@ -3663,7 +3691,8 @@ function handleScaleGizmo() {
     if (gizmoManager.scaleGizmoEnabled) {
       switch (block?.type) {
         case 'create_capsule':
-        case 'create_cylinder': {
+        case 'create_cylinder':
+        case 'create_ring': {
           // Babylon has no independent depth here, so whichever horizontal
           // handle was dragged drives both X and Z.
           const diameter = scaleDragAxis === 'z' ? mesh.scaling.z : mesh.scaling.x;
@@ -3917,21 +3946,12 @@ function handleRotationGizmo() {
   onExit(() => gizmoManager.gizmos.rotationGizmo.onDragEndObservable.remove(rotDragEnd));
 }
 
-function isCreatedInside(block, ancestorBlock) {
-  if (!block || !ancestorBlock) return false;
-  for (let b = block.getSurroundParent(); b; b = b.getSurroundParent()) {
-    if (b === ancestorBlock) return true;
-  }
-  return false;
-}
-
 export function updateChildBlockRotations(mesh) {
-  const rootKey = mesh?.metadata?.blockKey;
-  // Only groups persist orientation in their members; other parents keep
-  // the existing rotation-only behaviour.
-  const isGroupRoot = mesh?.metadata?.shapeType === 'Group';
-  const rootBlock = meshMap[rootKey];
-  const children = mesh?.getChildMeshes?.(false) || [];
+  // Only groups persist orientation in their members. Other children's
+  // rotations are relative to their parent, so they just follow it.
+  if (mesh?.metadata?.shapeType !== 'Group') return;
+  const rootKey = mesh.metadata.blockKey;
+  const children = mesh.getChildMeshes(false);
   const seenKeys = new Set();
 
   children.forEach((child) => {
@@ -3939,17 +3959,15 @@ export function updateChildBlockRotations(mesh) {
     if (!key || key === rootKey || seenKeys.has(key)) return;
     seenKeys.add(key);
 
-    if (!isGroupRoot && isCreatedInside(meshMap[key], rootBlock)) return;
-
     const childParent = child.parent;
     child.setParent(null);
     let rotation;
-    let pos = null;
+    let pos;
     try {
       rotation = getMeshRotationInDegrees(child);
       // A rotated group moves its members: persist world positions too, read
       // in the same unparented window, or re-run restores them unrotated.
-      if (isGroupRoot) pos = flock.getBlockPositionFromMesh(child);
+      pos = flock.getBlockPositionFromMesh(child);
     } finally {
       child.setParent(childParent);
     }
@@ -3957,7 +3975,7 @@ export function updateChildBlockRotations(mesh) {
     const rotateBlock = findOrCreateRotateBlock(child);
     if (rotateBlock) setBlockXYZ(rotateBlock, rotation.x, rotation.y, rotation.z);
     let memberBlock = null;
-    if (isGroupRoot && pos) {
+    if (pos) {
       memberBlock = meshMap[key];
       if (memberBlock && !memberBlock.disposed) {
         writePositionToBlock(memberBlock, pos);
@@ -3965,7 +3983,7 @@ export function updateChildBlockRotations(mesh) {
     }
     // Snap live onto the rounded blocks: set the world orientation while
     // unparented, then re-anchor the position to the rounded base.
-    if (isGroupRoot && (rotateBlock || memberBlock)) {
+    if (rotateBlock || memberBlock) {
       const parent = child.parent;
       child.setParent(null);
       try {
@@ -3999,7 +4017,7 @@ export function updateChildBlockRotations(mesh) {
 
   // Rotating re-shapes the content bounds - re-centre the origin so the next
   // transform starts from a consistent pivot.
-  if (isGroupRoot) flock.recomputeGroupGeometry(mesh);
+  flock.recomputeGroupGeometry(mesh);
 }
 
 // Position: Allow the user to move the mesh by dragging it
