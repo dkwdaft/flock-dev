@@ -23,6 +23,7 @@ import {
 } from '../blocks/blocks';
 import { defineBaseBlocks } from '../blocks/base';
 import { defineShapeBlocks } from '../blocks/shapes';
+import { definePrefabBlocks, prefabFlyoutItems } from '../blocks/prefabs';
 import { defineSceneBlocks } from '../blocks/scene.js';
 import { defineModelBlocks } from '../blocks/models.js';
 import { defineEffectsBlocks } from '../blocks/effects.js';
@@ -42,6 +43,7 @@ import { defineMaterialsBlocks } from '../blocks/materials.js';
 import { defineColourBlocks } from '../blocks/colour.js';
 import { defineSensingBlocks } from '../blocks/sensing.js';
 import { defineTextBlocks } from '../blocks/text.js';
+import { paramOnlyVariableIds } from '../blocks/variableScope.js';
 import { defineGenerators } from '../generators/generators.js';
 import { patchWarningIconSize } from './customWarningIcon.js';
 import { initContextMenus } from '../ui/contextmenu.js';
@@ -311,6 +313,7 @@ export function initializeBlocks() {
   defineSceneBlocks();
   defineModelBlocks();
   defineShapeBlocks();
+  definePrefabBlocks();
   defineEffectsBlocks();
   defineCameraBlocks();
   defineXRBlocks();
@@ -630,7 +633,15 @@ export function initializeWorkspace() {
 
   // Register variable category callback
   workspace.registerToolboxCategoryCallback('VARIABLE', function (ws) {
-    const items = Blockly.Variables.flyoutCategory(ws);
+    const paramOnly = paramOnlyVariableIds(ws);
+    const variables = ws
+      .getVariableMap()
+      .getVariablesOfType('')
+      .filter((variable) => !paramOnly.has(variable.getId()));
+    const items = [
+      ...Blockly.Variables.flyoutCategory(ws).filter((item) => item.kind !== 'block'),
+      ...Blockly.Variables.jsonFlyoutCategoryBlocks(ws, variables, true),
+    ];
 
     // Blockly leaves the set block's socket empty; fill it with a number, and
     // follow it with a copy holding text, so both kinds are one drag away.
@@ -665,7 +676,11 @@ export function initializeWorkspace() {
       return `${base}${suffix}`;
     };
 
-    return items.flatMap((item) => {
+    const prefabs = prefabFlyoutItems(ws, nextName);
+    const definitionIndex = items.findIndex((item) => item.type === 'procedures_defreturn');
+    items.splice(definitionIndex + 1, 0, prefabs.definition);
+
+    return [...items, ...prefabs.callers].flatMap((item) => {
       if (item.kind !== 'block' || item.type !== 'procedures_callreturn') return [item];
       const { kind: _kind, ...caller } = item;
       return [

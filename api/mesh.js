@@ -19,6 +19,36 @@ function toSides(value) {
   return Math.max(3, Math.round(toDim(value, 24)));
 }
 
+// Snap a bone-attached mesh so its front faces the character's forward,
+// compensating for the bone's rest orientation. Post-attach rotates stay
+// in bone space, so Y remains character-relative yaw for user tweaks.
+function alignAttachedToCharacterFacing(attachedMesh, targetMesh) {
+  try {
+    const B = flock?.BABYLON;
+    if (!B || !attachedMesh || !targetMesh) return;
+    const facing =
+      typeof flock._followFacing === 'function' ? flock._followFacing(targetMesh) : null;
+    if (!facing || facing.lengthSquared() < 1e-8) return;
+    facing.normalize();
+    const desiredWorld = B.Quaternion.FromLookDirectionLH(facing, B.Axis.Y);
+    if (!attachedMesh.rotationQuaternion) {
+      attachedMesh.rotationQuaternion = B.Quaternion.FromEulerVector(
+        attachedMesh.rotation ?? B.Vector3.Zero()
+      );
+    }
+    attachedMesh.rotationQuaternion.copyFromFloats(0, 0, 0, 1);
+    attachedMesh.computeWorldMatrix(true);
+    const parentWorld = new B.Quaternion();
+    attachedMesh.getWorldMatrix().decompose(undefined, parentWorld);
+    const local = parentWorld.conjugate().multiply(desiredWorld);
+    local.normalize();
+    attachedMesh.rotationQuaternion.copyFrom(local);
+    attachedMesh.computeWorldMatrix(true);
+  } catch (_) {
+    console.warn('Suppressed non-critical error:', _);
+  }
+}
+
 export const flockMesh = {
   createCapsuleFromBoundingBox(mesh, scene) {
     const CAPSULE_DEGENERATE_EPSILON = 0.01;
@@ -401,6 +431,7 @@ export const flockMesh = {
       });
     }
 
+    if (color?.__prefabSlot !== undefined) mesh.metadata.prefabMaterialIndex = color.__prefabSlot;
     mesh.metadata.sharedMaterial = !applyColor;
     mesh.isVisible = true;
     mesh.setEnabled(true);
@@ -1247,6 +1278,7 @@ export const flockMesh = {
             if (bone) {
               meshToAttachInstance.attachToBone(bone, targetWithSkeleton);
               meshToAttachInstance.position = new flock.BABYLON.Vector3(xOffset, yOffset, zOffset);
+              alignAttachedToCharacterFacing(meshToAttachInstance, targetMeshInstance);
 
               // Store metadata for re-attachment on live model switch
               (meshToAttachInstance.metadata ||= {})._attachedBoneName = 'LeftHand';
@@ -1340,6 +1372,8 @@ export const flockMesh = {
               });
 
               meshToAttachInstance.position = new flock.BABYLON.Vector3(x, y, z);
+
+              alignAttachedToCharacterFacing(meshToAttachInstance, targetMeshInstance);
 
               if (logicalBoneName === 'Head') {
                 // Rest accessories on top of the head, not at the neck joint the bone sits
