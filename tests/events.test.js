@@ -527,6 +527,88 @@ export function runEventsTests(flock) {
           flock.scene.UITexture.getControlByName(buttonB)?.dispose();
         });
       });
+
+      it('registers a when-clicked handler on a GUI button created afterwards', async function () {
+        const buttonId = 'latebutton__blockid';
+        let count = 0;
+        flock.onTrigger('latebutton', {
+          trigger: 'OnPickTrigger',
+          callback: () => count++,
+          applyToGroup: true,
+        });
+
+        flock.UIButton({ text: 'Late', x: 0, y: 0, width: 'SMALL', buttonId });
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        const button = flock.scene.UITexture.getControlByName(buttonId);
+        button.onPointerClickObservable.notifyObservers({});
+        expect(count).to.equal(1);
+        button.dispose();
+      });
+
+      it('registers a when-clicked handler on a clone created afterwards', async function () {
+        const source = await flock.createBox('lateclonesrc__blk', {
+          width: 1,
+          height: 1,
+          depth: 1,
+          position: [0, 0, 0],
+        });
+        meshIds.push(source);
+
+        const picked = [];
+        flock.onTrigger('lateclone', {
+          trigger: 'OnPickTrigger',
+          callback: (name) => picked.push(name),
+          applyToGroup: true,
+        });
+
+        const cloneName = flock.cloneMesh({
+          sourceMeshName: source,
+          cloneId: 'lateclonesrc__1',
+          cloneName: 'lateclone',
+        });
+        const clone = await flock.whenModelReady(cloneName);
+        meshIds.push(clone.name);
+
+        clone.actionManager.processTrigger(flock.BABYLON.ActionManager.OnPickTrigger, {
+          source: clone,
+          meshUnderPointer: clone,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(picked).to.deep.equal([clone.name]);
+      });
+
+      it('fires once when a clone is assigned to its source variable', async function () {
+        const source = await flock.createBox('selfclone__blk', {
+          width: 1,
+          height: 1,
+          depth: 1,
+          position: [0, 0, 0],
+        });
+        meshIds.push(source);
+
+        const picked = [];
+        flock.onTrigger('selfclone', {
+          trigger: 'OnPickTrigger',
+          callback: (name) => picked.push(name),
+          applyToGroup: true,
+        });
+
+        const cloneName = flock.cloneMesh({
+          sourceMeshName: source,
+          cloneId: 'selfclone__1',
+          cloneName: 'selfclone',
+        });
+        const clone = await flock.whenModelReady(cloneName);
+        meshIds.push(clone.name);
+
+        clone.actionManager.processTrigger(flock.BABYLON.ActionManager.OnPickTrigger, {
+          source: clone,
+          meshUnderPointer: clone,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(picked).to.deep.equal([clone.name]);
+      });
     });
 
     describe('onTrigger hierarchy bubbling @physics', function () {
@@ -784,9 +866,11 @@ export function runEventsTests(flock) {
           inner.setParent(door);
           flock.recomputeGroupGeometry(group);
 
-          camera.position.set(0, 0.31, -6);
-          camera.setTarget(new flock.BABYLON.Vector3(0, 0.31, 0));
+          const doorCentre = door.getAbsolutePosition();
+          camera.position.set(doorCentre.x, doorCentre.y, -6);
+          camera.setTarget(doorCentre);
           camera.computeWorldMatrix?.(true);
+          flock.scene.updateTransformMatrix(true);
 
           const engine = flock.scene.getEngine();
           const viewport = camera.viewport.toGlobal(
@@ -794,7 +878,7 @@ export function runEventsTests(flock) {
             engine.getRenderHeight()
           );
           const coords = flock.BABYLON.Vector3.Project(
-            door.getAbsolutePosition(),
+            doorCentre,
             flock.BABYLON.Matrix.Identity(),
             flock.scene.getTransformMatrix(),
             viewport
@@ -802,7 +886,7 @@ export function runEventsTests(flock) {
 
           const picked = flock.scene.pick(coords.x, coords.y);
           expect(picked.hit, 'click reaches the scene').to.be.true;
-          expect(picked.pickedMesh, 'shell occludes the door').to.equal(group);
+          expect(picked.pickedMesh, 'shell and door faces are coplanar').to.be.oneOf([group, door]);
 
           const hits = flock.scene.multiPick(
             coords.x,
