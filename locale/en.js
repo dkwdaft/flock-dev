@@ -9,7 +9,7 @@ export default {
   CATEGORY_TRANSFORM: 'Transform',
   CATEGORY_PHYSICS: 'Physics',
   CATEGORY_CONNECT: 'Connect',
-  CATEGORY_COMBINE: 'Combine',
+  CATEGORY_MODIFY: 'Modify',
   CATEGORY_ANIMATE: 'Animate',
   CATEGORY_KEYFRAME: 'Keyframe',
   CATEGORY_CONTROL: 'Control',
@@ -194,6 +194,8 @@ export default {
   subtract_meshes: 'add %1 as %2 subtract %3',
   intersection_meshes: 'add %1 as intersect %2',
   hull_meshes: 'add %1 as hull of %2',
+  flip: 'flip %1 %2',
+  mirror_mesh: 'add %1 as mirror of %2 along %3 about %4',
 
   // Custom block translations - Connect blocks
   parent: 'parent %1 child %2',
@@ -212,6 +214,8 @@ export default {
   wait_seconds: 'wait %1 seconds',
   wait_until: 'wait until %1',
   local_variable: 'local %1',
+  tag_object: 'tag %1 with %2',
+  all_with_tag: 'all with tag %1',
   for_loop2: 'for each %1 from %2 to %3 by %4 do %5',
   for_loop: 'for each %1 from %2 to %3 by %4 do %5',
   get_lexical_variable: '%1',
@@ -504,6 +508,9 @@ export default {
   subtract_meshes_tooltip: 'Subtract a list of objects from a base object and store the result.',
   intersection_meshes_tooltip: 'Intersect a list of objects and store the resulting geometry.',
   hull_meshes_tooltip: 'Create a convex hull from a list of objects and store the result.',
+  flip_tooltip: 'Mirror an object across an axis. Does nothing on animated characters.',
+  mirror_mesh_tooltip:
+    'Add a mirrored copy of an object across an axis, through the centre of another object. Does nothing on animated characters.',
 
   // Tooltip translations - Connect blocks
   parent_tooltip:
@@ -529,6 +536,9 @@ export default {
   wait_until_tooltip: 'Wait until the condition is true.',
   local_variable_tooltip:
     'Create a local version of a selected variable. This hides the global variable and can have a different value.',
+  tag_object_tooltip:
+    'Give a list of objects a tag. Copies of the objects get the tag too. Use the tag in when clicked or on collision blocks to respond to every object with the tag.',
+  all_with_tag_tooltip: 'A list of all the objects with this tag.',
   for_loop2_tooltip: 'Loop from a starting number to an ending number by a given step.',
   for_loop_tooltip:
     'Loop from a starting number to an ending number by a given step. Click on the dropdown to get the loop variable to use in your code.',
@@ -746,8 +756,8 @@ export default {
   snippet_skyworld_hint: 'Adds a gradient sky and a ground map to the scene.',
   snippet_player_camera_hint: 'A player character with physics and a camera that follows them.',
   snippet_hinged_door_hint: 'A room with a door that swings open into the room when clicked, then shuts after a few seconds.',
-  snippet_bookcase_hint: 'A bookcase prefab. Give it a width, height, depth, number of shelves, a shelf material and a material for the frame. Use add bookcase to place one with a position and y rotation.',
-  snippet_bookcase_call_hint: 'Adds a wooden bookcase with 4 shelves as bookcase1 so you can move it. Add the bookcase prefab too.',
+  snippet_bookcase_hint: 'A bookcase prefab. Give it a width, height, depth, number of shelves, a shelf material and a material for the frame.',
+  snippet_desk_hint: 'A desk prefab. Give it a width, height, depth, a drawer material and a material for the frame. Its half-width top drawer sits to the right with open knee space beside it, and slides open when clicked, then shuts after a few seconds. The full-depth drawer is an open box you can place objects inside.',
 
   // Dropdown option translations
   AWAIT_option: 'await',
@@ -1187,6 +1197,7 @@ export default {
   microbit_monkey_ui: 'micro:bit monkey',
   ar_demo_ui: 'AR Demo',
   vr_demo_ui: 'VR Demo',
+  tower_of_hanoi_ui: 'Tower of Hanoi',
   tree_jump_ui: 'Tree jump',
   shape_push_ui: 'Shape push',
   alien_planet_ui: 'Alien planet',

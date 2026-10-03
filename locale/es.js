@@ -9,7 +9,7 @@ export default {
   CATEGORY_TRANSFORM: 'Transformar', // human
   CATEGORY_PHYSICS: 'Física', // human
   CATEGORY_CONNECT: 'Conectar', // human
-  CATEGORY_COMBINE: 'Combinar', // human
+  CATEGORY_MODIFY: 'Modificar',
   CATEGORY_ANIMATE: 'Animar', // human
   CATEGORY_KEYFRAME: 'Fotograma clave', // human
   CATEGORY_CONTROL: 'Control', // human
@@ -1142,6 +1142,7 @@ export default {
   microbit_monkey_ui: 'Mono micro:bit', // human
   ar_demo_ui: 'Demo de RA', // ai
   vr_demo_ui: 'Demo de RV', // ai
+  tower_of_hanoi_ui: 'Torres de Hanói', // ai
   tree_jump_ui: 'Salto de árbol', // human
   shape_push_ui: 'Empujar forma', // human
   alien_planet_ui: 'Planeta alienígena', // human

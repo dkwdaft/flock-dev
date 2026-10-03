@@ -359,6 +359,18 @@ Rotates a mesh to a specific 3D rotation instantly. For a child mesh the angles 
 
 Scales a mesh.
 
+#### `mirror(sourceMeshName, options)`
+
+Adds a mirrored copy of a mesh, reflected across a plane across one axis of the about mesh (world axes without one). The copy is its own object, with its own name, events and colour. Returns the copy's name. Animated characters are not mirrored.
+
+**Parameters:**
+
+- `sourceMeshName` (string): Name of the mesh to mirror
+- `options.mirrorId` (string): Name for the copy
+- `options.axis` (string): `'x'`, `'y'` or `'z'`
+- `options.aboutMeshName` (string, optional): The plane passes through this mesh's centre and turns with it; without it, the plane passes through the origin. If this mesh is inside the source group it is left out of the copy.
+- `options.callback` (function, optional): Runs with the copy's name once it is ready
+
 ### Physics
 
 #### `setPhysics(meshName, physicsType)`
@@ -656,6 +668,31 @@ Broadcasts a custom event.
 #### `onTrigger(meshName, callback)`
 
 Sets up collision/trigger detection for a mesh.
+
+#### `createTag(tagName)`
+
+Creates a tag and returns its name, which has a numeric suffix if `tagName` is already used by an object. Calling it again with the same `tagName` returns the same tag. Pass a tag to `onTrigger` or `onIntersect` in place of a mesh name to respond to every mesh with that tag, including meshes tagged later and copies of tagged meshes.
+
+The callback receives the names of the actual meshes involved, never the tag. `onTrigger` passes the clicked mesh. `onIntersect(first, second, …)` passes `(firstMesh, secondMesh)` in the same order as the arguments, so `onIntersect(ball, ring, …)` gives the ball and then the ring that was hit.
+
+#### `tagObject(meshNames, tag)`
+
+Gives each mesh in a list a tag. A single mesh name works too. Copies made with `cloneMesh` keep their source's tags; mirrored copies do not.
+
+#### `getObjectsWithTag(tag)`
+
+Returns the names of all meshes with the tag, in creation order.
+
+**Example:**
+
+```javascript
+const ring = createTag('ring');
+await tagObject([bigRing, smallRing], ring);
+onTrigger(ring, {
+  trigger: 'OnPickTrigger',
+  callback: async (picked) => await changeColor(picked, { color: '#ff0000' }),
+});
+```
 
 ### micro:bit
 

@@ -1,5 +1,6 @@
 import * as Blockly from 'blockly';
 import { SECTION_NAME_TYPE, findOwningSection } from '../blocks/sectionContainment.js';
+import { getVariableInfo } from './generators-utilities.js';
 
 function budgetYield(generator, label) {
   const timingVar = generator.nameDB_.getDistinctName(
@@ -274,6 +275,24 @@ export function registerControlGenerators(javascriptGenerator) {
     // Generate a local 'let' declaration for the selected variable
     const code = `let ${variable};\n`;
     return code;
+  };
+
+  javascriptGenerator.forBlock['tag_object'] = function (block) {
+    const objects =
+      javascriptGenerator.valueToCode(block, 'OBJECTS', javascriptGenerator.ORDER_NONE) || '[]';
+    const { generatedName, userVariableName } = getVariableInfo(block, 'TAG_VAR');
+    return (
+      `${generatedName} = createTag(${JSON.stringify(userVariableName)});\n` +
+      `await tagObject(${objects}, ${generatedName});\n`
+    );
+  };
+
+  javascriptGenerator.forBlock['all_with_tag'] = function (block) {
+    const tagName = javascriptGenerator.nameDB_.getName(
+      block.getFieldValue('TAG_VAR'),
+      Blockly.Names.NameType.VARIABLE
+    );
+    return [`getObjectsWithTag(${tagName})`, javascriptGenerator.ORDER_NONE];
   };
 
   // Wait x milliseconds

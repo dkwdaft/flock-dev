@@ -72,6 +72,16 @@ const driveOne = (mesh) => {
   };
 };
 
+// A body cloned mid-drive would keep the drive's temporary ANIMATED state for
+// good, which pins the clone in place; give it the source's resting state.
+export const restoreRestingState = (sourceMesh, body) => {
+  const drive = activeDrives.get(sourceMesh);
+  if (!drive || !isBodyAlive(body)) return;
+  body.setMotionType(drive.motionType);
+  body.setPrestepType(drive.prestepType);
+  body.disablePreStep = drive.disablePreStep;
+};
+
 const adoptPhysicsChangeDuringDrive = (mesh) => {
   const drive = activeDrives.get(mesh);
   const body = mesh.physics;
@@ -82,6 +92,12 @@ const adoptPhysicsChangeDuringDrive = (mesh) => {
   applyDrivenState(body);
 };
 
+const redriveRebuiltBody = (mesh) => {
+  const body = mesh.physics;
+  if (!activeDrives.has(mesh) || !isBodyAlive(body)) return;
+  applyDrivenState(body);
+};
+
 const withPhysicsDescendants = (mesh) =>
   mesh ? [mesh, ...mesh.getChildMeshes(false)].filter(isPhysicsEnabled) : [];
 
@@ -89,16 +105,40 @@ export const teleportBodyToMesh = (mesh) => {
   withPhysicsDescendants(mesh).forEach(teleportOne);
 };
 
+// Meshes under an active drive, so a child parented mid-motion can join it.
+const activeDriveRoots = new Map();
+
 export const driveBody = (mesh) => {
   const drives = withPhysicsDescendants(mesh).map(driveOne);
-  return {
+  const controller = {
     teleport() {
       drives.forEach((drive) => drive.teleport());
     },
     release() {
       drives.forEach((drive) => drive.release());
+      const controllers = activeDriveRoots.get(mesh);
+      controllers?.delete(controller);
+      if (!controllers?.size) activeDriveRoots.delete(mesh);
+    },
+    adopt(child) {
+      withPhysicsDescendants(child).forEach((childMesh) => {
+        const drive = driveOne(childMesh);
+        drives.push(drive);
+        drive.teleport();
+      });
     },
   };
+  if (!activeDriveRoots.has(mesh)) activeDriveRoots.set(mesh, new Set());
+  activeDriveRoots.get(mesh).add(controller);
+  return controller;
+};
+
+// Without this, a child parented under a gliding group keeps a static body
+// where it was attached while its mesh travels on with the group.
+export const joinActiveDrives = (child) => {
+  for (let node = child?.parent; node; node = node.parent) {
+    activeDriveRoots.get(node)?.forEach((controller) => controller.adopt(child));
+  }
 };
 
 // Restitution lives on the shape material, not mass properties. Reads
@@ -595,9 +635,11 @@ export const flockPhysics = {
   },
   updatePhysics(mesh, parent = null) {
     if (!parent) parent = mesh;
-    if (mesh.scaling.x < 0.01) mesh.scaling.x = Math.max(0.01, Math.abs(mesh.scaling.x));
-    if (mesh.scaling.y < 0.01) mesh.scaling.y = Math.max(0.01, Math.abs(mesh.scaling.y));
-    if (mesh.scaling.z < 0.01) mesh.scaling.z = Math.max(0.01, Math.abs(mesh.scaling.z));
+    // Keeps the sign: a negative axis is a deliberate mirror (flip, mirror).
+    for (const axis of ['x', 'y', 'z']) {
+      const value = mesh.scaling[axis];
+      if (Math.abs(value) < 0.01) mesh.scaling[axis] = value < 0 ? -0.01 : 0.01;
+    }
     mesh.computeWorldMatrix(true);
     mesh.refreshBoundingInfo(true);
     if (!isBodyAlive(parent.physics)) return;
@@ -607,10 +649,13 @@ export const flockPhysics = {
     if (!physicsShape) return;
 
     const boundingBox = mesh.getBoundingInfo().boundingBox;
-    const width = boundingBox.maximumWorld.x - boundingBox.minimumWorld.x;
-    const height = boundingBox.maximumWorld.y - boundingBox.minimumWorld.y;
-    const depth = boundingBox.maximumWorld.z - boundingBox.minimumWorld.z;
-    const center = boundingBox.center.multiply(mesh.scaling);
+    const size = boundingBox.maximum
+      .subtract(boundingBox.minimum)
+      .multiplyInPlace(mesh.absoluteScaling);
+    const width = Math.abs(size.x);
+    const height = Math.abs(size.y);
+    const depth = Math.abs(size.z);
+    const center = boundingBox.center.multiply(mesh.absoluteScaling);
 
     let newShape;
     let detectedShapeType;
@@ -717,6 +762,7 @@ export const flockPhysics = {
       disablePreStep: physicsBody.disablePreStep,
       shapeType: detectedShapeType,
     };
+    redriveRebuiltBody(parent);
   },
   addBeforePhysicsObservable(scene, ...meshes) {
     const beforePhysicsObserver = scene.onBeforePhysicsObservable.add(() => {
@@ -1097,6 +1143,7 @@ export const flockPhysics = {
     }
   ) {
     const groupName = flock._familyOf(meshName);
+    if (flock._isTag(meshName)) applyToGroup = true;
     const getAllGuiControls = () => {
       const root = flock.scene?.UITexture?._rootContainer ?? flock.scene?.UITexture?.rootContainer;
       if (!root) return [];
@@ -1126,12 +1173,15 @@ export const flockPhysics = {
 
     if (applyToGroup) {
       let matchingButtons = [];
-      if (flock.scene.UITexture) {
+      if (flock.scene.UITexture && !flock._isTag(groupName)) {
         matchingButtons = getAllGuiControls().filter(
-          (control) => control?.name && flock._familyOf(control.name) === groupName
+          (control) =>
+            control instanceof flock.GUI.Button &&
+            control.name &&
+            flock._familyOf(control.name) === groupName
         );
       }
-      const matching = flock.scene.meshes.filter((m) => flock._familyOf(m.name) === groupName);
+      const matching = flock.scene.meshes.filter((m) => flock._inGroup(m, groupName));
 
       if (matchingButtons.length > 0) {
         for (const btn of matchingButtons) {
@@ -1343,6 +1393,8 @@ export const flockPhysics = {
       return flock._familyOf(rawName);
     };
 
+    if (flock._isTag(otherMeshName)) applyToGroupOther = true;
+
     if (applyToGroupSelf) {
       const groupName = resolveCanonicalGroupName(meshName);
 
@@ -1358,7 +1410,7 @@ export const flockPhysics = {
       flock.pendingSelfIntersections.get(groupName).push(pendingEntry);
 
       if (flock.scene) {
-        const matching = flock.scene.meshes.filter((m) => flock._familyOf(m.name) === groupName);
+        const matching = flock.scene.meshes.filter((m) => flock._inGroup(m, groupName));
         const promises = [];
         for (let i = 0; i < matching.length; i++) {
           for (let j = i + 1; j < matching.length; j++) {
@@ -1381,6 +1433,26 @@ export const flockPhysics = {
       }
 
       return;
+    }
+
+    const isTag = flock._isTag(meshName);
+    const mayBecomeTag =
+      applyToGroupOther &&
+      !flock._nameRegistry.has(meshName) &&
+      !flock.scene?.getMeshByName(meshName);
+    if (isTag || mayBecomeTag) {
+      const registered = new Set();
+      const register = (name) => {
+        if (registered.has(name)) return Promise.resolve();
+        registered.add(name);
+        return flock.onIntersect(name, otherMeshName, { trigger, callback, applyToGroupOther });
+      };
+      flock.pendingTagIntersections ??= new Map();
+      if (!flock.pendingTagIntersections.has(meshName)) {
+        flock.pendingTagIntersections.set(meshName, []);
+      }
+      flock.pendingTagIntersections.get(meshName).push({ register });
+      if (isTag) return Promise.all(flock.getObjectsWithTag(meshName).map(register));
     }
 
     if (applyToGroupOther) {
@@ -1411,7 +1483,7 @@ export const flockPhysics = {
       };
 
       if (flock.scene) {
-        const matching = flock.scene.meshes.filter((m) => flock._familyOf(m.name) === groupName);
+        const matching = flock.scene.meshes.filter((m) => flock._inGroup(m, groupName));
         const matchingNames = [...new Set(matching.map((m) => m.name))];
         return Promise.all(matchingNames.map((name) => registerForOther(name)));
       }

@@ -92,6 +92,55 @@ export function defineControlBlocks() {
     },
   };
 
+  Blockly.Blocks['tag_object'] = {
+    init: function () {
+      this.jsonInit({
+        type: 'tag_object',
+        message0: translate('tag_object'),
+        args0: [
+          {
+            type: 'input_value',
+            name: 'OBJECTS',
+            check: 'Array',
+          },
+          {
+            type: 'field_variable',
+            name: 'TAG_VAR',
+            variable: 'tag1',
+          },
+        ],
+        inputsInline: true,
+        previousStatement: null,
+        nextStatement: null,
+        colour: categoryColours['Control'],
+        tooltip: getTooltip('tag_object'),
+      });
+      this.setHelpUrl(getHelpUrlFor(this.type));
+      this.setStyle('control_blocks');
+    },
+  };
+
+  Blockly.Blocks['all_with_tag'] = {
+    init: function () {
+      this.jsonInit({
+        type: 'all_with_tag',
+        message0: translate('all_with_tag'),
+        args0: [
+          {
+            type: 'field_variable',
+            name: 'TAG_VAR',
+            variable: 'tag1',
+          },
+        ],
+        output: 'Array',
+        colour: categoryColours['Lists'],
+        tooltip: getTooltip('all_with_tag'),
+      });
+      this.setHelpUrl(getHelpUrlFor(this.type));
+      this.setStyle('list_blocks');
+    },
+  };
+
   Blockly.Blocks['for_loop'] = {
     init: function () {
       this.jsonInit({
