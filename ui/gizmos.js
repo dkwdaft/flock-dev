@@ -1748,15 +1748,14 @@ export function viewCameraForBlock(block) {
   }
 }
 
-// Copy the view you're editing from into the camera block. A fly camera takes
-// its position and rotation; a follow/orbit camera asks for the object to
-// look at, then takes its distance and angles from the view to that object.
+// Copy the view on screen into the camera block, including while looking
+// through this camera. A fly camera takes its position and rotation; a
+// follow/orbit camera asks for the object to look at, then takes its distance
+// and angles from the view to that object.
 export function captureViewToCameraBlock(block) {
   const frame = getMeshFromBlock(block);
   if (!isCameraFrame(frame) || block.disposed) return;
-  const rigCamera = frame.metadata.camera;
-  let view = flock.scene.activeCamera;
-  if (view === rigCamera) view = previewSavedCamera ?? flock.defaultCamera;
+  const view = flock.scene.activeCamera;
   if (!view || view.isDisposed()) return;
   view.computeWorldMatrix(true);
   const eye = view.globalPosition.clone();
@@ -3285,6 +3284,12 @@ function commitMoveToBlocks(mesh, startPosition) {
 // the 1dp rounding makes that a small snap onto the rounded values, keeping
 // the scene identical to what Play rebuilds. The caller wraps this (with the
 // parent's own block update) in a single Blockly event group: one undo.
+export function moveGroupBy(groupMesh, delta) {
+  groupMesh.setAbsolutePosition(groupMesh.getAbsolutePosition().add(delta));
+  groupMesh.computeWorldMatrix(true);
+  inEventGroup(() => updateChildBlockPositions(groupMesh, delta));
+}
+
 function updateChildBlockPositions(mesh, delta = null) {
   const rootKey = mesh?.metadata?.blockKey;
   const children = mesh?.getChildMeshes?.(false) || [];
