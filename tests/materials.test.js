@@ -141,6 +141,32 @@ export function runMaterialsTests(flock) {
       expect(flock.highlighter.hasMesh(mesh)).to.be.true;
     });
 
+    it('should not highlight the say helper plane', async function () {
+      const { id } = await createBoxWithColorAndPosition('boxHighlightSay');
+      boxIds.push(id);
+
+      await flock.say(id, { text: 'hi', duration: 0 });
+      await flock.highlight(id, { color: '#ffff00' });
+
+      const mesh = flock.scene.getMeshByName(id);
+      expect(flock.highlighter.hasMesh(mesh)).to.be.true;
+      for (const child of mesh.getChildMeshes()) {
+        if (flock._isSayHelperMesh(child)) {
+          expect(flock.highlighter.hasMesh(child)).to.be.false;
+        }
+      }
+    });
+
+    it('should still highlight a regular mesh named textPlane', async function () {
+      const { id } = await createBoxWithColorAndPosition('textPlane');
+      boxIds.push(id);
+
+      await flock.highlight(id, { color: '#ffff00' });
+
+      const mesh = flock.scene.getMeshByName(id);
+      expect(flock.highlighter.hasMesh(mesh)).to.be.true;
+    });
+
     it('should set alpha value for a mesh and its children', async function () {
       const { id } = await createBoxWithColorAndPosition('boxAlpha');
       boxIds.push(id);
@@ -194,6 +220,62 @@ export function runMaterialsTests(flock) {
         .find((c) => c.getClassName() === 'Rectangle' && c.name !== 'textBackground');
       const rgbaParts = fullScreenRect.background.match(/[\d.]+/g).map(Number);
       expect(rgbaParts[3]).to.be.closeTo(0, 0.01);
+    });
+
+    it('sizes say() textures to the plane instead of always using 1024px', async function () {
+      const smallId = flock.createPlane('planeSaySmall', {
+        color: '#ff0000',
+        width: 0.4,
+        height: 0.4,
+        position: [0, 0, 0],
+      });
+      boxIds.push(smallId);
+
+      await flock.say(smallId, { text: 'Q', duration: 0 });
+
+      const smallMesh = flock.scene.getMeshByName(smallId);
+      const smallSize = smallMesh.advancedTexture.getSize();
+      expect(smallSize.width).to.equal(256);
+      expect(smallSize.height).to.equal(256);
+
+      const smallText = smallMesh.advancedTexture
+        .getDescendants()
+        .find((c) => c.getClassName() === 'TextBlock');
+      expect(smallText.text).to.equal('Q');
+      // Default size 24 -> 24 * 8px at 1024, scaled by 256/1024.
+      expect(parseFloat(smallText.fontSize)).to.be.closeTo(48, 0.5);
+
+      const bigId = flock.createPlane('planeSayBig', {
+        color: '#00ff00',
+        width: 4,
+        height: 4,
+        position: [10, 0, 0],
+      });
+      boxIds.push(bigId);
+
+      await flock.say(bigId, { text: 'Q', duration: 0 });
+
+      const bigMesh = flock.scene.getMeshByName(bigId);
+      const bigSize = bigMesh.advancedTexture.getSize();
+      expect(bigSize.width).to.equal(1024);
+      expect(bigSize.height).to.equal(1024);
+    });
+
+    it('keeps say() aspect handling with proportional textures', async function () {
+      const wideId = flock.createPlane('planeSayWide', {
+        color: '#0000ff',
+        width: 2,
+        height: 1,
+        position: [20, 0, 0],
+      });
+      boxIds.push(wideId);
+
+      await flock.say(wideId, { text: 'Q', duration: 0 });
+
+      const wideMesh = flock.scene.getMeshByName(wideId);
+      const wideSize = wideMesh.advancedTexture.getSize();
+      expect(wideSize.width).to.equal(1024);
+      expect(wideSize.height).to.equal(512);
     });
 
     it('should clear effects from a mesh', async function () {
@@ -1823,6 +1905,203 @@ export function runMaterialsTests(flock) {
       const target = getTarget(id);
       expect(gradientPluginOf(target.material)).to.exist;
       expect(target.material.metadata.gradientDirection).to.equal(30);
+    });
+  });
+
+  describe('material scale @materials', function () {
+    this.timeout(5000);
+    const shapeIds = [];
+    const extraMeshes = [];
+    const uvKind = () => flock.BABYLON.VertexBuffer.UVKind;
+
+    afterEach(function () {
+      shapeIds.forEach((id) => flock.dispose(id));
+      shapeIds.length = 0;
+      extraMeshes.forEach((m) => m.dispose());
+      extraMeshes.length = 0;
+    });
+
+    function uRange(mesh, include = () => true) {
+      const uvs = mesh.getVerticesData(uvKind());
+      let low = Infinity;
+      let high = -Infinity;
+      for (let i = 0; i < uvs.length / 2; i++) {
+        if (!include(i)) continue;
+        low = Math.min(low, uvs[i * 2]);
+        high = Math.max(high, uvs[i * 2]);
+      }
+      return high - low;
+    }
+
+    it('keeps the existing cache key at scale 1', function () {
+      const material = flock.getOrCreateMaterial({
+        color: '#123456',
+        materialName: 'bricks.png',
+        alpha: 1,
+        scale: 1,
+      });
+      expect(material.metadata.cacheKey).to.not.include('~');
+      expect(material.metadata.textureScale).to.be.undefined;
+    });
+
+    it('enlarges the pattern by the scale', function () {
+      const material = flock.getOrCreateMaterial({
+        color: '#123457',
+        materialName: 'bricks.png',
+        alpha: 1,
+        scale: 2,
+      });
+      const plain = flock.getOrCreateMaterial({
+        color: '#123457',
+        materialName: 'bricks.png',
+        alpha: 1,
+      });
+
+      expect(material).to.not.equal(plain);
+      expect(material.metadata.textureScale).to.equal(2);
+      expect(flock.materialTexture(material).uScale).to.be.closeTo(0.5, 1e-9);
+      expect(flock.materialTexture(material).vScale).to.be.closeTo(0.5, 1e-9);
+    });
+
+    it('turns the pattern by the angle', function () {
+      const material = flock.getOrCreateMaterial({
+        color: '#123458',
+        materialName: 'bricks.png',
+        alpha: 1,
+        angle: 90,
+      });
+      const shader = flock.getOrCreateMaterial({
+        color: ['#ff0000', '#00ff00'],
+        materialName: 'bricks.png',
+        alpha: 1,
+        angle: 90,
+      });
+
+      expect(material.metadata.cacheKey).to.include('~a90');
+      expect(material.metadata.textureAngle).to.equal(90);
+      expect(flock.materialTexture(material).wAng).to.be.closeTo(Math.PI / 2, 1e-9);
+      expect(shader._floats.uvAngle).to.be.closeTo(Math.PI / 2, 1e-9);
+    });
+
+    it('turns a plain multi-colour gradient by the angle', async function () {
+      await flock.createBox('angleGradient', {
+        color: {
+          color: ['#ff0000', '#0000ff'],
+          materialName: 'none.png',
+          alpha: 1,
+          angle: 45,
+        },
+        position: [0, 0, 0],
+      });
+      shapeIds.push('angleGradient');
+
+      const material = flock.scene.getMeshByName('angleGradient').material;
+      expect(gradientPluginOf(material)).to.exist;
+      expect(material.metadata.gradientDirection).to.equal(45);
+      expect(material.metadata.textureAngle).to.be.undefined;
+    });
+
+    it('scales multi-colour patterns through the shader', function () {
+      const material = flock.getOrCreateMaterial({
+        color: ['#ff0000', '#00ff00'],
+        materialName: 'bricks.png',
+        alpha: 1,
+        scale: 4,
+      });
+      expect(material._floats.uScale).to.be.closeTo(0.25, 1e-9);
+      expect(material._floats.vScale).to.be.closeTo(0.25, 1e-9);
+    });
+
+    it('reads the scale back from a mesh', async function () {
+      await flock.createBox('scaleRoundTrip', {
+        color: { color: '#abcdef', materialName: 'bricks.png', alpha: 1, scale: 3, angle: 30 },
+        width: 1,
+        height: 1,
+        depth: 1,
+        position: [0, 0, 0],
+      });
+      shapeIds.push('scaleRoundTrip');
+
+      const mesh = flock.scene.getMeshByName('scaleRoundTrip');
+      const params = flock.getMaterialParamsFromMesh(mesh);
+      expect(params.scale).to.equal(3);
+      expect(params.angle).to.equal(30);
+      expect(params.materialName).to.equal('bricks.png');
+    });
+
+    it('leaves a shared texture alone when another box is created', async function () {
+      const descriptor = { color: '#abcdee', materialName: 'bricks.png', alpha: 1, scale: 2 };
+      await flock.createBox('scaleShareA', { color: descriptor, position: [0, 0, 0] });
+      await flock.createBox('scaleShareB', { color: descriptor, position: [3, 0, 0] });
+      shapeIds.push('scaleShareA', 'scaleShareB');
+
+      const material = flock.scene.getMeshByName('scaleShareA').material;
+      expect(flock.scene.getMeshByName('scaleShareB').material).to.equal(material);
+      expect(flock.materialTexture(material).uScale).to.be.closeTo(0.5, 1e-9);
+    });
+
+    it('tiles cylinder caps at world size', async function () {
+      await flock.createCylinder('scaleCylinderCap', {
+        color: '#ffffff',
+        height: 2,
+        diameterTop: 8,
+        diameterBottom: 8,
+        position: [0, 0, 0],
+      });
+      shapeIds.push('scaleCylinderCap');
+
+      const mesh = flock.scene.getMeshByName('scaleCylinderCap');
+      const normals = mesh.getVerticesData(flock.BABYLON.VertexBuffer.NormalKind);
+      const isTopCap = (i) => normals[i * 3 + 1] > 0.9;
+      expect(uRange(mesh, isTopCap)).to.be.closeTo(8 / 4, 1e-3);
+    });
+
+    it('wraps round a cylinder without a squeezed seam strip', async function () {
+      await flock.createCylinder('scaleCylinderSeam', {
+        color: '#ffffff',
+        height: 2,
+        diameterTop: 8,
+        diameterBottom: 8,
+        tessellation: 24,
+        position: [0, 0, 0],
+      });
+      shapeIds.push('scaleCylinderSeam');
+
+      const mesh = flock.scene.getMeshByName('scaleCylinderSeam');
+      const uvs = mesh.getVerticesData(uvKind());
+      const normals = mesh.getVerticesData(flock.BABYLON.VertexBuffer.NormalKind);
+      const indices = mesh.getIndices();
+      const segment = (Math.PI * 8) / 4 / 24;
+      let widest = 0;
+      for (let t = 0; t < indices.length; t += 3) {
+        const corners = [0, 1, 2].map((k) => indices[t + k]);
+        if (corners.some((i) => Math.abs(normals[i * 3 + 1]) > 0.9)) continue;
+        const us = corners.map((i) => uvs[i * 2]);
+        widest = Math.max(widest, Math.max(...us) - Math.min(...us));
+      }
+      expect(widest).to.be.at.most(segment + 1e-3);
+    });
+
+    it('gives a patterned non-primitive mesh world-size UVs of its own', function () {
+      const source = flock.BABYLON.MeshBuilder.CreateBox(
+        'scaleModelPart',
+        { size: 8 },
+        flock.scene
+      );
+      const sibling = source.clone('scaleModelPartClone');
+      extraMeshes.push(source, sibling);
+      const siblingUVs = Array.from(sibling.getVerticesData(uvKind()));
+
+      flock.applyMaterialToHierarchy(source, {
+        color: '#ffffff',
+        materialName: 'bricks.png',
+        alpha: 1,
+      });
+
+      const normals = source.getVerticesData(flock.BABYLON.VertexBuffer.NormalKind);
+      const isFront = (i) => normals[i * 3 + 2] > 0.9;
+      expect(uRange(source, isFront)).to.be.closeTo(2, 1e-3);
+      expect(Array.from(sibling.getVerticesData(uvKind()))).to.deep.equal(siblingUVs);
     });
   });
 }

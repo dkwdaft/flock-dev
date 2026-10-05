@@ -38,6 +38,7 @@ import {
   roundToOneDecimal,
   pickLeafFromRay,
   isPlacementSurface,
+  SELECTED_HIDDEN_VISIBILITY,
 } from './meshhelpers.js';
 import {
   startCanvasKeyboardMode,
@@ -53,6 +54,7 @@ import { KeyboardDispatcher } from '../main/keyboardDispatcher.js';
 import { announceToScreenReader } from '../main/input.js';
 import { GizmoMenuManager } from '../accessibility/keyboardui.js';
 import { isBodyAlive } from '../api/physics.js';
+import { isPositionPickActive } from './pickposition.js';
 export let gizmoManager;
 
 // Enable debug messages
@@ -675,9 +677,9 @@ function applyColorAtPosition(canvasX, canvasY) {
 }
 
 // For composite meshes where visibility needs setting to
-// 0.001 in order to show parent mesh's bounding box
+// SELECTED_HIDDEN_VISIBILITY in order to show parent mesh's bounding box
 function resetBoundingBoxVisibilityIfManuallyChanged(mesh) {
-  if (mesh && mesh.visibility === 0.001) mesh.visibility = 0;
+  if (mesh && mesh.visibility === SELECTED_HIDDEN_VISIBILITY) mesh.visibility = 0;
 }
 
 function hideBoundingBox(mesh) {
@@ -1415,7 +1417,7 @@ function applyMeshSelection(pickedMesh, pickedPoint) {
   if (pickedMesh && pickedMesh.name !== 'ground') {
     if (pickedMesh.parent) {
       pickedMesh = getRootMesh(pickedMesh.parent);
-      pickedMesh.visibility = 0.001;
+      pickedMesh.visibility = SELECTED_HIDDEN_VISIBILITY;
     }
     const block = meshMap[pickedMesh?.metadata?.blockKey];
     highlightBlockById(Blockly.getMainWorkspace(), block);
@@ -1873,22 +1875,6 @@ function getScaledSize(mesh) {
     y: baseY * Math.abs(mesh.scaling.y),
     z: baseZ * Math.abs(mesh.scaling.z),
   };
-}
-
-// During a live scale-gizmo drag a primitive's geometry stays at its creation
-// size while mesh.scaling stretches it, which stretches the texture. Re-run the
-// size-based UV mapping with the current scaling folded in (plus the scaled
-// world dimensions) so the tile size stays constant in world units — matching
-// what the mesh looks like after the block updates and the program re-runs.
-// Delegates to flock.retilePrimitiveUVs so the gizmo and resize() stay in sync.
-function retilePrimitiveUVsForScale(mesh) {
-  if (!mesh) return false;
-  const size = getScaledSize(mesh); // world dimensions = local size * scaling
-  return flock.retilePrimitiveUVs(
-    mesh,
-    { width: size.x, height: size.y, depth: size.z },
-    mesh.scaling
-  );
 }
 
 // Clean up gizmo state if aborted
@@ -2463,9 +2449,13 @@ function findOrCreateMoveBlock(block) {
   return moveBlock;
 }
 
-function writePositionToBlock(block, pos) {
+// Group members keep 2dp: group scales and rotations derive their values, and
+// 1dp rounding visibly breaks flush alignments between members.
+const MEMBER_DECIMALS = 2;
+
+function writePositionToBlock(block, pos, { decimals = 1 } = {}) {
   const target = block.type === 'clone_mesh' ? findOrCreateMoveBlock(block) : block;
-  setBlockXYZ(target, pos.x, pos.y, pos.z);
+  setBlockXYZ(target, pos.x, pos.y, pos.z, { decimals });
 }
 
 // Update the blockly block after a rotation.
@@ -2496,11 +2486,11 @@ export function updateRotationBlock(mesh, axisFilter = null) {
 }
 
 // Composite models (e.g. imported glTF) have no geometry on the root mesh;
-// their bounding box only renders when visibility > 0, so we use 0.001.
+// their bounding box only renders when visibility > 0, so we use SELECTED_HIDDEN_VISIBILITY.
 function enableBoundingBox(mesh) {
   if (!mesh) return;
   if (!mesh.visibility || mesh.visibility === 0) {
-    mesh.visibility = 0.001;
+    mesh.visibility = SELECTED_HIDDEN_VISIBILITY;
   }
   mesh.showBoundingBox = true;
   ensureOrbitBoundingBoxColorHook();
@@ -2695,7 +2685,7 @@ function findOrCreateResizeBlock(mesh) {
   return resizeBlock;
 }
 
-// Blocks hold 1dp values; after a bake rounds member values, snap the live
+// Blocks hold rounded values; after a bake rounds member values, snap the live
 // meshes back onto them so the scene is exactly what Play rebuilds. Sizes
 // stay exact (like every plain-mesh scale): rebuilding geometry here would
 // risk the physics corruption the suppression machinery guards against.
@@ -2716,8 +2706,8 @@ function snapMemberPositionToBlock(member) {
   flock.updatePhysics?.(member);
 }
 
-function setWallSizeInputs(block, { diameter, thickness, height }) {
-  setNumberInputs(block, { DIAMETER: diameter, HEIGHT: height });
+function setWallSizeInputs(block, { diameter, thickness, height }, { decimals = 1 } = {}) {
+  setNumberInputs(block, { DIAMETER: diameter, HEIGHT: height }, { decimals });
   setNumberInputs(block, { THICKNESS: thickness }, { decimals: 2 });
   const roundedDiameter = getNumberInput(block, 'DIAMETER');
   const roundedThickness = getNumberInput(block, 'THICKNESS');
@@ -2738,7 +2728,9 @@ function scaleMemberSizeInputs(mesh, factor, suppress) {
   if (!block || block.disposed) return;
   const mul = (target, name) => {
     const cur = getNumberInput(target, name);
-    if (Number.isFinite(cur)) setNumberInputs(target, { [name]: cur * factor });
+    if (Number.isFinite(cur)) {
+      setNumberInputs(target, { [name]: cur * factor }, { decimals: MEMBER_DECIMALS });
+    }
   };
   switch (block.type) {
     case 'create_plane':
@@ -2759,11 +2751,15 @@ function scaleMemberSizeInputs(mesh, factor, suppress) {
     case 'create_ring': {
       const dims = mesh.metadata?.ringDimensions ?? mesh.metadata?.donutDimensions;
       if (dims) {
-        setWallSizeInputs(block, {
-          diameter: dims.diameter * factor,
-          thickness: dims.thickness * factor,
-          height: dims.height * factor,
-        });
+        setWallSizeInputs(
+          block,
+          {
+            diameter: dims.diameter * factor,
+            thickness: dims.thickness * factor,
+            height: dims.height * factor,
+          },
+          { decimals: MEMBER_DECIMALS }
+        );
       }
       break;
     }
@@ -2990,7 +2986,7 @@ export function bakeGroupScale(groupMesh) {
       const childBlock = meshMap[key];
       if (childBlock && !childBlock.disposed) {
         const pos = flock.getBlockPositionFromMesh(m);
-        writePositionToBlock(childBlock, pos);
+        writePositionToBlock(childBlock, pos, { decimals: MEMBER_DECIMALS });
       }
     }
     groupMesh.scaling.set(1, 1, 1);
@@ -3020,7 +3016,7 @@ export function bakeGroupScale(groupMesh) {
       } finally {
         m.setParent(parent);
       }
-      writePositionToBlock(childBlock, pos);
+      writePositionToBlock(childBlock, pos, { decimals: MEMBER_DECIMALS });
       snappedSubs.push(m);
     }
     // Snap live members onto the rounded blocks (positions only; sizes stay
@@ -3204,7 +3200,7 @@ export function updateScaleBlock(mesh, originalBottomY = null) {
     if (block.type !== 'create_group' && block.type !== 'clone_mesh') {
       const pos = flock.getBlockPositionFromMesh(mesh);
       const stale = ['x', 'y', 'z'].some(
-        (axis) => getNumberInput(block, axis.toUpperCase()) !== roundToOneDecimal(pos[axis])
+        (axis) => !(Math.abs(getNumberInput(block, axis.toUpperCase()) - pos[axis]) <= 0.05)
       );
       if (stale) writePositionToBlock(block, pos);
     }
@@ -3281,7 +3277,7 @@ function commitMoveToBlocks(mesh, startPosition) {
 // project reproduces what's on screen. Read unparented so the transform is
 // world-space, then restore the parent. Writing the block fires
 // updateMeshFromBlock, which applies the change back on a deferred microtask;
-// the 1dp rounding makes that a small snap onto the rounded values, keeping
+// the rounding makes that a small snap onto the rounded values, keeping
 // the scene identical to what Play rebuilds. The caller wraps this (with the
 // parent's own block update) in a single Blockly event group: one undo.
 export function moveGroupBy(groupMesh, delta) {
@@ -3328,7 +3324,7 @@ function updateChildBlockPositions(mesh, delta = null) {
       child.setParent(childParent);
     }
 
-    writePositionToBlock(childBlock, pos);
+    writePositionToBlock(childBlock, pos, { decimals: MEMBER_DECIMALS });
   });
 
   if (suppressed.size) {
@@ -3745,6 +3741,20 @@ function handleScaleGizmo() {
   // Track bottom for correct visual anchoring
   let originalBottomY = 0;
 
+  let retileFrame = null;
+  let retiledScale = null;
+  const cancelRetileFrame = () => {
+    if (retileFrame !== null) cancelAnimationFrame(retileFrame);
+    retileFrame = null;
+  };
+  const retileForScale = (mesh) => {
+    if (!mesh || mesh.isDisposed()) return;
+    const scale = `${mesh.scaling.x},${mesh.scaling.y},${mesh.scaling.z}`;
+    if (scale === retiledScale) return;
+    retiledScale = scale;
+    flock.retileTextures(mesh);
+  };
+
   const scaleDrag = gizmoManager.gizmos.scaleGizmo.onDragObservable.add(() => {
     const mesh = gizmoManager.attachedMesh;
 
@@ -3794,30 +3804,22 @@ function handleScaleGizmo() {
     }
 
     // Re-tile textures live so materials don't stretch while dragging.
-    const applyModelTiling = () => {
-      // Models use uScale/vScale tiling; the formula matches
-      // flock.resize()'s maintainTextureScale so the look stays consistent.
-      const size = getScaledSize(mesh);
-      flock.applyTextureScaleToMesh(mesh, size.x, size.y, size.z);
-    };
-    if (block && MODEL_BLOCK_TYPES.has(block.type)) {
-      applyModelTiling();
-    } else {
-      // Primitives use size-based per-vertex UVs (set at creation / on block
-      // edit via TILE_SIZE = 4). Re-run that mapping with the live scaling
-      // folded in so the tile size stays constant in world units instead of
-      // stretching with the geometry. Passing the scaled (world) size plus the
-      // scale makes the live result match a re-baked mesh / program re-run.
-      const retiled = retilePrimitiveUVsForScale(mesh);
-      if (!retiled && block?.type === 'clone_mesh') applyModelTiling();
+    if (retileFrame === null) {
+      retileFrame = requestAnimationFrame(() => {
+        retileFrame = null;
+        retileForScale(mesh);
+      });
     }
   });
 
   onExit(() => gizmoManager.gizmos.scaleGizmo.onDragObservable.remove(scaleDrag));
+  onExit(cancelRetileFrame);
 
   const scaleDragStart = gizmoManager.gizmos.scaleGizmo.onDragStartObservable.add(() => {
     const mesh = gizmoManager.attachedMesh;
     flock.ensureUniqueGeometry(mesh);
+    cancelRetileFrame();
+    retiledScale = `${mesh.scaling.x},${mesh.scaling.y},${mesh.scaling.z}`;
     originalBottomY = flock.getEffectiveWorldBounds(mesh).min.y;
     textOrigScale = mesh.scaling.clone();
     scaleDragAxis = null;
@@ -3855,6 +3857,8 @@ function handleScaleGizmo() {
   const scaleDragEnd = gizmoManager.gizmos.scaleGizmo.onDragEndObservable.add(() => {
     const mesh = gizmoManager.attachedMesh;
     scaleDragAxis = null;
+    cancelRetileFrame();
+    retileForScale(mesh);
 
     if (mesh.savedMotionType != null && isBodyAlive(mesh.physics)) {
       mesh.physics.setMotionType(mesh.savedMotionType);
@@ -4067,7 +4071,7 @@ export function updateChildBlockRotations(mesh) {
     if (pos) {
       memberBlock = meshMap[key];
       if (memberBlock && !memberBlock.disposed) {
-        writePositionToBlock(memberBlock, pos);
+        writePositionToBlock(memberBlock, pos, { decimals: MEMBER_DECIMALS });
       }
     }
     // Snap live onto the rounded blocks: set the world orientation while
@@ -4503,6 +4507,7 @@ function watchEyeGizmoRetarget() {
     if (event.type !== flock.BABYLON.PointerEventTypes.POINTERPICK) return;
     if (document.querySelector('.gizmo-button.active:not(#eyeButton)')) return;
     if (!scene.activeCamera?.metadata?.orbitView) return;
+    if (isPositionPickActive()) return;
 
     let pickedMesh = event.pickInfo?.pickedMesh;
     if (!pickedMesh || pickedMesh.name === 'ground') return;

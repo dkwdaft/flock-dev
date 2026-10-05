@@ -155,6 +155,40 @@ function readGradientDirection(value) {
   return Number.isFinite(value.direction) ? value.direction : undefined;
 }
 
+const characterPartOriginals = new WeakMap();
+
+function readTextureOption(value, key) {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const inner = value.color ?? value.baseColor;
+  const isInnerObject = typeof inner === 'object' && inner !== null && !Array.isArray(inner);
+  return Number(isInnerObject && inner[key] !== undefined ? inner[key] : value[key]);
+}
+
+function readTextureScale(value) {
+  const scale = readTextureOption(value, 'scale');
+  return Number.isFinite(scale) && scale > 0 ? scale : 1;
+}
+
+function readTextureAngle(value) {
+  const angle = readTextureOption(value, 'angle');
+  return Number.isFinite(angle) ? ((angle % 360) + 360) % 360 : 0;
+}
+
+function gradientWithAngle(rawColor, texName, direction, angle) {
+  const isGradient =
+    Array.isArray(rawColor) && rawColor.length >= 2 && ['none.png', 'NONE'].includes(texName);
+  if (!isGradient || angle === 0) return { direction, angle };
+  return { direction: ((direction ?? 0) + angle) % 360, angle: 0 };
+}
+
+function materialCacheKey(colorKey, alpha, texName, glow, scale = 1, angle = 0) {
+  const alphaKey = parseFloat(alpha).toFixed(2);
+  const scaleKey = scale === 1 ? '' : `~s${scale}`;
+  const angleKey = angle === 0 ? '' : `~a${angle}`;
+  const glowKey = glow ? 'glow' : 'noglow';
+  return `mat_${colorKey}_${alphaKey}_${texName}_${glowKey}${scaleKey}${angleKey}`.toLowerCase();
+}
+
 // 3D text takes a plain colour list one letter at a time rather than as a
 // gradient. Returns the list when it applies to this mesh, otherwise null.
 function textLetterColors(mesh, colorInput) {
@@ -172,6 +206,15 @@ function textLetterColors(mesh, colorInput) {
 }
 
 export const flockMaterial = {
+  // The floating billboard plane created by say(), or a plane using a say GUI
+  // texture. These helpers must never take part in tint/highlight/glow.
+  // Metadata decides: a user mesh merely named 'textPlane' is still a real
+  // target unless it carries a say relationship.
+  _isSayHelperMesh(mesh) {
+    if (!mesh) return false;
+    if (mesh.metadata?.isTextPlane || mesh.metadata?.hasSayTexture) return true;
+    return mesh.name === 'textPlane' && mesh.metadata?.sayTarget != null;
+  },
   _paintTextLetters(mesh, colors) {
     const letterIndex = mesh.metadata.textLetterIndex;
     const palette = colors.map((c) =>
@@ -309,14 +352,14 @@ export const flockMaterial = {
           resolve();
           return;
         }
-        if (mesh.material) {
+        if (mesh.material && !flock._isSayHelperMesh(mesh)) {
           mesh.renderOverlay = true;
           mesh.overlayAlpha = 0.5;
           mesh.overlayColor = flock.BABYLON.Color3.FromHexString(flock.getColorFromString(color));
         }
 
         mesh.getChildMeshes().forEach(function (childMesh) {
-          if (childMesh.material) {
+          if (childMesh.material && !flock._isSayHelperMesh(childMesh)) {
             childMesh.renderOverlay = true;
             childMesh.overlayAlpha = 0.5;
             childMesh.overlayColor = flock.BABYLON.Color3.FromHexString(
@@ -332,7 +375,7 @@ export const flockMaterial = {
   highlight(meshName, { color } = {}) {
     if (flock.materialsDebug) console.log(`Highlighting ${meshName} with ${color}`);
     const applyHighlight = (mesh) => {
-      if (mesh.material) {
+      if (mesh.material && !flock._isSayHelperMesh(mesh)) {
         flock.highlighter.addMesh(
           mesh,
           flock.BABYLON.Color3.FromHexString(flock.getColorFromString(color))
@@ -367,6 +410,16 @@ export const flockMaterial = {
           if (flock.sky) {
             flock.glowLayer.addExcludedMesh(flock.sky);
           }
+          // Say helpers created before this layer existed were never excluded.
+          for (const m of flock.scene.meshes) {
+            if (flock._isSayHelperMesh(m)) {
+              try {
+                flock.glowLayer.addExcludedMesh(m);
+              } catch {
+                // Non-fatal: glowMesh() still skips helpers.
+              }
+            }
+          }
           flock.glowLayer.customEmissiveColorSelector = (
             glowingMesh,
             _subMesh,
@@ -400,15 +453,23 @@ export const flockMaterial = {
     const mat = mesh.material;
     if (!mat) return null;
 
+    const scale = mat.metadata?.textureScale ?? 1;
+    const angle = mat.metadata?.textureAngle ?? 0;
+    const withScale = (params) => ({
+      ...params,
+      ...(scale === 1 ? {} : { scale }),
+      ...(angle === 0 ? {} : { angle }),
+    });
+
     if (mat.metadata?.cacheKey) {
-      const parts = mat.metadata.cacheKey.split('_');
+      const parts = mat.metadata.cacheKey.split('~')[0].split('_');
       const lastPart = parts[parts.length - 1];
       const hasGlowPart = lastPart === 'glow' || lastPart === 'noglow';
       const [colorPart, directionPart] = parts[1].split('@');
       const color = colorPart.includes('-') ? colorPart.split('-') : colorPart;
       const parsedDirection = parseFloat(directionPart);
       const parsedAlpha = parseFloat(parts[2]);
-      return {
+      return withScale({
         color,
         ...(Number.isFinite(parsedDirection) ? { direction: parsedDirection } : {}),
         materialName:
@@ -417,22 +478,22 @@ export const flockMaterial = {
           'none.png',
         alpha: Number.isFinite(parsedAlpha) ? parsedAlpha : (mat.alpha ?? 1),
         glow: hasGlowPart ? lastPart === 'glow' : (mesh.metadata?.glow ?? false),
-      };
+      });
     }
 
     const matColor = mat.diffuseColor || mat.albedoColor;
     const textureName = flock.materialTexture(mat)?.name?.split('/').pop() || 'none.png';
-    return {
+    return withScale({
       color: matColor ? '#' + matColor.toHexString().slice(1) : '#ffffff',
       materialName: textureName,
       alpha: mat.alpha ?? 1,
       glow: mesh.metadata?.glow ?? false,
-    };
+    });
   },
   glowMesh(mesh, glowColor = null) {
     const applyGlow = (m) => {
       // Don't glow the separate say helper plane or planes using say GUI textures.
-      if (m.name === 'textPlane' || m.metadata?.isTextPlane || m.metadata?.hasSayTexture) {
+      if (flock._isSayHelperMesh(m)) {
         return;
       }
 
@@ -962,19 +1023,54 @@ export const flockMaterial = {
     const partName = flock.getCanonicalPartName(part);
 
     if (part.material && targetPart && partName === targetPart) {
-      part.material.diffuseColor = flock.BABYLON.Color3.FromHexString(
-        flock.getColorFromString(color)
-      );
-      part.material.albedoColor = flock.BABYLON.Color3.FromHexString(
-        flock.getColorFromString(color)
-      );
       part.metadata = part.metadata || {};
       part.metadata.materialPartName = targetPart;
+      if (typeof color === 'object' && color !== null && !Array.isArray(color)) {
+        flock.applyMaterialToCharacterPart(part, color);
+      } else {
+        flock.restoreCharacterPartMaterial(part);
+        part.material.diffuseColor = flock.BABYLON.Color3.FromHexString(
+          flock.getColorFromString(color)
+        );
+        part.material.albedoColor = flock.BABYLON.Color3.FromHexString(
+          flock.getColorFromString(color)
+        );
+      }
     }
 
     part.getChildMeshes().forEach((child) => {
       flock.applyColorToMaterial(child, materialName, color);
     });
+  },
+  applyMaterialToCharacterPart(part, descriptor) {
+    if (!part.material.metadata?.isManaged && !characterPartOriginals.has(part)) {
+      const original = part.material;
+      characterPartOriginals.set(part, {
+        material: original,
+        uvs: Array.from(part.getVerticesData(flock.BABYLON.VertexBuffer.UVKind) ?? []),
+      });
+      part.onDisposeObservable.addOnce(() => {
+        if (!flock.isMaterialStillInUse(original, [part])) original.dispose();
+      });
+    }
+    flock.setMaterialWithCleanup(part, descriptor);
+    flock.retileMeshTexture(part);
+  },
+  restoreCharacterPartMaterial(part) {
+    const replaced = part.material;
+    if (!replaced?.metadata?.isManaged) return;
+
+    const saved = characterPartOriginals.get(part);
+    if (saved && flock.scene.materials.includes(saved.material)) {
+      part.material = saved.material;
+      if (saved.uvs.length) {
+        part.setVerticesData(flock.BABYLON.VertexBuffer.UVKind, saved.uvs, true);
+      }
+    } else {
+      part.material = new flock.BABYLON.StandardMaterial(`${part.name}_colour`, flock.scene);
+      part.material.backFaceCulling = replaced.backFaceCulling;
+    }
+    flock.disposeOldMaterial(replaced, [part]);
   },
   applyColorsToCharacter(mesh, colors) {
     const {
@@ -1209,7 +1305,17 @@ export const flockMaterial = {
       });
     });
   },
-  createMaterial({ color, materialName, alpha, glow = false, direction } = {}) {
+  createMaterial({
+    color,
+    materialName,
+    alpha,
+    glow = false,
+    direction,
+    scale = 1,
+    angle = 0,
+  } = {}) {
+    const tiling = 1 / (Number.isFinite(scale) && scale > 0 ? scale : 1);
+    const rotation = ((Number(angle) || 0) * Math.PI) / 180;
     if (flock?.materialsDebug) console.log(`Create material: ${materialName}`);
     let material;
     const texturePath = flock.texturePath + materialName;
@@ -1227,11 +1333,21 @@ export const flockMaterial = {
     if (Array.isArray(color) && color.length >= 2) {
       // Use gradient for Flat material
       if (materialName === 'none.png') {
-        material = flock.createGradientMaterial(materialName, color, direction);
+        material = flock.createGradientMaterial(
+          materialName,
+          color,
+          ((Number(direction) || 0) + (Number(angle) || 0)) % 360
+        );
         material.backFaceCulling = false;
       } else {
         // Use shader-based color replacement for patterned materials
-        material = flock.createColorReplaceShaderMaterial(materialName, texturePath, color);
+        material = flock.createColorReplaceShaderMaterial(
+          materialName,
+          texturePath,
+          color,
+          tiling,
+          rotation
+        );
         material.backFaceCulling = false;
       }
     } else {
@@ -1241,9 +1357,11 @@ export const flockMaterial = {
       // Load texture if provided
       if (texturePath) {
         const texture = new flock.BABYLON.Texture(texturePath, flock.scene);
-        // Apply default tiling for consistency
-        texture.uScale = 1;
-        texture.vScale = 1;
+        texture.uScale = tiling;
+        texture.vScale = tiling;
+        texture.wAng = rotation;
+        texture.wrapU = flock.BABYLON.Texture.WRAP_ADDRESSMODE;
+        texture.wrapV = flock.BABYLON.Texture.WRAP_ADDRESSMODE;
         flock.attachTextureWhenLoaded(material, texture);
       }
 
@@ -1318,24 +1436,27 @@ export const flockMaterial = {
       flock.updateFogUniformsForShaderMaterial(material);
     });
   },
-  createColorReplaceShaderMaterial(materialName, texturePath, colors) {
+  createColorReplaceShaderMaterial(materialName, texturePath, colors, tiling = 1, rotation = 0) {
     // Define vertex shader
     const vertexShader = `
       precision highp float;
       attribute vec3 position;
       attribute vec2 uv;
+      #include<bonesDeclaration>
 
-      uniform mat4 worldViewProjection;
       uniform mat4 world;
       uniform mat4 view;
+      uniform mat4 viewProjection;
 
       varying vec2 vUV;
       varying vec3 vFogPosition;
 
       void main(void) {
-        vec4 worldPosition = world * vec4(position, 1.0);
+        mat4 finalWorld = world;
+        #include<bonesVertex>
+        vec4 worldPosition = finalWorld * vec4(position, 1.0);
         vec4 viewPosition = view * worldPosition;
-        gl_Position = worldViewProjection * vec4(position, 1.0);
+        gl_Position = viewProjection * worldPosition;
         vUV = uv;
         vFogPosition = viewPosition.xyz;
       }
@@ -1355,6 +1476,7 @@ export const flockMaterial = {
       uniform float alpha;
       uniform float uScale;         // Horizontal tiling
       uniform float vScale;         // Vertical tiling
+      uniform float uvAngle;
       uniform vec3 fogColor;
       uniform float fogDensity;
       uniform float fogStart;
@@ -1364,7 +1486,10 @@ export const flockMaterial = {
       varying vec3 vFogPosition;
 
       void main(void) {
-        vec2 scaledUV = vec2(vUV.x * uScale, vUV.y * vScale);
+        vec2 tiledUV = vec2(vUV.x * uScale, vUV.y * vScale);
+        float c = cos(uvAngle);
+        float s = sin(uvAngle);
+        vec2 scaledUV = vec2(c * tiledUV.x - s * tiledUV.y, s * tiledUV.x + c * tiledUV.y);
         vec4 texColor = texture2D(textureSampler, scaledUV);
 
         if (texColor.a < 0.5) {
@@ -1419,7 +1544,7 @@ export const flockMaterial = {
       {
         attributes: ['position', 'uv'],
         uniforms: [
-          'worldViewProjection',
+          'viewProjection',
           'world',
           'view',
           'textureSampler',
@@ -1430,6 +1555,7 @@ export const flockMaterial = {
           'alpha',
           'uScale',
           'vScale',
+          'uvAngle',
           'fogColor',
           'fogDensity',
           'fogStart',
@@ -1462,9 +1588,9 @@ export const flockMaterial = {
         shaderMaterial.setTexture('textureSampler', texture);
       }
       // Apply tiling through shader uniforms (shader materials don't automatically use texture matrix)
-      // Use scale of 1 to match single-color material behavior
-      shaderMaterial.setFloat('uScale', 1);
-      shaderMaterial.setFloat('vScale', 1);
+      shaderMaterial.setFloat('uScale', tiling);
+      shaderMaterial.setFloat('vScale', tiling);
+      shaderMaterial.setFloat('uvAngle', rotation);
     }
 
     // Convert colors and set uniforms
@@ -1706,13 +1832,27 @@ export const flockMaterial = {
       rawColor = colorInput || '#ffffff';
     }
 
+    const folded = gradientWithAngle(
+      rawColor,
+      texName,
+      finalDirection,
+      readTextureAngle(colorInput)
+    );
+    finalDirection = folded.direction;
+    const finalAngle = folded.angle;
     const colorKey = withGradientDirection(
       Array.isArray(rawColor) ? rawColor.join('-') : rawColor,
       finalDirection
     );
-    const alphaKey = parseFloat(finalAlpha).toFixed(2);
-    const glowKey = finalGlow ? 'glow' : 'noglow';
-    const cacheKey = `mat_${colorKey}_${alphaKey}_${texName}_${glowKey}`.toLowerCase();
+    const finalScale = readTextureScale(colorInput);
+    const cacheKey = materialCacheKey(
+      colorKey,
+      finalAlpha,
+      texName,
+      finalGlow,
+      finalScale,
+      finalAngle
+    );
 
     if (!flock.materialCache) flock.materialCache = {};
     if (flock.materialCache[cacheKey]) return flock.materialCache[cacheKey];
@@ -1722,6 +1862,8 @@ export const flockMaterial = {
       materialName: texName,
       alpha: finalAlpha,
       glow: finalGlow,
+      scale: finalScale,
+      angle: finalAngle,
       ...(Number.isFinite(finalDirection) ? { direction: finalDirection } : {}),
     };
 
@@ -1734,6 +1876,8 @@ export const flockMaterial = {
     newMat.metadata.cacheKey = cacheKey;
     newMat.metadata.isManaged = true;
     newMat.metadata.texName = texName;
+    if (finalScale !== 1) newMat.metadata.textureScale = finalScale;
+    if (finalAngle !== 0) newMat.metadata.textureAngle = finalAngle;
 
     if (finalAlpha < 1) {
       newMat.transparencyMode = flock.BABYLON.Material.MATERIAL_ALPHABLEND;
@@ -1844,19 +1988,23 @@ export const flockMaterial = {
 
     const makeTargetCacheKey = (v, m) => {
       const rawColor = getRawColor(v);
+      const texName = String(getTexName(v));
+      const { direction, angle } = gradientWithAngle(
+        rawColor,
+        texName,
+        readGradientDirection(v),
+        readTextureAngle(v)
+      );
       const colorKey = withGradientDirection(
         Array.isArray(rawColor)
           ? rawColor.join('-')
           : flock.getColorFromString(rawColor) || '#ffffff',
-        readGradientDirection(v)
+        direction
       );
-      const texName = String(getTexName(v));
-      const alphaKey = parseFloat(getAlpha(v, m)).toFixed(2);
       const glow =
         typeof v === 'object' && v !== null && !Array.isArray(v) ? (v.glow ?? false) : false;
-      const glowKey = glow ? 'glow' : 'noglow';
 
-      return `mat_${colorKey}_${alphaKey}_${texName}_${glowKey}`.toLowerCase();
+      return materialCacheKey(colorKey, getAlpha(v, m), texName, glow, readTextureScale(v), angle);
     };
 
     const applyOne = (m, v, index) => {
@@ -1873,7 +2021,7 @@ export const flockMaterial = {
       flock.setMaterialWithCleanup(m, v);
 
       if (m.material) {
-        flock.adjustMaterialTilingToMesh(m, m.material);
+        if (!flock.isTilingPrimitive(m)) flock.retileMeshTexture(m);
         flock.setDepthPrePass(m.material, getAlpha(v, m) > 0);
       }
     };
