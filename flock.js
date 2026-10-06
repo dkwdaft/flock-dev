@@ -1180,6 +1180,7 @@ export const flock = {
       setParent: this.setParent?.bind(this),
       mergeMeshes: this.mergeMeshes?.bind(this),
       subtractMeshes: this.subtractMeshes?.bind(this),
+      embedMeshes: this.embedMeshes?.bind(this),
       intersectMeshes: this.intersectMeshes?.bind(this),
       createHull: this.createHull?.bind(this),
       hold: this.hold?.bind(this),
@@ -1382,6 +1383,7 @@ export const flock = {
       'tagObject',
       'mergeMeshes',
       'subtractMeshes',
+      'embedMeshes',
       'intersectMeshes',
       'createHull',
       'describeMesh',
@@ -2227,6 +2229,7 @@ export const flock = {
     flock.modelReadyPromises = new Map();
     flock._animationFileCache = {};
     flock.materialCache = {};
+    flock._fogAwareShaderMaterials = new Set();
     flock.physicsShapeCache = {};
     flock.havokAbortHandled = false;
     flock.disposed = false;

@@ -1387,6 +1387,95 @@ export function runMaterialsTests(flock) {
         expect(collapsed).to.deep.equal([]);
       });
     });
+
+    describe('embedMeshes @materials', function () {
+      const meshIds = [];
+
+      afterEach(function () {
+        meshIds.forEach((meshId) => {
+          flock.dispose(meshId);
+        });
+        meshIds.length = 0;
+      });
+
+      const createPair = async (baseId, toolId) => {
+        await flock.createBox(baseId, {
+          color: '#3388ff',
+          width: 2,
+          height: 2,
+          depth: 2,
+          position: [0, 0, 0],
+        });
+        await flock.createBox(toolId, {
+          color: '#ff3366',
+          width: 1,
+          height: 1,
+          depth: 1,
+          position: [0, 1, 0],
+        });
+        meshIds.push(baseId, toolId);
+      };
+
+      it('cuts the tool out of the base and keeps the tool', async function () {
+        await createPair('embedBase', 'embedTool');
+        const tool = flock.scene.getMeshByName('embedTool');
+
+        const id = await flock.embedMeshes('embedResult', 'embedBase', ['embedTool']);
+        meshIds.push(id);
+
+        const result = flock.scene.getMeshByName(id);
+        expect(result).to.exist;
+        expect(result.getTotalVertices()).to.be.greaterThan(24);
+        expect(flock.scene.getMeshByName('embedBase')).to.equal(null);
+
+        expect(tool.isDisposed()).to.equal(false);
+        expect(tool.name).to.equal('embedTool');
+        expect(tool.isVisible).to.equal(true);
+        expect(flock.scene.getMeshByName('embedTool')).to.equal(tool);
+      });
+
+      it('keeps a tool that is parented under the base', async function () {
+        await createPair('embedParentBase', 'embedChildTool');
+        await flock.setParent('embedParentBase', 'embedChildTool');
+        const tool = flock.scene.getMeshByName('embedChildTool');
+        const worldBefore = tool.getAbsolutePosition().clone();
+
+        const id = await flock.embedMeshes('embedParentResult', 'embedParentBase', [
+          'embedChildTool',
+        ]);
+        meshIds.push(id);
+
+        expect(flock.scene.getMeshByName(id)).to.exist;
+        expect(flock.scene.getMeshByName('embedParentBase')).to.equal(null);
+        expect(tool.isDisposed()).to.equal(false);
+        expect(tool.isEnabled()).to.equal(true);
+        expect(tool.parent).to.equal(null);
+        expect(tool.getAbsolutePosition().subtract(worldBefore).length()).to.be.lessThan(1e-6);
+      });
+
+      it('lets the kept tool be used in a later operation', async function () {
+        await createPair('embedBaseA', 'embedToolShared');
+        await flock.createBox('embedBaseB', {
+          color: '#33ff88',
+          width: 2,
+          height: 2,
+          depth: 2,
+          position: [0, 0, 0],
+        });
+        meshIds.push('embedBaseB');
+
+        const first = await flock.embedMeshes('embedResultA', 'embedBaseA', ['embedToolShared']);
+        meshIds.push(first);
+        const second = await flock.subtractMeshes('embedResultB', 'embedBaseB', [
+          'embedToolShared',
+        ]);
+        meshIds.push(second);
+
+        expect(flock.scene.getMeshByName(first)).to.exist;
+        expect(flock.scene.getMeshByName(second)).to.exist;
+        expect(flock.scene.getMeshByName('embedToolShared')).to.equal(null);
+      });
+    });
     describe('randomColour', function () {
       it('should return a lowercase hex colour string', function () {
         const colour = flock.randomColour();
@@ -2102,6 +2191,145 @@ export function runMaterialsTests(flock) {
       const isFront = (i) => normals[i * 3 + 2] > 0.9;
       expect(uRange(source, isFront)).to.be.closeTo(2, 1e-3);
       expect(Array.from(sibling.getVerticesData(uvKind()))).to.deep.equal(siblingUVs);
+    });
+  });
+
+  describe('replaced materials are disposed @materials', function () {
+    this.timeout(30000);
+    const ids = [];
+    const textureNames = ['brick.png', 'wood.png', 'marble.png', 'tiles.png'];
+
+    afterEach(function () {
+      ids.forEach((id) => {
+        const mesh = flock.scene.getMeshByName(id);
+        if (mesh) flock.disposeMesh(mesh);
+      });
+      ids.length = 0;
+    });
+
+    function makeBox(id, color = '#336699') {
+      flock.createBox(id, { width: 1, height: 1, depth: 1, color, position: [0, 0, 0] });
+      ids.push(id);
+      return flock.scene.getMeshByName(id);
+    }
+
+    const counts = () => ({
+      materials: flock.scene.materials.length,
+      textures: flock.scene.textures.length,
+    });
+
+    it('repeated changeMaterial does not accumulate materials or textures', async function () {
+      const id = 'leakChangeMaterialBox';
+      makeBox(id);
+      await flock.changeMaterial(id, textureNames[0], '#ffffff');
+      const before = counts();
+
+      for (const name of [...textureNames, ...textureNames]) {
+        await flock.changeMaterial(id, name, '#ffffff');
+      }
+
+      expect(counts()).to.deep.equal(before);
+    });
+
+    it('changeColor after changeMaterial disposes the replaced material and texture', async function () {
+      const id = 'leakReplaceTexturedBox';
+      const mesh = makeBox(id);
+      await flock.changeMaterial(id, 'brick.png', '#ffffff');
+      const replaced = mesh.material;
+      const texture = flock.materialTexture(replaced);
+
+      await flock.changeColor(id, { color: '#ff0000' });
+
+      expect(mesh.material).to.not.equal(replaced);
+      expect(flock.scene.materials).to.not.include(replaced);
+      expect(flock.scene.textures).to.not.include(texture);
+    });
+
+    it('disposing a mesh disposes its unshared material', async function () {
+      const id = 'leakDisposeTexturedBox';
+      const mesh = makeBox(id);
+      await flock.changeMaterial(id, 'wood.png', '#ffffff');
+      const material = mesh.material;
+
+      flock.disposeMesh(mesh);
+
+      expect(flock.scene.materials).to.not.include(material);
+    });
+
+    it('disposing a mesh disposes its multi-material and sub-materials', function () {
+      const mesh = makeBox('leakMultiMaterialBox');
+      const subA = new flock.BABYLON.StandardMaterial('leakSubA', flock.scene);
+      const subB = new flock.BABYLON.StandardMaterial('leakSubB', flock.scene);
+      const multi = new flock.BABYLON.MultiMaterial('leakMulti', flock.scene);
+      multi.subMaterials.push(subA, subB);
+      mesh.material = multi;
+
+      flock.disposeMesh(mesh);
+
+      expect(flock.scene.multiMaterials).to.not.include(multi);
+      expect(flock.scene.materials).to.not.include(subA);
+      expect(flock.scene.materials).to.not.include(subB);
+    });
+
+    it('keeps a texture that another material still uses', async function () {
+      const first = makeBox('leakSharedTextureA');
+      const second = makeBox('leakSharedTextureB');
+      const texture = new flock.BABYLON.Texture(flock.texturePath + 'bricks.png', flock.scene);
+      first.material = new flock.BABYLON.StandardMaterial('sharedTextureA', flock.scene);
+      first.material.diffuseTexture = texture;
+      second.material = new flock.BABYLON.StandardMaterial('sharedTextureB', flock.scene);
+      second.material.diffuseTexture = texture;
+
+      await flock.changeColor('leakSharedTextureA', { color: '#00ff00' });
+
+      expect(flock.scene.textures).to.include(texture);
+      expect(second.material.diffuseTexture).to.equal(texture);
+    });
+
+    it('keeps a retained material when it is replaced', async function () {
+      const id = 'leakRetainedBox';
+      const mesh = makeBox(id);
+      const retained = new flock.BABYLON.StandardMaterial('retainedMaterial', flock.scene);
+      mesh.material = retained;
+      flock.retainMaterial(retained);
+
+      await flock.changeColor(id, { color: '#0000ff' });
+
+      expect(flock.scene.materials).to.include(retained);
+      retained.dispose();
+    });
+
+    it('keeps the shared white placeholder texture', function () {
+      const placeholder = flock.whitePlaceholderTexture();
+
+      flock._disposeTextureIfUnused(placeholder);
+
+      expect(flock.scene.textures).to.include(placeholder);
+    });
+
+    it('3D text materials are disposed on colour change and dispose', async function () {
+      const id = flock.create3DText({
+        text: 'Hi',
+        font: '/fonts/FreeSansBold.ttf',
+        color: '#ffffff',
+        size: 1,
+        depth: 0.2,
+        position: { x: 0, y: 0, z: 0 },
+        modelId: 'leakText3D',
+      });
+      ids.push(id);
+      const mesh = await new Promise((resolve, reject) => {
+        flock.whenModelReady(id, resolve);
+        setTimeout(() => reject(new Error('create3DText timed out')), 25000);
+      });
+      const original = mesh.material;
+
+      await flock.changeColor(id, { color: '#ff0000' });
+      expect(flock.scene.materials).to.not.include(original);
+
+      const coloured = mesh.material;
+      flock.disposeMesh(mesh);
+      expect(flock.scene.materials).to.not.include(coloured);
     });
   });
 }
