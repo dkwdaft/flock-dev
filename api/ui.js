@@ -1,4 +1,5 @@
 import { getBoundKeys } from '../input/bindings.js';
+import { isVector } from './math.js';
 import { JoystickSource } from '../input/joystickSource.js';
 import {
   registerUIButton,
@@ -529,7 +530,7 @@ export const flockUI = {
       });
     });
   },
-  UISlider({ id, min, max, value, x, y, size, textColor, backgroundColor } = {}) {
+  UISlider({ id, min, max, value, x, y, size, textColor, backgroundColor, onChange } = {}) {
     if (!flock.scene || !flock.GUI) {
       throw new Error('flock.scene or flock.GUI is not initialized.');
     }
@@ -585,6 +586,9 @@ export const flockUI = {
 
     slider.zIndex = 1000;
     slider.sectionOwner = __owningSection;
+    if (typeof onChange === 'function') {
+      slider.onValueChangedObservable.add((newValue) => onChange(newValue));
+    }
 
     flock.scene.UITexture.addControl(slider);
 
@@ -595,7 +599,7 @@ export const flockUI = {
       h: scaledHeight,
     });
 
-    return slider;
+    return id;
   },
   createSmallButton(
     text,
@@ -1114,7 +1118,7 @@ export const flockUI = {
                 sayTimer.cancel();
                 bg.dispose();
                 textBlock.dispose();
-                resolve(new Error('Action aborted'));
+                resolve();
               },
               { once: true }
             );
@@ -1128,6 +1132,7 @@ export const flockUI = {
     }
   },
   printText({ text, duration = 30, color = 'white' } = {}) {
+    if (isVector(text)) text = `(${text.x}, ${text.y}, ${text.z})`;
     console.log(text);
 
     if (!flock.scene || !flock.stackPanel) return;

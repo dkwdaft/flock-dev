@@ -231,6 +231,13 @@
           pattern: 'generators/generators-material',
         },
         {
+          id: 'textgenerators',
+          name: 'Text Generator Tests',
+          importPath: './generators-text.test.js',
+          importFn: 'runTextGeneratorTests',
+          pattern: 'generators/generators-text',
+        },
+        {
           id: 'transformgenerators',
           name: 'Transform Generator Tests',
           importPath: './generators-transform.test.js',
@@ -538,6 +545,13 @@
           importPath: './math.test.js',
           importFn: 'runMathTests',
           pattern: '@math',
+        },
+        {
+          id: 'sandbox',
+          name: 'Sandbox Boundary Tests',
+          importPath: './sandbox.test.js',
+          importFn: 'runSandboxTests',
+          pattern: '@sandbox',
         },
         {
           id: 'shapes',
