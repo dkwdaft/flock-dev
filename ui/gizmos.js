@@ -44,9 +44,11 @@ import {
   startCanvasKeyboardMode,
   stopCanvasKeyboardMode,
   getCanvasCircle,
+  getCanvasCirclePosition,
   setCrosshairCursor,
   setDefaultCursor,
 } from './canvas-utils.js';
+import { startCentreHandle } from './alignBlobs.js';
 import { createAxisKeyboardHandler } from './axis-keyboard.js';
 import { showStatus, clearStatus } from './status.js';
 import { createGizmoMobileHud } from './gizmo-mobile-hud.js';
@@ -146,6 +148,7 @@ let cameraMode = 'play';
 let activePick = null; // [Select mesh?]
 let activeDuplicatePickHandler = null; // [Clone mesh?]
 let activeDuplicatePickTimer = null; // Deferred-listener timer for the above
+let activeDuplicateCentreHandle = null;
 let stopAxisKeyboard = null; // Axis keyboard active?
 let duplicateModeActive = false;
 let duplicateRafId = null;
@@ -1468,7 +1471,8 @@ export function viewMeshWithCamera(block) {
   if (mesh) attachOrbitView(mesh);
 }
 
-// Attach an ArcRotateCamera that orbits the given mesh (free-camera mode only).
+// Attach an ArcRotateCamera that orbits the given mesh, or the world origin
+// when there's no mesh (free-camera mode only).
 function attachOrbitView(mesh) {
   const BABYLON = flock.BABYLON;
   const scene = flock.scene;
@@ -1478,16 +1482,21 @@ function attachOrbitView(mesh) {
   const freeCamera = scene.activeCamera;
   if (!freeCamera) return;
 
-  // Orbit target and gizmo selection are independent.
-  applyMeshSelection(mesh);
-  const selectedMesh = gizmoManager.attachedMesh ?? mesh;
+  let selectedMesh = null;
+  let target = BABYLON.Vector3.Zero();
+  let radius = 8;
+  if (mesh) {
+    // Orbit target and gizmo selection are independent.
+    applyMeshSelection(mesh);
+    selectedMesh = gizmoManager.attachedMesh ?? mesh;
 
-  mesh.computeWorldMatrix(true);
-  const { min, max } = mesh.getHierarchyBoundingVectors(true);
-  const target = BABYLON.Vector3.Center(min, max);
-  const size = max.subtract(min);
-  const extent = Math.max(size.x, size.y, size.z);
-  const radius = Math.max(extent * 3, 8);
+    mesh.computeWorldMatrix(true);
+    const { min, max } = mesh.getHierarchyBoundingVectors(true);
+    target = BABYLON.Vector3.Center(min, max);
+    const size = max.subtract(min);
+    const extent = Math.max(size.x, size.y, size.z);
+    radius = Math.max(extent * 3, 8);
+  }
 
   const orbitCamera = new BABYLON.ArcRotateCamera(
     'orbitViewCamera',
@@ -1498,6 +1507,7 @@ function attachOrbitView(mesh) {
     scene
   );
   flock._configureOrbitCamera(orbitCamera);
+  if (!mesh) frameWholeGround(orbitCamera);
   // Rotation comes from CameraControls via the InputManager, so drop Babylon's
   // keyboard input to keep physical arrows on a single path.
   orbitCamera.inputs.removeByType('ArcRotateCameraKeyboardMoveInput');
@@ -1533,10 +1543,22 @@ function attachOrbitView(mesh) {
     });
   }
   window.orbitViewActive = true;
-  window.orbitBlock = window.currentBlock ?? null;
+  window.orbitBlock = mesh ? (window.currentBlock ?? null) : null;
   window.orbitMesh = selectedMesh;
   setGizmoButtonActive(document.getElementById('eyeButton'), true);
   watchEyeGizmoRetarget();
+}
+
+function frameWholeGround(orbitCamera) {
+  const ground = flock.ground;
+  const groundRadius =
+    ground && !ground.isDisposed?.() ? ground.getBoundingInfo().boundingSphere.radiusWorld : 71;
+  const engine = flock.scene.getEngine();
+  const aspect = engine.getAspectRatio(orbitCamera) || 1;
+  const halfFov = orbitCamera.fov / 2;
+  const halfFovX = Math.atan(Math.tan(halfFov) * aspect);
+  orbitCamera.beta = Math.PI / 3;
+  orbitCamera.radius = (0.5 * groundRadius) / Math.sin(Math.min(halfFov, halfFovX));
 }
 
 // Restore the stashed free camera, disposing the orbit camera. Does not
@@ -1777,6 +1799,11 @@ export function captureViewToCameraBlock(block) {
     return;
   }
 
+  if (block.getFieldValue('TARGET') === '__origin__') {
+    inEventGroup(() => writeCameraOffsetToBlock(block, frame, eye));
+    return;
+  }
+
   pickMeshFromScene(
     (pickedMesh) => {
       let target = pickedMesh;
@@ -1904,6 +1931,8 @@ export function exitGizmoState(options = {}) {
     window.removeEventListener('click', activeDuplicatePickHandler);
     activeDuplicatePickHandler = null;
   }
+  activeDuplicateCentreHandle?.dispose();
+  activeDuplicateCentreHandle = null;
 
   // Stop the axis keyboard
   stopAxisKeyboard?.();
@@ -3510,6 +3539,27 @@ function startDuplicatePlacement() {
     duplicateRafId = requestAnimationFrame(resolveSourceMesh);
   };
 
+  // A null position keeps the original block's position values.
+  const placeCopy = (position) => {
+    const workspace = Blockly.getMainWorkspace();
+    const originalBlock = workspace.getBlockById(blockId);
+    // If they deleted the original block while picking, exit gracefully
+    if (!originalBlock) {
+      meshToClone.showBoundingBox = false;
+      exitTransformState();
+      return;
+    }
+    const newBlock = duplicateBlockAndInsert(originalBlock, workspace, position);
+    updateDuplicateChainSource(newBlock, workspace);
+  };
+
+  activeDuplicateCentreHandle?.dispose();
+  const centreHandle = startCentreHandle(
+    () => meshToClone,
+    () => getCanvasCirclePosition() ?? { x: flock.scene.pointerX, y: flock.scene.pointerY }
+  );
+  activeDuplicateCentreHandle = centreHandle;
+
   onPickMesh = function (event) {
     const canvasRect = canvas.getBoundingClientRect();
 
@@ -3522,6 +3572,11 @@ function startDuplicatePlacement() {
 
     const [canvasX, canvasY] = getCanvasXAndCanvasYValues(event, canvasRect);
 
+    if (centreHandle.isAt(canvasX, canvasY)) {
+      placeCopy(null);
+      return;
+    }
+
     const pickRay = flock.scene.createPickingRay(
       canvasX,
       canvasY,
@@ -3531,20 +3586,7 @@ function startDuplicatePlacement() {
 
     const pickResult = flock.scene.pickWithRay(pickRay, isPlacementSurface);
 
-    if (pickResult.hit) {
-      const pickedPosition = pickResult.pickedPoint;
-      const workspace = Blockly.getMainWorkspace();
-      const originalBlock = workspace.getBlockById(blockId);
-      // If they deleted the original block while picking, exit gracefully
-      if (!originalBlock) {
-        meshToClone.showBoundingBox = false;
-        exitTransformState();
-        return;
-      }
-      // Otherwise carry on adding the new block
-      const newBlock = duplicateBlockAndInsert(originalBlock, workspace, pickedPosition);
-      updateDuplicateChainSource(newBlock, workspace);
-    }
+    if (pickResult.hit) placeCopy(pickResult.pickedPoint);
   };
 
   // Store a reference to this listener so we can get rid of it
@@ -3561,26 +3603,15 @@ function startDuplicatePlacement() {
   setTimeout(() => {
     startCanvasKeyboardMode(
       (x, y) => {
-        const pickResult = flock.scene.pick(x, y, isPlacementSurface);
-        if (pickResult?.hit) {
-          const workspace = Blockly.getMainWorkspace();
-          const originalBlock = workspace.getBlockById(blockId);
-          // If they deleted the original block while picking, exit gracefully
-          if (!originalBlock) {
-            meshToClone.showBoundingBox = false;
-            exitTransformState();
-            return;
-          }
-          const newBlock = duplicateBlockAndInsert(
-            originalBlock,
-            workspace,
-            pickResult.pickedPoint
-          );
-          updateDuplicateChainSource(newBlock, workspace);
+        if (centreHandle.isAt(x, y)) {
+          placeCopy(null);
+          return;
         }
+        const pickResult = flock.scene.pick(x, y, isPlacementSurface);
+        if (pickResult?.hit) placeCopy(pickResult.pickedPoint);
       },
       false,
-      (x, y) => !!flock.scene.pick(x, y, isPlacementSurface)?.hit
+      (x, y) => centreHandle.isAt(x, y) || !!flock.scene.pick(x, y, isPlacementSurface)?.hit
     );
     flock.scene.defaultCursor = 'crosshair';
   }, 0);
@@ -4731,7 +4762,7 @@ function clearOrbitRetargetObserver() {
   orbitRetargetObserver = null;
 }
 
-// Eye: Orbit camera around selected or picked mesh
+// Eye: Orbit camera around the selected mesh, or the origin with no selection
 function handleEyeGizmo() {
   watchClickAwayFromCanvas();
   setGizmoButtonActive(document.getElementById('eyeButton'), true);
@@ -4743,19 +4774,8 @@ function handleEyeGizmo() {
     return;
   }
 
-  pickMeshFromScene(
-    (pickedMesh) => {
-      if (!pickedMesh || pickedMesh.name === 'ground') {
-        exitGizmoState();
-        return;
-      }
-      attachMeshForActiveTool(pickedMesh);
-      attachOrbitView(pickedMesh);
-      showStatus(translate('orbit_mesh_info'), { owner: 'eye-gizmo', hint: true });
-    },
-    false,
-    translate('select_mesh_eye_prompt')
-  );
+  attachOrbitView(null);
+  showStatus(translate('orbit_origin_info'), { owner: 'eye-gizmo', hint: true });
 }
 
 export function enableGizmos() {
