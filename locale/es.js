@@ -145,6 +145,8 @@ export default {
   load_object: 'añadir %1 %2 %3 escala: %4 %8 x: %5 y: %6 z: %7', // human
   load_multi_object: 'añadir %1 %2 escala: %3 %8 x: %4 y: %5 z: %6\ncolores: %7', // human
   load_model: 'añadir %1 %2 escala: %3 %7 x: %4 y: %5 z: %6\ncolores: %8', // human
+  initial_rotation_label: 'rotación',
+  initial_size_label: 'tamaño',
   then_label: 'luego', // human
 
   // Custom block translations - Animate blocks
@@ -1221,6 +1223,7 @@ export default {
   duplicate_block_button_ui: 'Duplicar bloque',
   camera_button_ui: 'Controles de cámara', // human
   eye_button_ui: 'Orbitar alrededor del objeto seleccionado',
+  position_pin_button_ui: 'Elegir posición del objeto seleccionado',
   close_status_message_ui: 'Cerrar mensaje', // ai
 
   info_panel_link_ui: 'Visitar pagina web de Flock XR (se abre en una pestaña nueva)', // human
@@ -1371,6 +1374,7 @@ export default {
     'Cámara en vuelo, usa los controles en pantalla y arrastra para mirar alrededor',
   select_mesh_prompt: 'Selecciona un objeto, o usa las flechas para mover el cursor.',
   select_mesh_delete_prompt: 'Haz clic en un objeto para eliminarlo.', // Google translate
+  select_mesh_position_prompt: 'Selecciona un objeto para colocarlo.',
   select_mesh_duplicate_prompt: 'Selecciona un objeto para duplicar.', // Google (had to update it)
   place_duplicate_prompt: 'Haz clic para colocar una copia.', // AI-generated; needs validation
   orbit_origin_info: 'Arrastra para mover la cámara alrededor del origen. Haz clic en un objeto para orbitar alrededor de él.',

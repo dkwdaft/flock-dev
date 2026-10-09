@@ -145,6 +145,8 @@ export default {
   load_object: 'lägg till %1 %2 %3 skala: %4 %8 x: %5 y: %6 z: %7',
   load_multi_object: 'lägg till %1 %2 skala: %3 %8 x: %4 y: %5 z: %6\nfärger: %7',
   load_model: 'lägg till %1 %2 skala: %3 %7 x: %4 y: %5 z: %6\nfärger: %8',
+  initial_rotation_label: 'rotation',
+  initial_size_label: 'storlek',
 
   // Custom block translations - Animate blocks
   glide_to: 'glid %1 till %10 x %2 y %3 z %4 på %5 ms\n%6 återvända? %7 loop? %8 %9',
@@ -1094,6 +1096,7 @@ export default {
   duplicate_block_button_ui: 'Duplicera block',
   camera_button_ui: 'Kamerakontroller',
   eye_button_ui: 'Kretsa runt valt objekt',
+  position_pin_button_ui: 'Välj position för valt objekt',
 
   info_panel_link_ui: 'Besök Flock XR:s webbplats (öppnas i ny flik)',
   skip_to_scene_ui: 'Hoppa till 3D-scenen', // ai
@@ -1204,6 +1207,7 @@ export default {
     'Flygkamera, använd skärmkontrollerna och dra för att se dig omkring',
   select_mesh_prompt: 'Välj ett objekt, eller använd piltangenterna för att flytta kursorn.',
   select_mesh_delete_prompt: 'Klicka på ett objekt för att ta bort det.',
+  select_mesh_position_prompt: 'Välj ett objekt att placera.',
   select_mesh_duplicate_prompt: 'Välj ett objekt att duplicera.',
   place_duplicate_prompt: 'Klicka för att placera en kopia.', // AI-generated; needs validation
   orbit_origin_info: 'Dra för att flytta kameran runt origo. Klicka på ett objekt för att kretsa runt det.',

@@ -444,4 +444,191 @@ export function runTranslationTests(flock) {
       expect(mesh.position.z).to.be.closeTo(-3, 0.01);
     });
   });
+
+  describe('positionAt places the anchor of a rotated mesh @translation', function () {
+    let boxId;
+
+    const worldBox = () => {
+      const mesh = flock.scene.getMeshByName(boxId);
+      mesh.computeWorldMatrix(true);
+      mesh.refreshBoundingInfo();
+      return mesh.getBoundingInfo().boundingBox;
+    };
+
+    beforeEach(async function () {
+      boxId = `anchorBox_${Date.now()}`;
+      flock.createBox(boxId, { width: 1, height: 2, depth: 1, position: [0, 0, 0] });
+      await flock.rotateTo(boxId, { x: 0, y: 0, z: 45 });
+    });
+
+    afterEach(function () {
+      flock.dispose(boxId);
+    });
+
+    it('rests a tilted box on Y, centred on X and Z', async function () {
+      await flock.positionAt(boxId, { x: 2, y: 3, z: -1 });
+      const box = worldBox();
+      expect(box.minimumWorld.y).to.be.closeTo(3, 0.01);
+      expect(box.centerWorld.x).to.be.closeTo(2, 0.01);
+      expect(box.centerWorld.z).to.be.closeTo(-1, 0.01);
+    });
+
+    it('keeps the resting Y when useY is false', async function () {
+      await flock.positionAt(boxId, { x: 0, y: 3, z: 0 });
+      await flock.positionAt(boxId, { x: 5, y: 99, z: 5, useY: false });
+      const box = worldBox();
+      expect(box.minimumWorld.y).to.be.closeTo(3, 0.01);
+      expect(box.centerWorld.x).to.be.closeTo(5, 0.01);
+    });
+
+    it('keeps the other anchor coordinates when setting one', async function () {
+      await flock.positionAt(boxId, { x: 2, y: 0, z: 5 });
+      await flock.positionAtSingleCoordinate(boxId, 'y_coordinate', 4);
+      const box = worldBox();
+      expect(box.minimumWorld.y).to.be.closeTo(4, 0.01);
+      expect(box.centerWorld.x).to.be.closeTo(2, 0.01);
+      expect(box.centerWorld.z).to.be.closeTo(5, 0.01);
+    });
+
+    it('honours an anchor set with setAnchor', async function () {
+      await flock.setAnchor(boxId, { xPivot: 'MIN', yPivot: 'MIN', zPivot: 'CENTER' });
+      await flock.positionAt(boxId, { x: 2, y: 3, z: 0 });
+      const box = worldBox();
+      expect(box.minimumWorld.x).to.be.closeTo(2, 0.01);
+      expect(box.minimumWorld.y).to.be.closeTo(3, 0.01);
+    });
+
+    it('_positionAtBase still places the unrotated base', async function () {
+      await flock._positionAtBase(boxId, { x: 0, y: 3, z: 0 });
+      const mesh = flock.scene.getMeshByName(boxId);
+      expect(flock.getBlockPositionFromMesh(mesh).y).to.be.closeTo(3, 0.01);
+      expect(worldBox().minimumWorld.y).to.be.closeTo(4 - 1.5 / Math.SQRT2, 0.01);
+    });
+  });
+
+  describe('creating with an initial rotation and size @translation', function () {
+    const created = [];
+
+    afterEach(function () {
+      created.splice(0).forEach((id) => flock.dispose(id));
+    });
+
+    const worldBox = (mesh) => {
+      mesh.computeWorldMatrix(true);
+      mesh.refreshBoundingInfo();
+      return mesh.getBoundingInfo().boundingBox;
+    };
+
+    it('rests a box created tilted on its Y, centred on X and Z', function () {
+      const id = flock.createBox(`initTiltBox_${Date.now()}`, {
+        width: 1,
+        height: 2,
+        depth: 1,
+        position: [2, 3, -1],
+        rotation: { x: 0, y: 0, z: 45 },
+      });
+      created.push(id);
+      const box = worldBox(flock.scene.getMeshByName(id));
+      expect(box.minimumWorld.y).to.be.closeTo(3, 0.01);
+      expect(box.centerWorld.x).to.be.closeTo(2, 0.01);
+      expect(box.centerWorld.z).to.be.closeTo(-1, 0.01);
+    });
+
+    it('places a box created without a rotation as before', function () {
+      const id = flock.createBox(`initPlainBox_${Date.now()}`, {
+        width: 1,
+        height: 2,
+        depth: 1,
+        position: [2, 3, -1],
+      });
+      created.push(id);
+      const position = flock.getBlockPositionFromMesh(flock.scene.getMeshByName(id));
+      expect(position.x).to.be.closeTo(2, 0.01);
+      expect(position.y).to.be.closeTo(3, 0.01);
+      expect(position.z).to.be.closeTo(-1, 0.01);
+    });
+
+    it('centres a rotated plane on its position', function () {
+      const id = flock.createPlane(`initPlane_${Date.now()}`, {
+        width: 2,
+        height: 1,
+        position: [1, 2, 3],
+        rotation: { x: 90, y: 0, z: 0 },
+      });
+      created.push(id);
+      const box = worldBox(flock.scene.getMeshByName(id));
+      expect(box.centerWorld.x).to.be.closeTo(1, 0.01);
+      expect(box.centerWorld.y).to.be.closeTo(2, 0.01);
+      expect(box.centerWorld.z).to.be.closeTo(3, 0.01);
+      expect(box.maximumWorld.y - box.minimumWorld.y).to.be.closeTo(0, 0.01);
+    });
+
+    it('sizes, then rotates, then rests a model on its Y', async function () {
+      this.timeout(20000);
+      const id = flock.createObject({
+        modelName: 'tree.glb',
+        modelId: `initTree_${Date.now()}`,
+        position: { x: 4, y: 1, z: 4 },
+        size: { width: 2, height: 4, depth: 2 },
+        rotation: { x: 0, y: 0, z: 90 },
+      });
+      created.push(id);
+      const tree = await flock.whenModelReady(id);
+      await flock._whenHierarchySettled(tree);
+      const box = worldBox(tree);
+      expect(box.maximumWorld.x - box.minimumWorld.x).to.be.closeTo(4, 0.05);
+      expect(box.maximumWorld.y - box.minimumWorld.y).to.be.closeTo(2, 0.05);
+      expect(box.minimumWorld.y).to.be.closeTo(1, 0.01);
+      expect(box.centerWorld.x).to.be.closeTo(4, 0.01);
+      expect(box.centerWorld.z).to.be.closeTo(4, 0.01);
+    });
+
+    it('rotates a clone and keeps it resting where the source stands, before its DO runs', async function () {
+      const sourceId = flock.createBox(`initCloneSource_${Date.now()}`, {
+        width: 1,
+        height: 2,
+        depth: 1,
+        position: [3, 0, 0],
+      });
+      created.push(sourceId);
+      let rotationInDo = null;
+      const cloneId = flock.cloneMesh({
+        sourceMeshName: sourceId,
+        cloneId: `initClone_${Date.now()}`,
+        rotation: { x: 0, y: 0, z: 90 },
+        callback: (name) => {
+          const mesh = flock.scene.getMeshByName(name);
+          rotationInDo = mesh.rotationQuaternion.clone();
+        },
+      });
+      created.push(cloneId);
+      const clone = await flock.whenModelReady(cloneId);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const expected = flock.eulerDegreesToQuat(0, 0, 90);
+      expect(Math.abs(flock.BABYLON.Quaternion.Dot(rotationInDo, expected))).to.be.closeTo(1, 1e-6);
+      const box = worldBox(clone);
+      expect(box.centerWorld.x).to.be.closeTo(3, 0.01);
+      expect(box.minimumWorld.y).to.be.closeTo(0, 0.01);
+    });
+
+    it('rests 3D text created tilted on its Y, centred on X and Z', async function () {
+      this.timeout(30000);
+      const id = flock.create3DText({
+        text: 'Hi',
+        font: '/fonts/FreeSansBold.ttf',
+        size: 1,
+        depth: 0.2,
+        position: { x: 2, y: 1, z: -1 },
+        rotation: { x: 0, y: 0, z: 30 },
+        modelId: `initTiltText_${Date.now()}`,
+      });
+      created.push(id);
+      const text = await flock.whenModelReady(id);
+      const box = worldBox(text);
+      expect(box.minimumWorld.y).to.be.closeTo(1, 0.01);
+      expect(box.centerWorld.x).to.be.closeTo(2, 0.01);
+      expect(box.centerWorld.z).to.be.closeTo(-1, 0.01);
+    });
+  });
 }

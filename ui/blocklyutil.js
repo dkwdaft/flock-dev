@@ -466,13 +466,18 @@ export function setBlockXYZ(block, x, y, z, { decimals = 1 } = {}) {
   setInputValue('Z', roundToPrecision(z, decimals));
 }
 
+export function isDoOpen(block) {
+  const input = block?.getInput?.('DO');
+  return Boolean(input) && (input.isVisible?.() ?? true);
+}
+
 export function findOrCreateDoBlock(
   ownerBlock,
   { type, varField, varId, inputs = {} },
   { atStart = false } = {}
 ) {
   let addedDoSection = false;
-  if (!ownerBlock.getInput('DO')) {
+  if (!isDoOpen(ownerBlock)) {
     if (typeof ownerBlock.toggleDoBlock === 'function') {
       ownerBlock.toggleDoBlock();
     } else {
@@ -538,7 +543,9 @@ export function insertBlockSnapshot(snapshotJson, workspace, pickedPosition, con
     const snapshot = JSON.parse(JSON.stringify(snapshotJson));
     stripLockState(snapshot);
 
-    duplicateBlock = Blockly.serialization.blocks.append(snapshot, workspace);
+    duplicateBlock = Blockly.serialization.blocks.append(snapshot, workspace, {
+      recordUndo: true,
+    });
 
     setPositionValues(duplicateBlock, pickedPosition, duplicateBlock.type);
 

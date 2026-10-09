@@ -24,6 +24,7 @@ import {
 import { GizmoMenuManager } from '../accessibility/keyboardui.js';
 import { selectMeshForBlock } from './gizmos.js';
 import { isPlacementSurface } from './meshhelpers.js';
+import { ensureInitialRotation } from './initialTransform.js';
 import { showStatus, clearStatus } from './status.js';
 import { translate } from '../main/translation.js';
 import { KeyboardDispatcher } from '../main/keyboardDispatcher.js';
@@ -229,74 +230,6 @@ function planeRotationForNormal(normal) {
   return { x: toDeg(euler.x), y: toDeg(euler.y), z: toDeg(euler.z) };
 }
 
-// Nest a rotate_to block inside a create block's DO section, mirroring the
-// rotate gizmo (see findOrCreateRotateBlock in ui/gizmos.js). The rotate_to
-// references the create block's own mesh variable (ID_VAR) and is given the
-// supplied {x, y, z} rotation in degrees.
-// Apply a flat-lying rotation to the live preview mesh. The preview mesh is
-// created from the block on a later tick (Blockly fires create events
-// asynchronously), and we look it up by metadata.blockKey rather than by name,
-// which whenModelReady cannot do. So poll for the mesh, then rotate it
-// directly (with physics) the way the rotate gizmo does.
-function applyLiveRotationWhenReady(blockId, rotation, attempts = 0) {
-  if (!rotation) return;
-  // createPlane strips the "<name>__<blockId>" suffix off the mesh name and
-  // stores the block id in metadata.blockKey, so look the mesh up by that
-  // rather than by name.
-  const mesh = (flock.scene?.meshes || []).find((m) => m.metadata?.blockKey === blockId);
-  if (mesh) {
-    flock.rotateTo(mesh.name, { ...rotation, world: true });
-    return;
-  }
-  if (attempts < 60) {
-    requestAnimationFrame(() => applyLiveRotationWhenReady(blockId, rotation, attempts + 1));
-  }
-}
-
-function addRotationToCreateBlock(block, rotation) {
-  const workspace = Blockly.getMainWorkspace();
-  const modelVariable = block.getFieldValue('ID_VAR');
-
-  if (!block.getInput('DO')) {
-    // Route through the block's own mutator so the +/- toggle button and any
-    // "then" button stay in sync; a bare appendStatementInput would not.
-    if (typeof block.toggleDoBlock === 'function') {
-      block.toggleDoBlock();
-    } else {
-      block.appendStatementInput('DO').setCheck(null).appendField('');
-    }
-  }
-
-  const rotateBlock = workspace.newBlock('rotate_to');
-  rotateBlock.setFieldValue(modelVariable, 'MODEL');
-  rotateBlock.initSvg();
-  rotateBlock.render();
-
-  const axisValues = { X: rotation.x, Y: rotation.y, Z: rotation.z };
-  for (const axis of ['X', 'Y', 'Z']) {
-    const input = rotateBlock.getInput(axis);
-    const shadow = workspace.newBlock('math_number');
-    shadow.setFieldValue(String(axisValues[axis]), 'NUM');
-    shadow.setShadow(true);
-    shadow.initSvg();
-    shadow.render();
-    input.connection.connect(shadow.outputConnection);
-  }
-  rotateBlock.render();
-
-  const doConnection = block.getInput('DO').connection;
-  const firstBlock = doConnection.targetBlock();
-  if (firstBlock) {
-    let tail = firstBlock;
-    while (tail.getNextBlock()) tail = tail.getNextBlock();
-    tail.nextConnection.connect(rotateBlock.previousConnection);
-  } else {
-    doConnection.connect(rotateBlock.previousConnection);
-  }
-
-  return rotateBlock;
-}
-
 function addShapeToWorkspace(shapeType, position, decimals = 1, rotation = null) {
   const workspace = Blockly.getMainWorkspace();
 
@@ -347,13 +280,9 @@ function addShapeToWorkspace(shapeType, position, decimals = 1, rotation = null)
       }
     }
 
-    // For a plane placed flat against a surface, nest a rotate_to block
-    // inside the create block's DO section — the same shape the rotate gizmo
-    // produces — so the orientation lives with the plane and is captured in
-    // the program.
     if (rotation) {
       try {
-        addRotationToCreateBlock(block, rotation);
+        ensureInitialRotation(block, rotation);
       } catch (e) {
         console.error('Error adding rotation block:', e);
       }
@@ -510,11 +439,7 @@ function selectShape(shapeType) {
           // Centre-pivot planes need no base-rule compensation.
           const position = base.add(normal.scale(0.02));
 
-          const planeBlock = addShapeToWorkspace(shapeType, position, 2, rotation);
-
-          if (rotation && planeBlock) {
-            applyLiveRotationWhenReady(planeBlock.id, rotation);
-          }
+          addShapeToWorkspace(shapeType, position, 2, rotation);
         } else {
           addShapeToWorkspace(shapeType, pickResult.pickedPoint);
         }

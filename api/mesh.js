@@ -100,6 +100,64 @@ function aroundFractions(positions, indices, include = () => true) {
 // Snap a bone-attached mesh so its front faces the character's forward,
 // compensating for the bone's rest orientation. Post-attach rotates stay
 // in bone space, so Y remains character-relative yaw for user tweaks.
+// Attachments are fitted to the character standing upright, so a tilted
+// character carries them along instead of changing the fit.
+function withUprightTarget(target, fitFn) {
+  const savedQuaternion = target.rotationQuaternion?.clone() ?? null;
+  const savedRotation = target.rotation.clone();
+  const refresh = () =>
+    [target, ...target.getChildMeshes(false)].forEach((mesh) => mesh.computeWorldMatrix(true));
+  const parentRotation = flock.BABYLON.Quaternion.Identity();
+  target.parent?.computeWorldMatrix(true).decompose(undefined, parentRotation);
+  target.rotationQuaternion = flock.BABYLON.Quaternion.Inverse(parentRotation);
+  refresh();
+  try {
+    fitFn();
+  } finally {
+    target.rotationQuaternion = savedQuaternion;
+    target.rotation.copyFrom(savedRotation);
+    refresh();
+  }
+}
+
+// Group shells have no body of their own, so their members' bodies must go too.
+function removeAttachedPhysics(root) {
+  const M = flock.BABYLON.PhysicsMotionType;
+  const motionTypeNames = {
+    [M.STATIC]: 'STATIC',
+    [M.ANIMATED]: 'ANIMATED',
+    [M.DYNAMIC]: 'DYNAMIC',
+  };
+  [root, ...root.getChildMeshes(false)].forEach((mesh) => {
+    if (!mesh.physics || mesh.metadata?.isGhost) return;
+    (mesh.metadata ||= {})._preAttachPhysicsType =
+      mesh.metadata.physicsType || motionTypeNames[mesh.physics.getMotionType?.()];
+    flock.setPhysicsForMesh(mesh, 'NONE');
+  });
+}
+
+function restoreAttachedPhysics(root) {
+  [root, ...root.getChildMeshes(false)].forEach((mesh) => {
+    const physicsType = mesh.metadata?._preAttachPhysicsType;
+    if (!physicsType) return;
+    delete mesh.metadata._preAttachPhysicsType;
+    mesh.computeWorldMatrix(true);
+    flock.setPhysicsForMesh(mesh, physicsType);
+  });
+}
+
+// Members joining or leaving an attached group after attach would otherwise
+// keep pushing the character, or be missed by drop.
+function syncAttachedPhysics(mesh) {
+  for (let node = mesh; node; node = node.parent) {
+    if (node.metadata?._attachedTargetName) {
+      removeAttachedPhysics(mesh);
+      return;
+    }
+  }
+  restoreAttachedPhysics(mesh);
+}
+
 function alignAttachedToCharacterFacing(attachedMesh, targetMesh) {
   try {
     const B = flock?.BABYLON;
@@ -480,7 +538,15 @@ export const flockMesh = {
     return null;
   },
 
-  initializeMesh(mesh, position, color, shapeType, alpha = 1, applyColor = true) {
+  initializeMesh(
+    mesh,
+    position,
+    color,
+    shapeType,
+    alpha = 1,
+    applyColor = true,
+    { rotation = null } = {}
+  ) {
     const px = Array.isArray(position) ? position[0] : (position?.x ?? 0);
     const py = Array.isArray(position) ? position[1] : (position?.y ?? 0);
     const pz = Array.isArray(position) ? position[2] : (position?.z ?? 0);
@@ -499,6 +565,8 @@ export const flockMesh = {
     mesh.metadata = { ...(mesh.metadata || {}), shapeType };
     mesh.metadata.blockKey = mesh.name;
     mesh.metadata.sectionOwner = flock._currentSection;
+
+    if (rotation) flock._applyInitialTransform(mesh, { position, rotation });
 
     if (applyColor) {
       const colorInput = Array.isArray(color) ? color.flat() : color;
@@ -523,7 +591,7 @@ export const flockMesh = {
 
     mesh.metadata.sharedGeometry = true;
 
-    if (shouldResolveGroundLevel && !flock.ground) {
+    if (shouldResolveGroundLevel && !flock.ground && !rotation) {
       flock.waitForGroundReady().then(() => {
         const groundY = flock.getGroundLevelAt(px, pz);
         flock.setBlockPositionOnMesh(mesh, {
@@ -1398,6 +1466,7 @@ export const flockMesh = {
           if (targetWithSkeleton) {
             const bone = targetWithSkeleton.skeleton.bones.find((b) => b.name === 'Hold');
             if (bone) {
+              removeAttachedPhysics(meshToAttachInstance);
               meshToAttachInstance.attachToBone(bone, targetWithSkeleton);
               meshToAttachInstance.position = new flock.BABYLON.Vector3(xOffset, yOffset, zOffset);
               alignAttachedToCharacterFacing(meshToAttachInstance, targetMeshInstance);
@@ -1465,18 +1534,7 @@ export const flockMesh = {
           if (targetWithSkeleton) {
             const bone = targetWithSkeleton.skeleton.bones.find((b) => b.name === boneName);
             if (bone) {
-              if (!alreadyAttached && meshToAttachInstance.physics) {
-                const M = flock.BABYLON.PhysicsMotionType;
-                const motionTypeNames = {
-                  [M.STATIC]: 'STATIC',
-                  [M.ANIMATED]: 'ANIMATED',
-                  [M.DYNAMIC]: 'DYNAMIC',
-                };
-                meshToAttachInstance.metadata._preAttachPhysicsType =
-                  meshToAttachInstance.metadata.physicsType ||
-                  motionTypeNames[meshToAttachInstance.physics.getMotionType?.()];
-                flock.setPhysicsForMesh(meshToAttachInstance, 'NONE');
-              }
+              if (!alreadyAttached) removeAttachedPhysics(meshToAttachInstance);
 
               meshToAttachInstance.attachToBone(bone, targetWithSkeleton);
 
@@ -1495,46 +1553,48 @@ export const flockMesh = {
                 offset: { x, y, z },
               });
 
-              meshToAttachInstance.position = new flock.BABYLON.Vector3(x, y, z);
+              withUprightTarget(targetMeshInstance, () => {
+                meshToAttachInstance.position = new flock.BABYLON.Vector3(x, y, z);
 
-              alignAttachedToCharacterFacing(meshToAttachInstance, targetMeshInstance);
+                alignAttachedToCharacterFacing(meshToAttachInstance, targetMeshInstance);
 
-              if (logicalBoneName === 'Head') {
-                // Rest accessories on top of the head, not at the neck joint the bone sits
-                // at. The crown bone (if the rig has one) gives the head's real length —
-                // computed in world space so it already reflects any character scaling.
-                const headBasePos = bone.getAbsolutePosition(targetWithSkeleton);
-                const crownBone = bone.children?.[0];
-                const headLength = crownBone
-                  ? flock.BABYLON.Vector3.Distance(
-                      headBasePos,
-                      crownBone.getAbsolutePosition(targetWithSkeleton)
-                    )
-                  : 0;
-                const targetBaseY = headBasePos.y + headLength + Number(y || 0);
+                if (logicalBoneName === 'Head') {
+                  // Rest accessories on top of the head, not at the neck joint the bone sits
+                  // at. The crown bone (if the rig has one) gives the head's real length —
+                  // computed in world space so it already reflects any character scaling.
+                  const headBasePos = bone.getAbsolutePosition(targetWithSkeleton);
+                  const crownBone = bone.children?.[0];
+                  const headLength = crownBone
+                    ? flock.BABYLON.Vector3.Distance(
+                        headBasePos,
+                        crownBone.getAbsolutePosition(targetWithSkeleton)
+                      )
+                    : 0;
+                  const targetBaseY = headBasePos.y + headLength + Number(y || 0);
 
-                // A change to the mesh's local Y doesn't move its world Y 1:1 — the bone,
-                // skeleton mesh and character can all be scaled — so measure the actual
-                // local-to-world ratio along Y instead of assuming it's 1.
-                const baseLocalY = meshToAttachInstance.position.y;
-                meshToAttachInstance.computeWorldMatrix(true);
-                const w0 = meshToAttachInstance.getHierarchyBoundingVectors(
-                  true,
-                  (m) => m !== meshToAttachInstance
-                ).min.y;
-                meshToAttachInstance.position.y = baseLocalY + 1;
-                meshToAttachInstance.computeWorldMatrix(true);
-                const w1 = meshToAttachInstance.getHierarchyBoundingVectors(
-                  true,
-                  (m) => m !== meshToAttachInstance
-                ).min.y;
-                const worldPerLocalY = w1 - w0;
+                  // A change to the mesh's local Y doesn't move its world Y 1:1 — the bone,
+                  // skeleton mesh and character can all be scaled — so measure the actual
+                  // local-to-world ratio along Y instead of assuming it's 1.
+                  const baseLocalY = meshToAttachInstance.position.y;
+                  meshToAttachInstance.computeWorldMatrix(true);
+                  const w0 = meshToAttachInstance.getHierarchyBoundingVectors(
+                    true,
+                    (m) => m !== meshToAttachInstance
+                  ).min.y;
+                  meshToAttachInstance.position.y = baseLocalY + 1;
+                  meshToAttachInstance.computeWorldMatrix(true);
+                  const w1 = meshToAttachInstance.getHierarchyBoundingVectors(
+                    true,
+                    (m) => m !== meshToAttachInstance
+                  ).min.y;
+                  const worldPerLocalY = w1 - w0;
 
-                meshToAttachInstance.position.y = worldPerLocalY
-                  ? baseLocalY + (targetBaseY - w0) / worldPerLocalY
-                  : baseLocalY;
-                meshToAttachInstance.computeWorldMatrix(true);
-              }
+                  meshToAttachInstance.position.y = worldPerLocalY
+                    ? baseLocalY + (targetBaseY - w0) / worldPerLocalY
+                    : baseLocalY;
+                  meshToAttachInstance.computeWorldMatrix(true);
+                }
+              });
 
               flock._applyXRViewVisibility?.();
               flock._syncTeleportMeshHierarchy?.(meshToAttachInstance);
@@ -1560,7 +1620,6 @@ export const flockMesh = {
 
         const md = mesh.metadata || {};
         const restoreRotation = md._preAttachWorldRotation || rotationNow;
-        const restorePhysicsType = md._preAttachPhysicsType;
 
         // Remove from target's attachment tracking list
         const targetName = md._attachedTargetName;
@@ -1583,7 +1642,6 @@ export const flockMesh = {
           delete mesh.metadata._attachedBoneName;
           delete mesh.metadata._attachedOffset;
           delete mesh.metadata._preAttachWorldRotation;
-          delete mesh.metadata._preAttachPhysicsType;
         }
         flock._syncTeleportMeshHierarchy?.(mesh);
 
@@ -1592,10 +1650,13 @@ export const flockMesh = {
         mesh.position = position.add(new flock.BABYLON.Vector3(0, 0.002, 0));
         mesh.computeWorldMatrix(true);
 
-        if (restorePhysicsType) flock.setPhysicsForMesh(mesh, restorePhysicsType);
+        restoreAttachedPhysics(mesh);
         resolve();
       });
     });
+  },
+  _syncAttachedPhysics(mesh) {
+    syncAttachedPhysics(mesh);
   },
   setParent(parentModelName, childModelName) {
     if (Array.isArray(childModelName)) {
@@ -1616,6 +1677,7 @@ export const flockMesh = {
           const wasChild = childMesh.parent === parentMesh;
           childMesh.setParent(parentMesh);
           if (!wasChild) joinActiveDrives(childMesh);
+          syncAttachedPhysics(childMesh);
 
           if (parentMesh.metadata?.shapeType === 'Group') {
             flock.recomputeGroupGeometry(parentMesh);
@@ -1663,6 +1725,7 @@ export const flockMesh = {
           return;
         }
         childMesh.setParent(null);
+        syncAttachedPhysics(childMesh);
         resolve();
       });
     });

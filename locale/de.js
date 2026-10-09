@@ -149,6 +149,8 @@ export default {
   load_object: 'füge %1 %2 %3 hinzu Skalierung: %4 %8 x: %5 y: %6 z: %7',
   load_multi_object: 'füge %1 %2 hinzu Skalierung: %3 %8 x: %4 y: %5 z: %6\nFarben: %7',
   load_model: 'füge %1 %2 hinzu Skalierung: %3 %7 x: %4 y: %5 z: %6\nFarben: %8',
+  initial_rotation_label: 'Drehung',
+  initial_size_label: 'Größe',
 
   // Custom block translations - Animate blocks
   glide_to: '%1 gleitet zu %10 x %2 y %3 z %4 in %5 ms\n%6 zurück? %7 Schleife? %8 %9',
@@ -1101,6 +1103,7 @@ export default {
   duplicate_block_button_ui: 'Block duplizieren',
   camera_button_ui: 'Kamera-Steuerung',
   eye_button_ui: 'Um ausgewähltes Objekt kreisen',
+  position_pin_button_ui: 'Position für ausgewähltes Objekt wählen',
   info_panel_link_ui: 'Flock XR Webseite (neuer Tab)',
   skip_to_scene_ui: 'Zur 3D-Szene springen', // ai
   project_name_ui: 'Projektname',
@@ -1195,6 +1198,7 @@ export default {
   fly_camera_instructions_touch: 'Flugkamera, nutze die Bildschirmsteuerung und ziehe zum Umsehen',
   select_mesh_prompt: 'Wähle ein Objekt aus, oder nutze die Pfeiltasten, um den Cursor zu bewegen.',
   select_mesh_delete_prompt: 'Klicke auf ein Objekt, um es zu löschen.',
+  select_mesh_position_prompt: 'Wähle ein Objekt zum Platzieren aus.',
   select_mesh_duplicate_prompt: 'Wähle ein Objekt zum Duplizieren aus.',
   place_duplicate_prompt: 'Klicke, um eine Kopie zu platzieren.', // AI-generated; needs validation
   orbit_origin_info: 'Ziehe, um die Kamera um den Ursprung zu bewegen. Klicke auf ein Objekt, um es zu umkreisen.',

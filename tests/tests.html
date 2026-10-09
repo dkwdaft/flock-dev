@@ -610,6 +610,27 @@
           pattern: '@accessibility',
         },
         {
+          id: 'initialtransform',
+          name: 'Initial Transform Tests',
+          importPath: './initialTransform.test.js',
+          importFn: 'runInitialTransformTests',
+          pattern: '@initialtransform',
+        },
+        {
+          id: 'initialtransformrows',
+          name: 'Initial Transform Row Tests',
+          importPath: './initialTransformRows.test.js',
+          importFn: 'runInitialTransformRowsTests',
+          pattern: '@initialtransformrows',
+        },
+        {
+          id: 'legacytransforms',
+          name: 'Legacy Transform Folding Tests',
+          importPath: './legacyTransforms.test.js',
+          importFn: 'runLegacyTransformTests',
+          pattern: '@legacytransforms',
+        },
+        {
           id: 'gizmos',
           name: 'Gizmo Tests',
           importPath: './gizmos.test.js',
@@ -664,6 +685,13 @@
           importPath: './prefabs.test.js',
           importFn: 'runPrefabTests',
           pattern: '@prefabs',
+        },
+        {
+          id: 'combine',
+          name: 'Combine Tests',
+          importPath: './combine.test.js',
+          importFn: 'runCombineTests',
+          pattern: '@combine',
         },
         {
           id: 'blocklyinit',

@@ -16,6 +16,7 @@ import {
   setGroupSelectionFollower,
   setGroupActiveToggleListener,
   setMirrorInUseCheck,
+  writeClonePosition,
 } from './blockmesh.js';
 import {
   highlightBlockById,
@@ -32,6 +33,7 @@ import {
   getNumberInput,
   isBlockLocked,
   stripLockState,
+  isDoOpen,
 } from './blocklyutil.js';
 import {
   getMeshRotationInDegrees,
@@ -43,6 +45,7 @@ import {
 import {
   startCanvasKeyboardMode,
   stopCanvasKeyboardMode,
+  isCanvasKeyboardModeActive,
   getCanvasCircle,
   getCanvasCirclePosition,
   setCrosshairCursor,
@@ -56,9 +59,25 @@ import { KeyboardDispatcher } from '../main/keyboardDispatcher.js';
 import { announceToScreenReader } from '../main/input.js';
 import { GizmoMenuManager } from '../accessibility/keyboardui.js';
 import { isBodyAlive } from '../api/physics.js';
-import { isPositionPickActive } from './pickposition.js';
+import { isPositionPickActive, startPositionPick } from './pickposition.js';
 import { shapeError } from '../api/freeformgeometry.js';
 import { freeformEditorFor, freeformHandleAt, FREEFORM_STEP } from './freeformedit.js';
+import {
+  supportsInitialSize,
+  findInitialSize,
+  ensureInitialRotation,
+  ensureInitialSize,
+  measureInitialSize,
+  usesAnchorPosition,
+  readBlockPosition,
+  placeAtBlockPosition,
+  writeMovedPosition,
+  getInitialRotationValues,
+  setInitialRotationValues,
+  getInitialSizeValues,
+  setInitialSizeValues,
+  placeMoveAfterInitialTransforms,
+} from './initialTransform.js';
 export let gizmoManager;
 
 // Enable debug messages
@@ -122,17 +141,6 @@ const DEFAULT_ROTATION = 0.05;
 const FAST_SCALE = 0.5;
 const DEFAULT_SCALE = 0.05;
 
-const MODEL_BLOCK_TYPES = new Set([
-  'load_model',
-  'load_multi_object',
-  'load_object',
-  'load_character',
-]);
-
-// Block types with no dimension fields of their own: like models, they get a
-// resize block instead. A group is an empty container sized by its children.
-const RESIZE_BLOCK_TYPES = new Set([...MODEL_BLOCK_TYPES, 'create_group', 'clone_mesh']);
-
 window.selectedColor = '#ffffff'; // Default color
 let colorPicker = null;
 
@@ -159,6 +167,7 @@ let orbitDisposeObserver = null; // Dispose handle for the orbited mesh
 let orbitDisposeMesh = null; // Mesh the orbit camera targets (window.orbitMesh)
 let orbitPreviousGizmoType = null; // Gizmo active before entering orbit, restored on exit
 let orbitRetargetObserver = null; // Pointer observer that lets a canvas click switch orbit target
+let eyeKeyboardCallback = null; // Pick callback of the eye gizmo's canvas keyboard mode
 let previewFrame = null; // Camera frame being looked through via the eye gizmo
 let previewSavedCamera = null; // Camera to return to when the preview ends
 
@@ -174,6 +183,7 @@ function exitTransformState() {
   const preserve = isOrbitViewActive();
   exitGizmoState(preserve ? { preserveOrbit: true } : undefined);
   if (preserve && gizmoManager) gizmoManager.usePointerToAttachGizmos = false;
+  if (preserve) scheduleEyeKeyboardMode();
 }
 
 // Keep track of things to clean up
@@ -200,6 +210,7 @@ function createAdaptiveInput({
   mode,
   showUniform,
   uniformOnly = false,
+  onlyAxis = null,
   stepLabels,
   onHudHide,
   onAxisChange,
@@ -254,6 +265,7 @@ function createAdaptiveInput({
       mode,
       showUniform,
       uniformOnly,
+      onlyAxis,
       stepLabels,
       onAxisChange: onHudAxisChange,
       onCollapsedChange: () => reportAxis(visibleAxis()),
@@ -274,6 +286,7 @@ function createAdaptiveInput({
     initialAxis: initialKeyboardAxis,
     allowUniform: showUniform,
     uniformOnly,
+    onlyAxis,
   });
   // The HUD lands on an axis (X by default) and normalises saved ones, so take
   // its choice over the raw value.
@@ -757,6 +770,7 @@ function blockedToolActive() {
     'scaleButton',
     'colorPickerButton',
     'deleteButton',
+    'positionPinButton',
   ].some((id) => document.getElementById(id)?.classList.contains('active'));
 }
 
@@ -1049,7 +1063,7 @@ function duplicateCanvasTargetInPlace(target) {
     const meshForPos = root && getBlockForCanvasRoot(root) === target
       ? root
       : getMeshFromBlock(target);
-    pastePos = meshForPos ? flock.getBlockPositionFromMesh(meshForPos) : null;
+    pastePos = meshForPos ? blockPositionOf(meshForPos) : null;
   } catch {
     pastePos = null;
   }
@@ -1085,7 +1099,7 @@ export function copyCanvasSelection() {
     return false;
   }
   if (snapshot?.next) delete snapshot.next;
-  const pos = flock.getBlockPositionFromMesh(mesh);
+  const pos = blockPositionOf(mesh);
   canvasClipboard = {
     snapshot,
     blockId: block.id,
@@ -1095,6 +1109,45 @@ export function copyCanvasSelection() {
     z: pos.z,
   };
   return true;
+}
+
+function pinBlockForMesh(mesh) {
+  if (!mesh || mesh.name === 'ground' || mesh.isDisposed?.()) return null;
+  const blockKey = findParentWithBlockId(mesh)?.metadata?.blockKey;
+  const blockId = blockKey != null ? meshBlockIdMap[blockKey] : null;
+  const block = blockId ? Blockly.getMainWorkspace?.()?.getBlockById(blockId) : null;
+  return block?.getField?.('PICK_POSITION') ? block : null;
+}
+
+export function pickSelectedMeshPosition() {
+  const button = document.getElementById('positionPinButton');
+  if (button?.classList.contains('active')) {
+    exitGizmoState();
+    return;
+  }
+
+  const selected = pinBlockForMesh(gizmoManager?.attachedMesh);
+  if (selected) {
+    startPositionPick(selected);
+    return;
+  }
+
+  exitGizmoState();
+  watchClickAwayFromCanvas();
+  setGizmoButtonActive(button, true);
+  const prompt = translate('select_mesh_position_prompt');
+  const onPicked = (pickedMesh) => {
+    const block = pinBlockForMesh(pickedMesh);
+    if (!block) {
+      setTimeout(() => {
+        if (button?.classList.contains('active')) pickMeshFromScene(onPicked, false, prompt);
+      }, 0);
+      return;
+    }
+    setGizmoButtonActive(button, false);
+    startPositionPick(block);
+  };
+  pickMeshFromScene(onPicked, false, prompt);
 }
 
 export function cutCanvasSelection() {
@@ -1123,7 +1176,7 @@ export function pasteCanvasClipboard() {
   // clipboard (e.g. copied in the code view, pasted on the canvas).
   if (canvasClipboard?.snapshot) {
     const pastePos = root
-      ? flock.getBlockPositionFromMesh(root)
+      ? blockPositionOf(root)
       : { x: canvasClipboard.x, y: canvasClipboard.y, z: canvasClipboard.z };
     const source = canvasClipboard.blockId ? workspace.getBlockById(canvasClipboard.blockId) : null;
     const sourceAlive = source && !source.disposed ? source : null;
@@ -1486,9 +1539,7 @@ function attachOrbitView(mesh) {
   let target = BABYLON.Vector3.Zero();
   let radius = 8;
   if (mesh) {
-    // Orbit target and gizmo selection are independent.
-    applyMeshSelection(mesh);
-    selectedMesh = gizmoManager.attachedMesh ?? mesh;
+    selectedMesh = mesh.parent ? getRootMesh(mesh.parent) : mesh;
 
     mesh.computeWorldMatrix(true);
     const { min, max } = mesh.getHierarchyBoundingVectors(true);
@@ -1507,7 +1558,7 @@ function attachOrbitView(mesh) {
     scene
   );
   flock._configureOrbitCamera(orbitCamera);
-  if (!mesh) frameWholeGround(orbitCamera);
+  if (!mesh && !frameSceneObjects(orbitCamera)) frameWholeGround(orbitCamera);
   // Rotation comes from CameraControls via the InputManager, so drop Babylon's
   // keyboard input to keep physical arrows on a single path.
   orbitCamera.inputs.removeByType('ArcRotateCameraKeyboardMoveInput');
@@ -1521,7 +1572,7 @@ function attachOrbitView(mesh) {
   orbitSavedCamera = freeCamera;
   freeCamera.detachControl();
   scene.activeCamera = orbitCamera;
-  // Orbit-view keys (WASD/arrows) are read straight off the physical keyboard
+  // Orbit-view keys (WASD) are read straight off the physical keyboard
   // by CameraControls, same as fly mode — the project shouldn't see them too.
   flock.inputManager?.setInputOwner('editor');
   const canvas = scene.getEngine().getRenderingCanvas();
@@ -1545,8 +1596,68 @@ function attachOrbitView(mesh) {
   window.orbitViewActive = true;
   window.orbitBlock = mesh ? (window.currentBlock ?? null) : null;
   window.orbitMesh = selectedMesh;
+  // Orbiting never selects: tools started while orbiting begin with nothing picked.
+  if (selectedMesh) {
+    if (gizmoManager.attachedMesh === selectedMesh) gizmoManager.attachToMesh(null);
+    enableBoundingBox(selectedMesh);
+  }
   setGizmoButtonActive(document.getElementById('eyeButton'), true);
   watchEyeGizmoRetarget();
+}
+
+function frameSceneObjects(orbitCamera) {
+  const BABYLON = flock.BABYLON;
+  orbitCamera.beta = Math.PI / 3;
+  const view = orbitCamera.getViewMatrix(true);
+  const startRadius = orbitCamera.radius;
+  const depthSign = flock.scene.useRightHandedSystem ? -1 : 1;
+  const corners = [];
+  for (const mesh of flock.scene.meshes) {
+    if (!mesh.metadata?.blockKey || mesh.parent?.metadata?.blockKey) continue;
+    if (mesh === flock.ground || mesh.name === 'ground' || mesh.name === 'sky') continue;
+    if (mesh.metadata.shape === 'camera' || !mesh.isEnabled()) continue;
+    mesh.computeWorldMatrix(true);
+    const { min, max } = mesh.getHierarchyBoundingVectors(true);
+    if (!Number.isFinite(min.x) || !Number.isFinite(max.x)) continue;
+    for (const x of [min.x, max.x]) {
+      for (const y of [min.y, max.y]) {
+        for (const z of [min.z, max.z]) {
+          const v = BABYLON.Vector3.TransformCoordinates(new BABYLON.Vector3(x, y, z), view);
+          corners.push({ x: v.x, y: v.y, depth: depthSign * v.z - startRadius });
+        }
+      }
+    }
+  }
+  if (!corners.length) return false;
+
+  const margin = 1.1;
+  const slopeY = Math.tan(orbitCamera.fov / 2) / margin;
+  const slopeX = slopeY * (flock.scene.getEngine().getAspectRatio(orbitCamera) || 1);
+  // Range of view-space offsets that keeps every corner inside the frame at
+  // this radius, or null when none does.
+  const offsetRange = (radius, axis, slope) => {
+    let lo = -Infinity;
+    let hi = Infinity;
+    for (const corner of corners) {
+      const reach = (corner.depth + radius) * slope;
+      lo = Math.max(lo, -reach - corner[axis]);
+      hi = Math.min(hi, reach - corner[axis]);
+    }
+    return lo <= hi ? (lo + hi) / 2 : null;
+  };
+  const fits = (radius) => offsetRange(radius, 'x', slopeX) !== null && offsetRange(radius, 'y', slopeY) !== null;
+
+  let near = Math.max(...corners.map((corner) => -corner.depth)) + orbitCamera.minZ;
+  let far = Math.max(near * 2, 1);
+  while (!fits(far)) far *= 2;
+  for (let i = 0; i < 40; i++) {
+    const mid = (near + far) / 2;
+    if (fits(mid)) far = mid;
+    else near = mid;
+  }
+  orbitCamera.radius = far;
+  orbitCamera.targetScreenOffset.set(offsetRange(far, 'x', slopeX), offsetRange(far, 'y', slopeY));
+  return true;
 }
 
 function frameWholeGround(orbitCamera) {
@@ -1635,20 +1746,8 @@ function disconnectOrbitView() {
   window.orbitMesh = null;
   clearOrbitRetargetObserver();
   setGizmoButtonActive(document.getElementById('eyeButton'), false);
-  // Re-attach the orbit target only when nothing else is selected.
-  if (!gizmoManager.attachedMesh && prevMesh && !prevMesh.isDisposed?.()) {
-    gizmoManager.attachToMesh(prevMesh);
-    enableBoundingBox(prevMesh);
-  } else if (
-    prevMesh &&
-    prevMesh !== gizmoManager.attachedMesh &&
-    !prevMesh.isDisposed?.()
-  ) {
-    // The transform gizmo was retargeted elsewhere while orbiting (see the
-    // click-retarget observer below), which keeps prevMesh's box on for as
-    // long as it's still the orbit target. Orbit is ending on it now — since
-    // nothing else references prevMesh, its box would otherwise be left on
-    // indefinitely.
+  // The orbit target's box was only lit for orbiting; keep it if a tool has it.
+  if (prevMesh && prevMesh !== gizmoManager.attachedMesh && !prevMesh.isDisposed?.()) {
     hideBoundingBox(prevMesh);
   }
   const canvas = flock.scene.getEngine().getRenderingCanvas();
@@ -1829,7 +1928,7 @@ export function captureViewToCameraBlock(block) {
 function inEventGroup(fn) {
   Blockly.Events.setGroup(Blockly.utils.idGenerator.genUid());
   try {
-    fn();
+    return fn();
   } finally {
     Blockly.Events.setGroup(false);
   }
@@ -1879,32 +1978,6 @@ function showCameraInEditor(camera) {
   scene.activeCamera = camera;
   const canvas = scene.getEngine().getRenderingCanvas();
   if (canvas) camera.attachControl(canvas, false);
-}
-
-function getScaledSize(mesh) {
-  let { originalMin, originalMax } = mesh.metadata || {};
-  // Empty container (e.g. a group): size lives in the children. Cache it
-  // like flock.resize() does rather than re-measuring every call.
-  if ((!originalMin || !originalMax) && mesh.getTotalVertices() === 0) {
-    const bounds = flock.getHierarchyLocalBounds(mesh);
-    mesh.metadata = mesh.metadata || {};
-    mesh.metadata.originalMin = bounds.min.clone();
-    mesh.metadata.originalMax = bounds.max.clone();
-    originalMin = mesh.metadata.originalMin;
-    originalMax = mesh.metadata.originalMax;
-  }
-  const min = originalMin ?? mesh.getBoundingInfo().boundingBox.minimum;
-  const max = originalMax ?? mesh.getBoundingInfo().boundingBox.maximum;
-
-  const baseX = max.x - min.x;
-  const baseY = max.y - min.y;
-  const baseZ = max.z - min.z;
-
-  return {
-    x: baseX * Math.abs(mesh.scaling.x),
-    y: baseY * Math.abs(mesh.scaling.y),
-    z: baseZ * Math.abs(mesh.scaling.z),
-  };
 }
 
 // Clean up gizmo state if aborted
@@ -2065,7 +2138,7 @@ function applyRotationHandles(mesh) {
   const rg = gizmoManager?.gizmos?.rotationGizmo;
   if (!rg) return;
   const enabled = !isTargetCameraFrame(mesh);
-  const yOnly = isPrefab(mesh);
+  const yOnly = mesh?.metadata?.shapeType === 'Group';
   for (const [axis, g] of [
     ['x', rg.xGizmo],
     ['y', rg.yGizmo],
@@ -2117,7 +2190,6 @@ function startRotateKeyboardHandler(mesh, savedHudAxis = null, onHudAxisSaved = 
     const e = getMeshRotationInDegrees(mesh);
     return { x: e.x, y: e.y, z: e.z };
   })();
-  const axisInput = { x: 'X', y: 'Y', z: 'Z' };
   // The mouse gizmo rotates the mesh without touching `working`; re-seed
   // from the mesh on divergence so the next slider touch doesn't jump.
   const syncWorkingToMesh = () => {
@@ -2136,7 +2208,8 @@ function startRotateKeyboardHandler(mesh, savedHudAxis = null, onHudAxisSaved = 
   };
   const onMove = (dx, dy, dz) => {
     syncWorkingToMesh();
-    const deltas = isPrefab(mesh) ? { x: 0, y: dy, z: 0 } : { x: dx, y: dy, z: dz };
+    const deltas =
+      mesh?.metadata?.shapeType === 'Group' ? { x: 0, y: dy, z: 0 } : { x: dx, y: dy, z: dz };
     const changedAxes = [];
     for (const axisKey of ['x', 'y', 'z']) {
       if (deltas[axisKey]) {
@@ -2155,11 +2228,8 @@ function startRotateKeyboardHandler(mesh, savedHudAxis = null, onHudAxisSaved = 
       mesh.physics.disablePreStep = false;
       mesh.physics.setTargetTransform(mesh.absolutePosition, mesh.rotationQuaternion);
     }
-    if (rotateBlock && !rotateBlock.disposed) {
-      for (const axisKey of changedAxes) {
-        setBlockAxisValue(rotateBlock, axisInput[axisKey], working[axisKey]);
-      }
-    }
+    setInitialRotationValues(rotateBlock, working, { axes: changedAxes });
+    writeAnchorAfterRotation(mesh, rotateBlock);
   };
   const onConfirm = () => {
     exitTransformState();
@@ -2182,6 +2252,7 @@ function startRotateKeyboardHandler(mesh, savedHudAxis = null, onHudAxisSaved = 
     stepNormal: DEFAULT_ROTATION,
     stepFast: FAST_ROTATION,
     mode: 'slider',
+    onlyAxis: mesh?.metadata?.shapeType === 'Group' ? 'y' : null,
     getValues,
     onHudHide: () => highlightGizmoAxis(gizmoManager.gizmos?.rotationGizmo, null),
     onAxisChange: (axis) => {
@@ -2230,11 +2301,11 @@ function startScaleKeyboardHandler(mesh, savedHudAxis = null, onHudAxisSaved = n
   if (creationBlock) {
     if (creationBlock.type === 'create_group') {
       highlightBlockById(Blockly.getMainWorkspace(), creationBlock);
-    } else if (RESIZE_BLOCK_TYPES.has(creationBlock.type)) {
-      const existingResize = findExistingResizeBlock(mesh);
-      highlightBlockById(Blockly.getMainWorkspace(), existingResize ?? creationBlock);
     } else {
-      highlightBlockById(Blockly.getMainWorkspace(), creationBlock);
+      highlightBlockById(
+        Blockly.getMainWorkspace(),
+        findExistingResizeBlock(mesh) ?? creationBlock
+      );
     }
   }
   if (mesh?.metadata?.shapeType === 'Group') {
@@ -2393,122 +2464,42 @@ function setBlockAxisValue(block, inputName, value) {
   }
 }
 
-// Find an existing rotate_to block in mesh's DO section without creating one.
-function _findExistingRotateBlock(mesh) {
-  const block = meshMap[mesh?.metadata?.blockKey];
-  if (!block) return null;
-  const modelVariable = getOwnVar(block);
-  const statementConnection = block.getInput('DO')?.connection;
-  if (!statementConnection) return null;
-  let current = statementConnection.targetBlock();
-  while (current) {
-    if (current.type === 'rotate_to' && current.getFieldValue('MODEL') === modelVariable) {
-      return current;
-    }
-    current = current.getNextBlock();
-  }
-  return null;
-}
-
-// Find the existing rotate_to block in mesh's DO section, or create one.
-// Returns the rotateBlock, or null if there is no associated Blockly block.
-function findOrCreateRotateBlock(mesh) {
-  const block = meshMap[mesh?.metadata?.blockKey];
-  if (!block) return null;
-
-  const groupId = Blockly.utils.idGenerator.genUid();
-  Blockly.Events.setGroup(groupId);
-
-  let addedDoSection = false;
-  if (!block.getInput('DO')) {
-    // Route through the block's own mutator so the +/- toggle button and any
-    // "then" button stay in sync; a bare appendStatementInput would not.
-    if (typeof block.toggleDoBlock === 'function') {
-      block.toggleDoBlock();
-    } else {
-      block.appendStatementInput('DO').setCheck(null).appendField('');
-    }
-    addedDoSection = true;
-  }
-
-  let rotateBlock = null;
-  const modelVariable = getOwnVar(block);
-  const statementConnection = block.getInput('DO').connection;
-  if (statementConnection?.targetBlock()) {
-    let currentBlock = statementConnection.targetBlock();
-    while (currentBlock) {
-      if (
-        currentBlock.type === 'rotate_to' &&
-        currentBlock.getFieldValue('MODEL') === modelVariable
-      ) {
-        rotateBlock = currentBlock;
-        break;
-      }
-      currentBlock = currentBlock.getNextBlock();
-    }
-  }
-
-  if (!rotateBlock) {
-    rotateBlock = Blockly.getMainWorkspace().newBlock('rotate_to');
-    rotateBlock.setFieldValue(modelVariable, 'MODEL');
-    rotateBlock.initSvg();
-    rotateBlock.render();
-    ['X', 'Y', 'Z'].forEach((axis) => {
-      const input = rotateBlock.getInput(axis);
-      const shadow = Blockly.getMainWorkspace().newBlock('math_number');
-      shadow.setFieldValue('0', 'NUM');
-      shadow.setShadow(true);
-      shadow.initSvg();
-      shadow.render();
-      input.connection.connect(shadow.outputConnection);
-    });
-    rotateBlock.render();
-
-    // Make sure not to replace any existing blocks in DO
-    const firstBlock = statementConnection.targetBlock();
-    if (firstBlock) {
-      let tail = firstBlock;
-      while (tail.getNextBlock()) tail = tail.getNextBlock();
-      tail.nextConnection.connect(rotateBlock.previousConnection);
-    } else {
-      block.getInput('DO').connection.connect(rotateBlock.previousConnection);
-    }
-
-    gizmoCreatedBlocks.set(rotateBlock.id, {
-      parentId: block.id,
-      createdDoSection: addedDoSection,
+function trackGizmoCreated(ownerBlock, result) {
+  if (result?.created && result.block !== ownerBlock) {
+    gizmoCreatedBlocks.set(result.block.id, {
+      parentId: ownerBlock.id,
+      createdDoSection: result.addedDoSection,
       timestamp: Date.now(),
     });
   }
+  return result?.block ?? null;
+}
 
-  Blockly.Events.setGroup(null);
-  return rotateBlock;
+function findOrCreateRotateBlock(mesh) {
+  const block = meshMap[mesh?.metadata?.blockKey];
+  if (!block) return null;
+  return inEventGroup(() => {
+    const rotateBlock = trackGizmoCreated(block, ensureInitialRotation(block));
+    if (block.type === 'clone_mesh') placeMoveAfterInitialTransforms(block);
+    return rotateBlock;
+  });
 }
 
 function findOrCreateMoveBlock(block) {
   const zero = { shadow: { type: 'math_number', fields: { NUM: 0 } } };
-  const {
-    block: moveBlock,
-    created,
-    addedDoSection,
-  } = findOrCreateDoBlock(
+  return trackGizmoCreated(
     block,
-    {
-      type: 'move_to_xyz',
-      varField: 'MODEL',
-      varId: getOwnVar(block),
-      inputs: { X: zero, Y: zero, Z: zero },
-    },
-    { atStart: true }
+    findOrCreateDoBlock(
+      block,
+      {
+        type: 'move_to_xyz',
+        varField: 'MODEL',
+        varId: getOwnVar(block),
+        inputs: { X: zero, Y: zero, Z: zero },
+      },
+      { atStart: true }
+    )
   );
-  if (created) {
-    gizmoCreatedBlocks.set(moveBlock.id, {
-      parentId: block.id,
-      createdDoSection: addedDoSection,
-      timestamp: Date.now(),
-    });
-  }
-  return moveBlock;
 }
 
 // Group members keep 2dp: group scales and rotations derive their values, and
@@ -2518,6 +2509,20 @@ const MEMBER_DECIMALS = 2;
 function writePositionToBlock(block, pos, { decimals = 1 } = {}) {
   const target = block.type === 'clone_mesh' ? findOrCreateMoveBlock(block) : block;
   setBlockXYZ(target, pos.x, pos.y, pos.z, { decimals });
+  if (block.type === 'clone_mesh') placeMoveAfterInitialTransforms(block);
+}
+
+function blockPositionOf(mesh) {
+  return readBlockPosition(mesh, meshMap[mesh?.metadata?.blockKey]);
+}
+
+// Rotating can move the anchor, so a block placed by its anchor gets the new one.
+function writeAnchorAfterRotation(mesh, rotateBlock) {
+  const block = meshMap[mesh?.metadata?.blockKey];
+  if (rotateBlock !== block || !usesAnchorPosition(block)) return;
+  const anchor = flock._getAnchor(mesh);
+  if (block.type === 'clone_mesh') writeClonePosition(block, anchor);
+  else writeMovedPosition(block, anchor);
 }
 
 // Update the blockly block after a rotation.
@@ -2536,14 +2541,9 @@ export function updateRotationBlock(mesh, axisFilter = null) {
   const groupId = Blockly.utils.idGenerator.genUid();
   Blockly.Events.setGroup(groupId);
 
-  const currentRotation = getMeshRotationInDegrees(mesh);
-  if (axisFilter) {
-    if (axisFilter.x) setBlockAxisValue(rotateBlock, 'X', currentRotation.x);
-    if (axisFilter.y) setBlockAxisValue(rotateBlock, 'Y', currentRotation.y);
-    if (axisFilter.z) setBlockAxisValue(rotateBlock, 'Z', currentRotation.z);
-  } else {
-    setBlockXYZ(rotateBlock, currentRotation.x, currentRotation.y, currentRotation.z);
-  }
+  const axes = axisFilter ? ['x', 'y', 'z'].filter((axis) => axisFilter[axis]) : undefined;
+  setInitialRotationValues(rotateBlock, getMeshRotationInDegrees(mesh), { axes });
+  writeAnchorAfterRotation(mesh, rotateBlock);
   Blockly.Events.setGroup(null);
 }
 
@@ -2626,127 +2626,23 @@ function pickMeshFromScene(onPicked, persistent = false, prompt = null) {
   }, 0);
 }
 
-// Find an existing resize block in mesh's DO section without creating one.
-function supportsResizeBlock(block, mesh) {
-  if (!block || !RESIZE_BLOCK_TYPES.has(block.type)) return false;
-  return block.type !== 'clone_mesh' || mesh?.metadata?.shapeType !== 'Group';
-}
-
 function findExistingResizeBlock(mesh) {
-  const block = meshMap[mesh?.metadata?.blockKey];
-  if (!supportsResizeBlock(block, mesh)) return null;
-  const modelVariable = getOwnVar(block);
-  const stmt = block.getInput('DO')?.connection?.targetBlock?.();
-  for (let cur = stmt; cur; cur = cur.getNextBlock?.()) {
-    if (cur.type === 'resize' && cur.getFieldValue?.('BLOCK_NAME') === modelVariable) {
-      return cur;
-    }
-  }
-  return null;
+  return findInitialSize(meshMap[mesh?.metadata?.blockKey], mesh);
 }
 
-// Find the existing resize block in mesh's DO section, or create one.
-// Returns the resizeBlock, or null if mesh's block type has no resize support.
 function findOrCreateResizeBlock(mesh) {
   const block = meshMap[mesh?.metadata?.blockKey];
-  if (!supportsResizeBlock(block, mesh)) return null;
-
-  const groupId = Blockly.utils.idGenerator.genUid();
-  Blockly.Events.setGroup(groupId);
-
-  let addedDoSection = false;
-  if (!block.getInput('DO')) {
-    // Route through the block's own mutator so the +/- toggle button and any
-    // "then" button stay in sync; a bare appendStatementInput would not.
-    if (typeof block.toggleDoBlock === 'function') {
-      block.toggleDoBlock();
-    } else {
-      block.appendStatementInput('DO').setCheck(null).appendField('');
-    }
-    addedDoSection = true;
-  }
-
-  const modelVariable = getOwnVar(block);
-  const stmt = block.getInput('DO')?.connection?.targetBlock?.();
-  let resizeBlock = null;
-  for (let cur = stmt; cur; cur = cur.getNextBlock?.()) {
-    if (cur.type === 'resize' && cur.getFieldValue?.('BLOCK_NAME') === modelVariable) {
-      resizeBlock = cur;
-      break;
-    }
-  }
-
-  if (!resizeBlock) {
-    resizeBlock = Blockly.getMainWorkspace().newBlock('resize');
-    resizeBlock.setFieldValue(modelVariable, 'BLOCK_NAME');
-    resizeBlock.initSvg();
-    resizeBlock.render();
-
+  if (!supportsInitialSize(block, mesh)) return null;
+  const measureSize = () => {
     mesh.computeWorldMatrix(true);
     mesh.refreshBoundingInfo();
-    const initialSize = getScaledSize(mesh);
-    const axisValues = { X: initialSize.x, Y: initialSize.y, Z: initialSize.z };
-
-    ['X', 'Y', 'Z'].forEach((axis) => {
-      const input = resizeBlock.getInput(axis);
-      const shadow = Blockly.getMainWorkspace().newBlock('math_number');
-      const value = axisValues[axis];
-      const num = Number.isFinite(value) && value > 0 ? value : 1;
-      shadow.setFieldValue(String(Math.round(num * 10) / 10), 'NUM');
-      shadow.setShadow(true);
-      shadow.initSvg();
-      shadow.render();
-      input.connection.connect(shadow.outputConnection);
-    });
-
-    resizeBlock.render();
-
-    // Creation applies Y as the *unrotated* base (see
-    // applyPositionWithCurrentBaseRule) and the position gizmo commits that
-    // same convention - so a move after scaling leaves creation holding a
-    // post-scale position. Replaying rotate-then-resize would re-apply the
-    // rotated anchor shift on top of it and the mesh jumps on Play. Running
-    // the resize first measures the upright box, matching the convention the
-    // creation position was written in, regardless of which gizmo the user
-    // dragged first. (Tilt-then-scale with no later move replays closest in
-    // drag order instead; that residual heals the moment the mesh is nudged.)
-    let rotateTarget = null;
-    for (let cur = stmt; cur; cur = cur.getNextBlock?.()) {
-      if (cur.type === 'rotate_to' && cur.getFieldValue?.('MODEL') === modelVariable) {
-        rotateTarget = cur;
-        break;
-      }
-    }
-
-    if (rotateTarget) {
-      // targetConnection is either the DO input's own connection (when
-      // rotateTarget is the first block in the stack) or a sibling's
-      // nextConnection - either way, splice resizeBlock in ahead of it by
-      // reattaching that same connection.
-      const targetConnection = rotateTarget.previousConnection.targetConnection;
-      rotateTarget.previousConnection.disconnect();
-      targetConnection.connect(resizeBlock.previousConnection);
-      resizeBlock.nextConnection.connect(rotateTarget.previousConnection);
-    } else {
-      const doFirstBlock = block.getInput('DO').connection.targetBlock();
-      if (doFirstBlock) {
-        let tail = doFirstBlock;
-        while (tail.getNextBlock()) tail = tail.getNextBlock();
-        tail.nextConnection.connect(resizeBlock.previousConnection);
-      } else {
-        block.getInput('DO').connection.connect(resizeBlock.previousConnection);
-      }
-    }
-
-    gizmoCreatedBlocks.set(resizeBlock.id, {
-      parentId: block.id,
-      createdDoSection: addedDoSection,
-      timestamp: Date.now(),
-    });
-  }
-
-  Blockly.Events.setGroup(null);
-  return resizeBlock;
+    return measureInitialSize(mesh);
+  };
+  return inEventGroup(() => {
+    const resizeBlock = trackGizmoCreated(block, ensureInitialSize(block, mesh, measureSize));
+    if (block.type === 'clone_mesh') placeMoveAfterInitialTransforms(block);
+    return resizeBlock;
+  });
 }
 
 // Blocks hold rounded values; after a bake rounds member values, snap the live
@@ -2758,14 +2654,13 @@ function snapMemberPositionToBlock(member) {
   if (!key || member.isDisposed?.()) return;
   const memberBlock = meshMap[key];
   if (!memberBlock || memberBlock.disposed) return;
-  const live = flock.getBlockPositionFromMesh(member);
+  const live = readBlockPosition(member, memberBlock);
   const p = getXYZFromBlock(memberBlock);
   const num = (v, fallback) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
-  flock.setBlockPositionOnMesh(member, {
+  placeAtBlockPosition(member, memberBlock, {
     x: num(p.x, live.x),
     y: num(p.y, live.y),
     z: num(p.z, live.z),
-    useY: true,
   });
   flock.updatePhysics?.(member);
 }
@@ -2869,9 +2764,12 @@ function scaleMemberSizeInputs(mesh, factor, suppress) {
       if (!resizeBlock) break;
       suppress?.(resizeBlock.id);
       if (existed) {
-        mul(resizeBlock, 'X');
-        mul(resizeBlock, 'Y');
-        mul(resizeBlock, 'Z');
+        const size = getInitialSizeValues(resizeBlock);
+        setInitialSizeValues(
+          resizeBlock,
+          { x: size.x * factor, y: size.y * factor, z: size.z * factor },
+          { decimals: MEMBER_DECIMALS }
+        );
       }
       break;
     }
@@ -3059,7 +2957,7 @@ export function bakeGroupScale(groupMesh) {
       scaleMemberSizeInputs(m, factors.get(key), suppress);
       const childBlock = meshMap[key];
       if (childBlock && !childBlock.disposed) {
-        const pos = flock.getBlockPositionFromMesh(m);
+        const pos = readBlockPosition(m, childBlock);
         writePositionToBlock(childBlock, pos, { decimals: MEMBER_DECIMALS });
       }
     }
@@ -3086,7 +2984,7 @@ export function bakeGroupScale(groupMesh) {
       m.setParent(null);
       let pos;
       try {
-        pos = flock.getBlockPositionFromMesh(m);
+        pos = readBlockPosition(m, childBlock);
       } finally {
         m.setParent(parent);
       }
@@ -3114,8 +3012,7 @@ export function bakeGroupScale(groupMesh) {
     const resizeBlock = findExistingResizeBlock(groupMesh);
     if (resizeBlock) {
       suppress(resizeBlock.id);
-      const sized = getScaledSize(groupMesh);
-      setNumberInputs(resizeBlock, { X: sized.x, Y: sized.y, Z: sized.z });
+      setInitialSizeValues(resizeBlock, measureInitialSize(groupMesh));
     }
     flock.updatePhysics?.(groupMesh);
   } finally {
@@ -3157,7 +3054,7 @@ function commitFreeformScale(mesh, block, originalBottomY, ensureFreshBounds) {
   Blockly.Events.setGroup(true);
   try {
     if (shape) block.writeShape(shape.points, shape.faces);
-    writePositionToBlock(block, flock.getBlockPositionFromMesh(mesh));
+    writePositionToBlock(block, blockPositionOf(mesh));
   } finally {
     Blockly.Events.setGroup(false);
   }
@@ -3297,13 +3194,7 @@ export function updateScaleBlock(mesh, originalBottomY = null) {
 
         mesh.computeWorldMatrix(true);
         mesh.refreshBoundingInfo();
-        const sizeLocalScaled = getScaledSize(mesh);
-
-        setNumberInputs(resizeBlock, {
-          X: sizeLocalScaled.x,
-          Y: sizeLocalScaled.y,
-          Z: sizeLocalScaled.z,
-        });
+        setInitialSizeValues(resizeBlock, measureInitialSize(mesh));
         break;
       }
     }
@@ -3311,7 +3202,7 @@ export function updateScaleBlock(mesh, originalBottomY = null) {
     // The drag re-anchors the world bottom, which on a rotated mesh is not
     // the unrotated base Play positions by - persist where it ended up.
     if (block.type !== 'create_group' && block.type !== 'clone_mesh') {
-      const pos = flock.getBlockPositionFromMesh(mesh);
+      const pos = blockPositionOf(mesh);
       const stale = ['x', 'y', 'z'].some(
         (axis) => !(Math.abs(getNumberInput(block, axis.toUpperCase()) - pos[axis]) <= 0.05)
       );
@@ -3383,7 +3274,7 @@ function commitMoveToBlocks(mesh, startPosition) {
   let delta = null;
 
   if (isPrefab(mesh)) {
-    if (block && !block.disposed) writePositionToBlock(block, flock.getBlockPositionFromMesh(mesh));
+    if (block && !block.disposed) writePositionToBlock(block, blockPositionOf(mesh));
     return;
   }
 
@@ -3404,7 +3295,7 @@ function commitMoveToBlocks(mesh, startPosition) {
     mesh.computeWorldMatrix(true);
   } else if (block && !block.disposed) {
     const before = block.type === 'clone_mesh' ? null : blockPositionNumbers(block);
-    writePositionToBlock(block, flock.getBlockPositionFromMesh(mesh));
+    writePositionToBlock(block, blockPositionOf(mesh));
     const after = before ? blockPositionNumbers(block) : null;
     if (after) delta = { x: after.x - before.x, y: after.y - before.y, z: after.z - before.z };
   }
@@ -3459,7 +3350,7 @@ function updateChildBlockPositions(mesh, delta = null) {
     child.setParent(null);
     let pos;
     try {
-      pos = flock.getBlockPositionFromMesh(child);
+      pos = readBlockPosition(child, childBlock);
     } finally {
       child.setParent(childParent);
     }
@@ -3698,8 +3589,7 @@ export function toggleGizmo(gizmoType) {
     }
     // Turning a compatible tool off while orbiting stays in orbit.
     if (ORBIT_COMPATIBLE_GIZMOS.has(gizmoType) && isOrbitViewActive()) {
-      exitGizmoState({ preserveOrbit: true });
-      if (gizmoManager) gizmoManager.usePointerToAttachGizmos = false;
+      exitTransformState();
       clearSelection();
       return;
     }
@@ -3978,15 +3868,11 @@ function handleScaleGizmo() {
     if (creationBlock) {
       if (creationBlock.type === 'create_group') {
         highlightBlockById(Blockly.getMainWorkspace(), creationBlock);
-      } else if (RESIZE_BLOCK_TYPES.has(creationBlock.type)) {
-        const resizeBlock = findOrCreateResizeBlock(mesh);
-        if (resizeBlock) {
-          highlightBlockById(Blockly.getMainWorkspace(), resizeBlock);
-        } else {
-          highlightBlockById(Blockly.getMainWorkspace(), creationBlock);
-        }
       } else {
-        highlightBlockById(Blockly.getMainWorkspace(), creationBlock);
+        highlightBlockById(
+          Blockly.getMainWorkspace(),
+          findOrCreateResizeBlock(mesh) ?? creationBlock
+        );
       }
     }
     if (mesh?.metadata?.shapeType === 'Group') {
@@ -4194,6 +4080,7 @@ export function updateChildBlockRotations(mesh) {
     if (!key || key === rootKey || seenKeys.has(key)) return;
     seenKeys.add(key);
 
+    const rotateBlock = findOrCreateRotateBlock(child);
     const childParent = child.parent;
     child.setParent(null);
     let rotation;
@@ -4202,13 +4089,12 @@ export function updateChildBlockRotations(mesh) {
       rotation = getMeshRotationInDegrees(child);
       // A rotated group moves its members: persist world positions too, read
       // in the same unparented window, or re-run restores them unrotated.
-      pos = flock.getBlockPositionFromMesh(child);
+      pos = readBlockPosition(child, meshMap[key]);
     } finally {
       child.setParent(childParent);
     }
 
-    const rotateBlock = findOrCreateRotateBlock(child);
-    if (rotateBlock) setBlockXYZ(rotateBlock, rotation.x, rotation.y, rotation.z);
+    setInitialRotationValues(rotateBlock, rotation);
     let memberBlock = null;
     if (pos) {
       memberBlock = meshMap[key];
@@ -4223,24 +4109,19 @@ export function updateChildBlockRotations(mesh) {
       child.setParent(null);
       try {
         if (rotateBlock && !rotateBlock.disposed) {
-          const r = getXYZFromBlock(rotateBlock);
-          if ([r.x, r.y, r.z].every((v) => Number.isFinite(Number(v)))) {
-            child.rotationQuaternion = flock.eulerDegreesToQuat(
-              Number(r.x),
-              Number(r.y),
-              Number(r.z)
-            );
+          const r = getInitialRotationValues(rotateBlock);
+          if ([r.x, r.y, r.z].every(Number.isFinite)) {
+            child.rotationQuaternion = flock.eulerDegreesToQuat(r.x, r.y, r.z);
           }
         }
         if (memberBlock && !memberBlock.disposed) {
           const p = getXYZFromBlock(memberBlock);
-          const live = flock.getBlockPositionFromMesh(child);
+          const live = readBlockPosition(child, memberBlock);
           const num = (v, fallback) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
-          flock.setBlockPositionOnMesh(child, {
+          placeAtBlockPosition(child, memberBlock, {
             x: num(p.x, live.x),
             y: num(p.y, live.y),
             z: num(p.z, live.z),
-            useY: true,
           });
         }
         flock.updatePhysics?.(child);
@@ -4514,7 +4395,7 @@ function _handleBoundsGizmo() {
     const block = meshMap[mesh?.metadata?.blockKey];
 
     if (block && !block.disposed) {
-      const blockPosition = flock.getBlockPositionFromMesh(mesh);
+      const blockPosition = blockPositionOf(mesh);
       writePositionToBlock(block, blockPosition);
     }
   });
@@ -4530,7 +4411,7 @@ function handleSelectGizmo() {
     // A pick can land on a child; the attached mesh is the root owning the block.
     const attached = gizmoManager.attachedMesh;
     if (attached) {
-      showStatus(positionStatus(flock.getBlockPositionFromMesh(attached)), {
+      showStatus(positionStatus(blockPositionOf(attached)), {
         duration: 10,
         owner: 'position-readout',
       });
@@ -4711,7 +4592,7 @@ function addUndoHandler() {
             }
 
             // Remove DO section if it should be removed
-            if (shouldRemoveDoSection && doInput) {
+            if (shouldRemoveDoSection && isDoOpen(parentBlock)) {
               // Mirror toggleDoBlock so the mutator button reverts to "+".
               if (typeof parentBlock.toggleDoBlock === 'function') {
                 parentBlock.toggleDoBlock();
@@ -4738,25 +4619,58 @@ function watchEyeGizmoRetarget() {
   if (orbitRetargetObserver) scene.onPointerObservable.remove(orbitRetargetObserver);
   orbitRetargetObserver = scene.onPointerObservable.add((event) => {
     if (event.type !== flock.BABYLON.PointerEventTypes.POINTERPICK) return;
-    if (document.querySelector('.gizmo-button.active:not(#eyeButton)')) return;
+    if (!isEyeGizmoAlone()) return;
     if (!scene.activeCamera?.metadata?.orbitView) return;
     if (isPositionPickActive()) return;
 
-    let pickedMesh = event.pickInfo?.pickedMesh;
-    if (!pickedMesh || pickedMesh.name === 'ground') return;
-    if (pickedMesh.parent) pickedMesh = getRootMesh(pickedMesh.parent);
-    if (!pickedMesh || pickedMesh === window.orbitMesh) return;
-
-    disconnectOrbitView();
-    attachMeshForActiveTool(pickedMesh);
-    attachOrbitView(pickedMesh); // re-registers this observer for the new target
-    showStatus(translate('orbit_mesh_info'), { owner: 'eye-gizmo', hint: true });
+    const target = orbitRetargetMesh(event.pickInfo?.pickedMesh);
+    if (target) retargetOrbitView(target); // re-registers this observer for the new target
   });
+  scheduleEyeKeyboardMode();
+}
+
+function isEyeGizmoAlone() {
+  return !document.querySelector('.gizmo-button.active:not(#eyeButton)');
+}
+
+function orbitRetargetMesh(pickedMesh) {
+  if (!pickedMesh || pickedMesh.name === 'ground') return null;
+  if (pickedMesh.parent) pickedMesh = getRootMesh(pickedMesh.parent);
+  if (!pickedMesh || pickedMesh === window.orbitMesh) return null;
+  return pickedMesh;
+}
+
+function retargetOrbitView(mesh) {
+  disconnectOrbitView();
+  attachOrbitView(mesh);
+  showStatus(translate('orbit_mesh_info'), { owner: 'eye-gizmo', hint: true });
+}
+
+// Arrows place the canvas cursor while eye is the only tool; Enter retargets
+// the orbit like a click. Deferred so the key that chose the tool isn't seen.
+function scheduleEyeKeyboardMode() {
+  setTimeout(() => {
+    if (isCanvasKeyboardModeActive() || !isOrbitViewActive() || !isEyeGizmoAlone()) return;
+    startEyeKeyboardMode();
+  }, 0);
+}
+
+// Retargeting ends this mode (dropping the cursor so the canvas, which WASD
+// needs, gets focus back) and attachOrbitView schedules a fresh one.
+function startEyeKeyboardMode() {
+  const targetAt = (x, y) => orbitRetargetMesh(flock.scene.pick(x, y)?.pickedMesh);
+  eyeKeyboardCallback = (x, y) => {
+    const target = targetAt(x, y);
+    if (target) retargetOrbitView(target);
+  };
+  startCanvasKeyboardMode(eyeKeyboardCallback, false, (x, y) => !!targetAt(x, y));
 }
 
 // Detach the eye-gizmo retarget-on-click observer. Called from every path
 // that ends orbit view, so it never outlives the orbit camera it depends on.
 function clearOrbitRetargetObserver() {
+  if (eyeKeyboardCallback && isCanvasKeyboardModeActive(eyeKeyboardCallback)) stopCanvasKeyboardMode();
+  eyeKeyboardCallback = null;
   if (!orbitRetargetObserver) return;
   flock.scene?.onPointerObservable?.remove(orbitRetargetObserver);
   orbitRetargetObserver = null;
@@ -4791,6 +4705,7 @@ export function enableGizmos() {
   const deleteButton = document.getElementById('deleteButton');
   const cameraButton = document.getElementById('cameraButton');
   const eyeButton = document.getElementById('eyeButton');
+  const positionPinButton = document.getElementById('positionPinButton');
   const showShapesButton = document.getElementById('showShapesButton');
   const colorPickerButton = document.getElementById('colorPickerButton');
   const aboutButton = document.getElementById('logo');
@@ -4815,6 +4730,7 @@ export function enableGizmos() {
     deleteButton,
     cameraButton,
     eyeButton,
+    positionPinButton,
     showShapesButton,
     colorPickerButton,
     aboutButton,
@@ -4857,6 +4773,7 @@ export function enableGizmos() {
   selectButton.addEventListener('click', () => toggleGizmo('select'));
   cameraButton.addEventListener('click', () => toggleGizmo('camera'));
   eyeButton.addEventListener('click', () => toggleGizmo('eye'));
+  positionPinButton?.addEventListener('click', () => pickSelectedMeshPosition());
   duplicateButton.addEventListener('click', () => toggleGizmo('duplicate'));
   deleteButton.addEventListener('click', () => toggleGizmo('delete'));
   showShapesButton.addEventListener('click', () => {

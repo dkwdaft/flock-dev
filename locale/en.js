@@ -150,6 +150,8 @@ export default {
   load_object: 'add %1 %2 %3 scale: %4 %8 x: %5 y: %6 z: %7',
   load_multi_object: 'add %1 %2 scale: %3 %8 x: %4 y: %5 z: %6\ncolors: %7',
   load_model: 'add %1 %2 scale: %3 %7 x: %4 y: %5 z: %6\ncolors: %8',
+  initial_rotation_label: 'rotation',
+  initial_size_label: 'size',
   then_label: 'then',
 
   // Custom block translations - Animate blocks
@@ -195,6 +197,9 @@ export default {
   embed_meshes: 'add %1 as %2 embed %3',
   intersection_meshes: 'add %1 as intersect %2',
   hull_meshes: 'add %1 as hull of %2',
+  combine: 'combine %1 %2 active: %3',
+  combine_subtract_label: 'subtract',
+  combine_embed_label: 'embed',
   flip: 'flip %1 %2',
   mirror_mesh: 'add %1 as mirror of %2 along %3 about %4',
 
@@ -520,6 +525,8 @@ export default {
     'Cut a list of objects into a base object and store the result. The objects are kept.',
   intersection_meshes_tooltip: 'Intersect a list of objects and store the resulting geometry.',
   hull_meshes_tooltip: 'Create a convex hull from a list of objects and store the result.',
+  combine_tooltip:
+    'Combine the objects inside into one and store the result. Subtract and embed use the objects in the second section as tools. Uncheck active to change individual objects.',
   flip_tooltip: 'Mirror an object across an axis. Does nothing on animated characters.',
   mirror_mesh_tooltip:
     'Add a mirrored copy of an object across an axis, through the centre of another object. Does nothing on animated characters.',
@@ -776,6 +783,11 @@ export default {
   snippet_desk_hint: 'A desk prefab. Give it a width, height, depth, a drawer material and a material for the frame. Its half-width top drawer sits to the right with open knee space beside it, and slides open when clicked, then shuts after a few seconds. The full-depth drawer is an open box you can place objects inside.',
 
   // Dropdown option translations
+  merge_option: 'merge',
+  subtract_option: 'subtract',
+  embed_option: 'embed',
+  intersect_option: 'intersect',
+  hull_option: 'hull',
   AWAIT_option: 'await',
   START_option: 'start',
   CREATE_option: 'create',
@@ -1286,6 +1298,7 @@ export default {
   paste_block_button_ui: 'Paste block',
   camera_button_ui: 'Camera controls',
   eye_button_ui: 'Orbit around selected object',
+  position_pin_button_ui: 'Pick position for selected object',
   close_status_message_ui: 'Close message',
 
   info_panel_link_ui: 'Visit Flock XR website (opens in new tab)',
@@ -1437,6 +1450,7 @@ export default {
   fly_camera_instructions_touch: 'Fly camera, use the on-screen controls and drag to look around',
   select_mesh_prompt: 'Select an object, or use arrow keys to move the cursor.',
   select_mesh_delete_prompt: 'Click an object to delete it.',
+  select_mesh_position_prompt: 'Select an object to place.',
   select_mesh_duplicate_prompt: 'Select an object to duplicate.',
   place_duplicate_prompt: 'Click to place a copy.',
   orbit_origin_info: 'Drag to move the camera around the origin. Click an object to orbit around it.',

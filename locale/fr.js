@@ -145,6 +145,8 @@ export default {
   load_object: 'ajouter %1 %2 %3 échelle: %4 %8 x: %5 y: %6 z: %7',
   load_multi_object: 'ajouter %1 %2 échelle: %3 %8 x: %4 y: %5 z: %6\ncouleurs: %7',
   load_model: 'ajouter %1 %2 échelle:: %3 %7 x: %4 y: %5 z: %6\ncouleurs: %8',
+  initial_rotation_label: 'rotation',
+  initial_size_label: 'taille',
 
   // Custom block translations - Animate blocks
   glide_to: 'glisser %1 vers %10 x %2 y %3 z %4 en %5 ms\n%6 retour? %7 boucle? %8 %9',
@@ -1105,6 +1107,7 @@ export default {
   duplicate_block_button_ui: 'Dupliquer le bloc',
   camera_button_ui: 'Contrôles de la caméra',
   eye_button_ui: "Orbiter autour de l'objet sélectionné",
+  position_pin_button_ui: "Choisir la position de l'objet sélectionné",
 
   info_panel_link_ui: 'Visiter le site web de Flock XR (ouvre dans un nouvel onglet)',
   skip_to_scene_ui: 'Aller à la scène 3D', // ai
@@ -1218,6 +1221,7 @@ export default {
     "Caméra en vol, utilisez les commandes à l'écran et faites glisser pour regarder autour",
   select_mesh_prompt: 'Sélectionnez un objet, ou utilisez les flèches pour déplacer le curseur.',
   select_mesh_delete_prompt: 'Cliquez sur un objet pour le supprimer.',
+  select_mesh_position_prompt: "Sélectionne un objet à placer.",
   select_mesh_duplicate_prompt: 'Sélectionnez un objet à dupliquer.',
   place_duplicate_prompt: 'Cliquez pour placer une copie.', // AI-generated; needs validation
   orbit_origin_info: "Glissez pour déplacer la caméra autour de l'origine. Cliquez sur un objet pour orbiter autour de lui.",

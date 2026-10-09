@@ -175,6 +175,134 @@ function applyPositionWithCurrentBaseRule(
   };
 }
 
+function resizeMesh(
+  mesh,
+  {
+    width = null,
+    height = null,
+    depth = null,
+    xOrigin = 'CENTRE',
+    yOrigin = 'BASE',
+    zOrigin = 'CENTRE',
+    maintainTextureScale = true,
+  } = {}
+) {
+  mesh.metadata = mesh.metadata || {};
+
+  if (!mesh.metadata.originalMin || !mesh.metadata.originalMax) {
+    if (mesh.getTotalVertices() > 0) {
+      const bi = mesh.getBoundingInfo();
+      mesh.metadata.originalMin = bi.boundingBox.minimum.clone();
+      mesh.metadata.originalMax = bi.boundingBox.maximum.clone();
+    } else {
+      // Empty container (e.g. a group): its size lives in its children.
+      const { min, max } = flock.getHierarchyLocalBounds(mesh);
+      mesh.metadata.originalMin = min.clone();
+      mesh.metadata.originalMax = max.clone();
+    }
+  }
+
+  const origMin = mesh.metadata.originalMin;
+  const origMax = mesh.metadata.originalMax;
+  const origWidth = origMax.x - origMin.x;
+  const origHeight = origMax.y - origMin.y;
+  const origDepth = origMax.z - origMin.z;
+
+  const scaleX = origWidth && width !== null ? width / origWidth : 1;
+  const scaleY = origHeight && height !== null ? height / origHeight : 1;
+  const scaleZ = origDepth && depth !== null ? depth / origDepth : 1;
+
+  const { min: oldMinWorld, max: oldMaxWorld } = flock.getEffectiveWorldBounds(mesh);
+
+  const oldAnchor = new flock.BABYLON.Vector3(
+    xOrigin === 'LEFT'
+      ? oldMinWorld.x
+      : xOrigin === 'RIGHT'
+        ? oldMaxWorld.x
+        : (oldMinWorld.x + oldMaxWorld.x) / 2,
+    yOrigin === 'BASE'
+      ? oldMinWorld.y
+      : yOrigin === 'TOP'
+        ? oldMaxWorld.y
+        : (oldMinWorld.y + oldMaxWorld.y) / 2,
+    zOrigin === 'FRONT'
+      ? oldMinWorld.z
+      : zOrigin === 'BACK'
+        ? oldMaxWorld.z
+        : (oldMinWorld.z + oldMaxWorld.z) / 2
+  );
+
+  mesh.scaling = new flock.BABYLON.Vector3(
+    Math.max(0.01, Math.abs(scaleX)),
+    Math.max(0.01, Math.abs(scaleY)),
+    Math.max(0.01, Math.abs(scaleZ))
+  );
+
+  if (maintainTextureScale) flock.retileTextures(mesh);
+
+  const { min: newMinWorld, max: newMaxWorld } = flock.getEffectiveWorldBounds(mesh);
+
+  const newAnchor = new flock.BABYLON.Vector3(
+    xOrigin === 'LEFT'
+      ? newMinWorld.x
+      : xOrigin === 'RIGHT'
+        ? newMaxWorld.x
+        : (newMinWorld.x + newMaxWorld.x) / 2,
+    yOrigin === 'BASE'
+      ? newMinWorld.y
+      : yOrigin === 'TOP'
+        ? newMaxWorld.y
+        : (newMinWorld.y + newMaxWorld.y) / 2,
+    zOrigin === 'FRONT'
+      ? newMinWorld.z
+      : zOrigin === 'BACK'
+        ? newMaxWorld.z
+        : (newMinWorld.z + newMaxWorld.z) / 2
+  );
+
+  const diff = newAnchor.subtract(oldAnchor);
+  mesh.position.subtractInPlace(diff);
+
+  flock.updatePhysics(mesh);
+}
+
+function isGroundLevel(y) {
+  return y === '__ground__level__' || Number(y) === -999999;
+}
+
+async function placeAnchorAt(mesh, { x, y, z, useY = true }) {
+  const current = flock._getAnchor(mesh);
+  const target = {
+    x: toFinite(x ?? current.x, current.x),
+    y: current.y,
+    z: toFinite(z ?? current.z, current.z),
+  };
+  if (useY && isGroundLevel(y)) {
+    await flock.waitForGroundReady();
+    target.y = flock.getGroundLevelAt(target.x, target.z);
+  } else if (useY) {
+    target.y = toFinite(y ?? current.y, current.y);
+  }
+  moveAnchorTo(mesh, target);
+}
+
+function moveAnchorTo(mesh, target) {
+  applyInWorldSpace(mesh, () => {
+    const anchor = flock._getAnchor(mesh);
+    mesh.position.x += target.x - anchor.x;
+    mesh.position.y += target.y - anchor.y;
+    mesh.position.z += target.z - anchor.z;
+    mesh.computeWorldMatrix(true);
+  });
+}
+
+function positionXYZ(position) {
+  const [x, y, z] = Array.isArray(position)
+    ? position
+    : [position?.x ?? 0, position?.y ?? 0, position?.z ?? 0];
+  return { x: toFinite(x), y: isGroundLevel(y) ? y : toFinite(y), z: toFinite(z) };
+}
+
 export function setFlockReference(ref) {
   flock = ref;
 }
@@ -242,7 +370,81 @@ export const flockTransform = {
       });
     });
   },
-  positionAt(meshName, { x = 0, y = 0, z = 0, useY = true } = {}) {
+  positionAt(meshName, options) {
+    return flock._positionMeshAt(meshName, options, { byAnchor: true });
+  },
+  _applyInitialTransform(mesh, { position = null, rotation = null, size = null } = {}) {
+    if (size) {
+      resizeMesh(mesh, {
+        width: size.width ?? null,
+        height: size.height ?? null,
+        depth: size.depth ?? null,
+      });
+    }
+    if (rotation) {
+      mesh.rotationQuaternion = flock.eulerDegreesToQuat(
+        toFinite(rotation.x),
+        toFinite(rotation.y),
+        toFinite(rotation.z)
+      );
+      mesh.computeWorldMatrix(true);
+    }
+    if (position) {
+      const { x, y, z } = positionXYZ(position);
+      const onGround = isGroundLevel(y);
+      moveAnchorTo(mesh, { x, y: onGround ? flock.getGroundLevelAt(x, z) : y, z });
+      if (onGround && !flock.ground) {
+        flock.waitForGroundReady().then(() => {
+          if (mesh.isDisposed()) return;
+          moveAnchorTo(mesh, { x, y: flock.getGroundLevelAt(x, z), z });
+          teleportBodyToMesh(mesh);
+        });
+      }
+    }
+    if (isBodyAlive(mesh.physics)) teleportBodyToMesh(mesh);
+  },
+  // Where the anchor would sit if the mesh were placed the old way (unrotated
+  // base, or origin, at position, then a DO resize and rotate_to), without
+  // moving it.
+  _legacyInitialAnchor(mesh, { position, placeByOrigin = false, rotation = null, size = null }) {
+    const parent = mesh.parent;
+    if (parent) mesh.setParent(null);
+    const saved = {
+      position: mesh.position.clone(),
+      rotationQuaternion: mesh.rotationQuaternion?.clone() ?? null,
+      rotation: mesh.rotation.clone(),
+      scaling: mesh.scaling.clone(),
+    };
+    try {
+      mesh.rotationQuaternion = flock.BABYLON.Quaternion.Identity();
+      if (size) mesh.scaling.set(1, 1, 1);
+      mesh.computeWorldMatrix(true);
+      if (placeByOrigin) mesh.position.set(position.x, position.y, position.z);
+      else applyPositionWithCurrentBaseRule(mesh, { ...position, useY: true });
+      mesh.computeWorldMatrix(true);
+      if (size) resizeMesh(mesh, { ...size, maintainTextureScale: false });
+      if (rotation) {
+        mesh.rotationQuaternion = flock.eulerDegreesToQuat(
+          toFinite(rotation.x),
+          toFinite(rotation.y),
+          toFinite(rotation.z)
+        );
+      }
+      mesh.computeWorldMatrix(true);
+      return flock._getAnchor(mesh);
+    } finally {
+      mesh.position.copyFrom(saved.position);
+      mesh.rotation.copyFrom(saved.rotation);
+      mesh.rotationQuaternion = saved.rotationQuaternion;
+      mesh.scaling.copyFrom(saved.scaling);
+      mesh.computeWorldMatrix(true);
+      if (parent) mesh.setParent(parent);
+    }
+  },
+  _positionAtBase(meshName, options) {
+    return flock._positionMeshAt(meshName, options, { byAnchor: false });
+  },
+  _positionMeshAt(meshName, { x = 0, y = 0, z = 0, useY = true } = {}, { byAnchor }) {
     return new Promise((resolve) => {
       flock.whenModelReady(meshName, async (mesh) => {
         // The active camera is positioned by the rule below but is not a mesh.
@@ -257,19 +459,23 @@ export const flockTransform = {
           return;
         }
 
-        x = toFinite(x ?? mesh.position.x, mesh.position.x);
-        z = toFinite(z ?? mesh.position.z, mesh.position.z);
-        if (y !== '__ground__level__') {
-          y = toFinite(y ?? mesh.position.y, mesh.position.y);
-        }
+        if (byAnchor && !isCamera && mesh.metadata?.shape !== 'camera') {
+          await placeAnchorAt(mesh, { x, y, z, useY });
+        } else {
+          x = toFinite(x ?? mesh.position.x, mesh.position.x);
+          z = toFinite(z ?? mesh.position.z, mesh.position.z);
+          if (y !== '__ground__level__') {
+            y = toFinite(y ?? mesh.position.y, mesh.position.y);
+          }
 
-        await this.setBlockPositionOnMesh(mesh, {
-          x,
-          y,
-          z,
-          useY,
-          meshName,
-        });
+          await this.setBlockPositionOnMesh(mesh, {
+            x,
+            y,
+            z,
+            useY,
+            meshName,
+          });
+        }
 
         mesh.computeWorldMatrix(true);
         teleportBodyToMesh(mesh);
@@ -791,83 +997,7 @@ export const flockTransform = {
           resolve();
           return;
         }
-        mesh.metadata = mesh.metadata || {};
-
-        if (!mesh.metadata.originalMin || !mesh.metadata.originalMax) {
-          if (mesh.getTotalVertices() > 0) {
-            const bi = mesh.getBoundingInfo();
-            mesh.metadata.originalMin = bi.boundingBox.minimum.clone();
-            mesh.metadata.originalMax = bi.boundingBox.maximum.clone();
-          } else {
-            // Empty container (e.g. a group): its size lives in its children.
-            const { min, max } = flock.getHierarchyLocalBounds(mesh);
-            mesh.metadata.originalMin = min.clone();
-            mesh.metadata.originalMax = max.clone();
-          }
-        }
-
-        const origMin = mesh.metadata.originalMin;
-        const origMax = mesh.metadata.originalMax;
-        const origWidth = origMax.x - origMin.x;
-        const origHeight = origMax.y - origMin.y;
-        const origDepth = origMax.z - origMin.z;
-
-        const scaleX = origWidth && width !== null ? width / origWidth : 1;
-        const scaleY = origHeight && height !== null ? height / origHeight : 1;
-        const scaleZ = origDepth && depth !== null ? depth / origDepth : 1;
-
-        const { min: oldMinWorld, max: oldMaxWorld } = flock.getEffectiveWorldBounds(mesh);
-
-        const oldAnchor = new flock.BABYLON.Vector3(
-          xOrigin === 'LEFT'
-            ? oldMinWorld.x
-            : xOrigin === 'RIGHT'
-              ? oldMaxWorld.x
-              : (oldMinWorld.x + oldMaxWorld.x) / 2,
-          yOrigin === 'BASE'
-            ? oldMinWorld.y
-            : yOrigin === 'TOP'
-              ? oldMaxWorld.y
-              : (oldMinWorld.y + oldMaxWorld.y) / 2,
-          zOrigin === 'FRONT'
-            ? oldMinWorld.z
-            : zOrigin === 'BACK'
-              ? oldMaxWorld.z
-              : (oldMinWorld.z + oldMaxWorld.z) / 2
-        );
-
-        mesh.scaling = new flock.BABYLON.Vector3(
-          Math.max(0.01, Math.abs(scaleX)),
-          Math.max(0.01, Math.abs(scaleY)),
-          Math.max(0.01, Math.abs(scaleZ))
-        );
-
-        if (maintainTextureScale) flock.retileTextures(mesh);
-
-        const { min: newMinWorld, max: newMaxWorld } = flock.getEffectiveWorldBounds(mesh);
-
-        const newAnchor = new flock.BABYLON.Vector3(
-          xOrigin === 'LEFT'
-            ? newMinWorld.x
-            : xOrigin === 'RIGHT'
-              ? newMaxWorld.x
-              : (newMinWorld.x + newMaxWorld.x) / 2,
-          yOrigin === 'BASE'
-            ? newMinWorld.y
-            : yOrigin === 'TOP'
-              ? newMaxWorld.y
-              : (newMinWorld.y + newMaxWorld.y) / 2,
-          zOrigin === 'FRONT'
-            ? newMinWorld.z
-            : zOrigin === 'BACK'
-              ? newMaxWorld.z
-              : (newMinWorld.z + newMaxWorld.z) / 2
-        );
-
-        const diff = newAnchor.subtract(oldAnchor);
-        mesh.position.subtractInPlace(diff);
-
-        flock.updatePhysics(mesh);
+        resizeMesh(mesh, { width, height, depth, xOrigin, yOrigin, zOrigin, maintainTextureScale });
         resolve();
       });
     });
