@@ -201,6 +201,7 @@ export default {
   drop: 'lâcher %1',
   follow: 'faire en sorte que %1 suive %2 à %3\ndécalage x: %4 y: %5 z: %6',
   export_mesh: 'exporter %1 comme %2',
+  export_mesh_unit_label: '1 unité =',
   attach: 'attacher %1 à %2 à %3\ndécalage x: %4 y: %5 z: %6',
 
   // Custom block translations - Control blocks
@@ -1034,6 +1035,7 @@ export default {
   candy_dash_ui: 'Course aux bonbons',
   flockenspiel_ui: 'Flockenspiel',
   pendant_ui: 'Pendentif imprimable en 3D',
+  flockxr_keyring_ui: 'Porte-clés Flock XR',
   tent_lights_ui: 'Tente de festival',
   my_place_ui: 'Mon endroit',
   microbit_monkey_ui: 'Singe micro:bit',

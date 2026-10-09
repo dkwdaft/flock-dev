@@ -205,6 +205,7 @@ export default {
   drop: '%1 fallen lassen',
   follow: 'mache, dass %1 %2 bei %3 folgt\nOffset x: %4 y: %5 z: %6',
   export_mesh: '%1 als %2 exportieren',
+  export_mesh_unit_label: '1 Einheit =',
   attach: 'befestige %1 an %2 bei %3\nOffset x: %4 y: %5 z: %6',
 
   // Custom block translations - Control blocks
@@ -1036,6 +1037,7 @@ export default {
   candy_dash_ui: 'Süßigkeiten-Dash',
   flockenspiel_ui: 'Flockenspiel',
   pendant_ui: '3D-Anhänger',
+  flockxr_keyring_ui: 'Flock XR-Schlüsselanhänger',
   tent_lights_ui: 'Zeltlichter',
   my_place_ui: 'Mein Ort',
   microbit_monkey_ui: 'micro:bit-Affe',

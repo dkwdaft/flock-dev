@@ -202,6 +202,7 @@ export default {
   drop: 'soltar %1', // human
   follow: 'hacer que %1 siga a %2 a %3\ndesplazamiento x: %4 y: %5 z: %6', // human
   export_mesh: 'exportar %1 como %2', // human
+  export_mesh_unit_label: '1 unidad =',
   attach: 'adjuntar %1 a %2 en %3\ndesplazamiento x: %4 y: %5 z: %6', // human
 
   // Custom block translations - Control blocks
@@ -1146,6 +1147,7 @@ export default {
   candy_dash_ui: 'Carrera de Dulces', // human
   flockenspiel_ui: 'Flockenspiel', // human
   pendant_ui: 'Colgante imprimible en 3D', // human
+  flockxr_keyring_ui: 'Llavero de Flock XR', // ai
   tent_lights_ui: 'Carpa de Festival', // human
   my_place_ui: 'Mi Lugar', // human
   microbit_monkey_ui: 'Mono micro:bit', // human
