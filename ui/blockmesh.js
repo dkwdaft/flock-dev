@@ -445,6 +445,51 @@ export function getMeshesFromBlock(block) {
   return getMeshesFromBlockKey(blockKey);
 }
 
+// Live preview for a gizmo-duplicated prefab caller (procedures_callprefab):
+// Babylon-clone the picked group so the copy is visible immediately, keyed to
+// the new block. Play rebuilds every instance canonically via build().
+// Resolves with the clone once it is positioned, or null when there is
+// nothing to clone or the duplicate is gone before the clone lands.
+export function clonePrefabInstanceForDuplicate(originalBlock, newBlock) {
+  if (!originalBlock || !newBlock || !flock?.scene) return null;
+  const group = getMeshesFromBlock(originalBlock).find(
+    (mesh) => mesh?.metadata?.isPrefab && !mesh.isDisposed?.()
+  );
+  if (!group) return null;
+  const varText = newBlock.getField?.('ID_VAR')?.getText?.()?.trim() || 'prefab';
+  const cloneId = `${varText}__${newBlock.id}`.slice(0, 100);
+  flock.cloneMesh({ sourceMeshName: group.name, cloneId, blockKey: newBlock.id });
+  return settlePrefabDuplicateAtBlock(newBlock);
+}
+
+// The clone lands at the source's world transform; move it onto the new
+// block's X/Y/Z/ROTATE_Y — the same values Play builds from, so the preview
+// matches the run. Polls because cloneMesh resolves asynchronously.
+async function settlePrefabDuplicateAtBlock(newBlock, attempts = 30) {
+  const readNum = (name, fallback = 0) => {
+    const n = Number(newBlock.getInputTargetBlock?.(name)?.getFieldValue?.('NUM'));
+    return Number.isFinite(n) ? n : fallback;
+  };
+  for (let i = 0; i < attempts; i++) {
+    if (newBlock.disposed) return null;
+    const clone = getMeshesFromBlockKey(newBlock.id).find(
+      (mesh) => mesh?.metadata?.isPrefab && !mesh.isDisposed?.()
+    );
+    if (clone) {
+      const rotY = readNum('ROTATE_Y', NaN);
+      if (Number.isFinite(rotY)) await flock.rotateTo?.(clone.name, { y: rotY });
+      await flock.positionAt?.(clone.name, {
+        x: readNum('X'),
+        y: readNum('Y'),
+        z: readNum('Z'),
+      });
+      return clone;
+    }
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  }
+  return null;
+}
+
 // Safe field getter. Returns null when field is missing or name is invalid.
 function getBlockValue(block, fieldName) {
   if (!block) return null;

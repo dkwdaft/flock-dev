@@ -2,11 +2,14 @@ import { expect } from 'chai';
 import * as Blockly from 'blockly';
 import { javascriptGenerator } from 'blockly/javascript';
 import { defineGenerators } from '../generators/generators.js';
+import { blockKeyByBlockId } from '../generators/generators.js';
+import { clonePrefabInstanceForDuplicate, deleteMeshFromBlock } from '../ui/blockmesh.js';
 import '../blocks/blocks.js';
 import { defineMaterialsBlocks } from '../blocks/materials.js';
 import { defineColourBlocks } from '../blocks/colour.js';
 import { defineShapeBlocks } from '../blocks/shapes.js';
 import { localVariableIds } from '../blocks/variableScope.js';
+import { definePhysicsBlocks } from '../blocks/physics.js';
 import {
   definePrefabBlocks,
   prefabFlyoutItems,
@@ -58,6 +61,7 @@ export function runPrefabTests(flock) {
       if (!Blockly.Blocks['material']) defineMaterialsBlocks();
       if (!Blockly.Blocks['colour']) defineColourBlocks();
       if (!Blockly.Blocks['create_box']) defineShapeBlocks();
+      if (!Blockly.Blocks['add_physics']) definePhysicsBlocks();
       if (!Blockly.Blocks[PREFAB_DEF_TYPE]) definePrefabBlocks();
       if (!javascriptGenerator.forBlock[PREFAB_CALL_TYPE]) defineGenerators();
     });
@@ -259,6 +263,54 @@ export function runPrefabTests(flock) {
       expect(code).to.match(/args: \[4, \{.*\}\],\n/s);
     });
 
+    it('builds each pasted add block as its own instance at the same position', function () {
+      appendDefinition(workspace, [], {
+        inputs: {
+          STACK: {
+            block: {
+              type: 'create_box',
+              fields: { ID_VAR: { name: 'shelf' } },
+              next: {
+                block: {
+                  type: 'add_physics',
+                  fields: { MODEL_VAR: { name: 'shelf' }, PHYSICS_TYPE: 'DYNAMIC' },
+                },
+              },
+            },
+          },
+        },
+      });
+      const start = Blockly.serialization.blocks.append({ type: 'start' }, workspace);
+      const first = appendCaller(workspace, [], {
+        inputs: { X: { shadow: { type: 'math_number', fields: { NUM: 3 } } } },
+      });
+      start.getInput('DO').connection.connect(first.previousConnection);
+      // Paste duplicates the call block, copying its position inputs.
+      const pasted = Blockly.serialization.blocks.append(
+        Blockly.serialization.blocks.save(first),
+        workspace
+      );
+      // The editor mints a fresh variable for the duplicate; same spot, no offset.
+      const fresh =
+        workspace.getVariableMap().getVariable('bookcase2') ||
+        workspace.getVariableMap().createVariable('bookcase2', '');
+      pasted.getField('ID_VAR').setValue(fresh.getId());
+      first.nextConnection.connect(pasted.previousConnection);
+
+      expect(Number(pasted.getInputTargetBlock('X')?.getFieldValue('NUM'))).to.equal(3);
+
+      const code = javascriptGenerator.workspaceToCode(workspace);
+      const ids = [...code.matchAll(/addPrefab\("([^"]+)"/g)].map((match) => match[1]);
+      expect(ids).to.have.length(2);
+      expect(new Set(ids).size).to.equal(2);
+      expect(ids.some((id) => id.startsWith('bookcase1__'))).to.equal(true);
+      expect(ids.some((id) => id.startsWith('bookcase2__'))).to.equal(true);
+      // Both instances build at the pasted position; physics comes from the
+      // definition once, so both inherit it.
+      expect(code.match(/x: 3/g)?.length).to.equal(2);
+      expect(code).to.match(/setPhysics\(.*"DYNAMIC"/s);
+    });
+
     it('declares the add block variable', function () {
       appendDefinition(workspace);
       const start = Blockly.serialization.blocks.append({ type: 'start' }, workspace);
@@ -409,6 +461,82 @@ export function runPrefabTests(flock) {
       created.push(name);
       const parts = flock.scene.getMeshByName(name).getChildMeshes();
       expect(parts.map((part) => part.metadata.prefabMaterialIndex)).to.deep.equal([1, 2]);
+    });
+
+    it('builds a pasted second instance at the same position with the same physics', async function () {
+      const build = async (group) => {
+        const part = flock.createBox('pastePart', { width: 1, height: 1, depth: 1 });
+        await flock.setParent(group, part);
+      };
+      const options = { y: 0, z: 0, rotationY: 0, args: [], build };
+      const a = await flock.addPrefab('pasteA__pasteblockA', { x: 3, ...options });
+      const b = await flock.addPrefab('pasteB__pasteblockB', { x: 3, ...options });
+      created.push(a, b);
+      const groupA = flock.scene.getMeshByName(a);
+      const groupB = flock.scene.getMeshByName(b);
+
+      expect(a).to.not.equal(b);
+      expect(groupA.position.x).to.be.closeTo(3, 0.01);
+      expect(groupB.position.x).to.be.closeTo(3, 0.01);
+      const [partA] = groupA.getChildMeshes();
+      const [partB] = groupB.getChildMeshes();
+      expect(partA).to.exist;
+      expect(partB).to.exist;
+      await flock.setPhysics(partA.name, 'DYNAMIC');
+      await flock.setPhysics(partB.name, 'DYNAMIC');
+      expect(partA.physics.getMotionType()).to.equal(flock.BABYLON.PhysicsMotionType.DYNAMIC);
+      expect(partB.physics.getMotionType()).to.equal(flock.BABYLON.PhysicsMotionType.DYNAMIC);
+    });
+    it('clones a gizmo-duplicated instance live under the new block', async function () {
+      this.timeout(10000);
+      const build = async (group) => {
+        const part = flock.createBox('gizmoPart', { width: 1, height: 1, depth: 1 });
+        await flock.setParent(group, part);
+      };
+      const name = await flock.addPrefab('gizmoA__gizmoblockA', {
+        x: 1,
+        y: 0,
+        z: 0,
+        rotationY: 0,
+        args: [],
+        build,
+      });
+      created.push(name);
+      const sourceGroup = flock.scene.getMeshByName(name);
+      const [sourcePart] = sourceGroup.getChildMeshes();
+      await flock.setPhysics(sourcePart.name, 'DYNAMIC');
+
+      const newBlock = {
+        id: 'gizmoblockB',
+        disposed: false,
+        getField: (field) => (field === 'ID_VAR' ? { getText: () => 'gizmo1' } : null),
+        getInputTargetBlock: (input) => ({
+          getFieldValue: () => ({ X: 5, Y: 0, Z: 0, ROTATE_Y: 0 })[input],
+        }),
+      };
+      blockKeyByBlockId.set('gizmoblockB', 'gizmoblockB');
+      try {
+        // Awaiting the helper covers the clone's positioning too, so the
+        // transform assertions below cannot read the source position.
+        const clone = await clonePrefabInstanceForDuplicate({ id: 'gizmoblockA' }, newBlock);
+        expect(clone, 'duplicated mesh').to.exist;
+        created.push(clone.name);
+        // The clone lands on the new block's position; the source is untouched.
+        expect(clone.position.x).to.be.closeTo(5, 0.2);
+        expect(sourceGroup.position.x).to.be.closeTo(1, 0.01);
+        const [clonePart] = clone.getChildMeshes();
+        expect(clonePart).to.exist;
+        expect(clonePart.physics?.getMotionType?.()).to.equal(
+          flock.BABYLON.PhysicsMotionType.DYNAMIC
+        );
+        // Undoing the duplicate removes only the clone.
+        newBlock.disposed = true;
+        deleteMeshFromBlock('gizmoblockB');
+        expect(flock.scene.getMeshByName(clone.name)).to.not.exist;
+        expect(flock.scene.getMeshByName(name)).to.exist;
+      } finally {
+        blockKeyByBlockId.delete('gizmoblockB');
+      }
     });
   });
 }

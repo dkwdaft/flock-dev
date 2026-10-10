@@ -9,6 +9,7 @@ import {
   getRootMesh,
   getOwnVar,
   getXYZFromBlock,
+  clonePrefabInstanceForDuplicate,
   updateBlockColorAndHighlight,
   suppressBlockLiveUpdates,
   unsuppressBlockLiveUpdates,
@@ -3585,6 +3586,14 @@ function startDuplicatePlacement() {
     }
     const newBlock = duplicateBlockAndInsert(originalBlock, workspace, position);
     updateDuplicateChainSource(newBlock, workspace);
+    // Prefab callers have no block-to-mesh live path, so a duplicated caller
+    // would stay invisible until Play. Clone the picked group for an immediate
+    // preview instead. Same type string as PREFAB_CALL_TYPE in
+    // blocks/prefabs.js (kept literal to avoid a module cycle).
+    // Fire-and-forget: placement keeps polling after the gizmo moves on.
+    if (newBlock?.type === 'procedures_callprefab') {
+      void clonePrefabInstanceForDuplicate(originalBlock, newBlock);
+    }
   };
 
   activeDuplicateCentreHandle?.dispose();
