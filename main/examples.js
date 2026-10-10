@@ -80,8 +80,8 @@ export const EXAMPLES = [
   { i18nKey: 'snowman_glide', file: 'examples/snowman_glide.flock', category: 'create' },
   { i18nKey: 'pancake_flip', file: 'examples/pancake_flip.flock', category: 'create' },
   {
-    i18nKey: 'backpack_customizer',
-    file: 'examples/backpack_customizer.flock',
+    i18nKey: 'backpack_maker',
+    file: 'examples/backpack_maker.flock',
     category: 'create',
   },
   {

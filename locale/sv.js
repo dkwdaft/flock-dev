@@ -1040,7 +1040,7 @@ export default {
   space_scene_ui: 'Rymdscen',
   snowman_glide_ui: 'Snögubbe som glider',
   pancake_flip_ui: 'Pannkaksvändning',
-  backpack_customizer_ui: 'Ryggsäcksdesigner',
+  backpack_maker_ui: 'Ryggsäcksmakare', // AI-generated; needs validation
   grid_race_ui: 'Rutnätsrace',
   escape_room_ui: 'Escape room',
   toy_finder_ui: 'Leksaksletare',

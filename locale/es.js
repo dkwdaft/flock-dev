@@ -1162,7 +1162,7 @@ export default {
   space_scene_ui: 'Escena espacial',
   snowman_glide_ui: 'Muñeco de nieve deslizante',
   pancake_flip_ui: 'Voltear tortitas',
-  backpack_customizer_ui: 'Personalizador de mochilas',
+  backpack_maker_ui: 'Creador de mochilas', // AI-generated; needs validation
   grid_race_ui: 'Carrera en cuadrícula',
   escape_room_ui: 'Sala de escape',
   toy_finder_ui: 'Buscador de juguetes',
