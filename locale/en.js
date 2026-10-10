@@ -296,6 +296,7 @@ export default {
   jump: 'jump %1 height %2',
   set_speed: 'set speed of %1 %2 to %3',
   set_bounciness: 'set bounciness of %1 to %2',
+  set_mass: 'set mass of %1 to %2',
   show_physics: 'show physics shapes %1',
 
   // Custom block translations - Sensing blocks
@@ -624,13 +625,16 @@ export default {
   // Tooltip translations - Physics blocks
   add_physics_tooltip: 'Add physics to the object. Options are dynamic, static, animated and none.',
   add_physics_shape_tooltip: 'Add a physics shape to the object. Options are object or capsule.',
-  apply_force_tooltip: 'Apply a force to an object in XYZ directions.',
+  apply_force_tooltip:
+    'Apply a force to an object in XYZ directions. Heavier objects need a larger force for the same motion.',
   jump_tooltip:
     'Make a character jump to a height (in blocks). Keeps your current running speed. Needs physics.',
   set_speed_tooltip:
     'Keep an object moving at a steady speed, like "move" but continuous — handles slopes and collisions, relative to the object or world. Choose a direction (forward, sideways, up) or a world axis (x, y, z); use "all" and 0 to stop.',
   set_bounciness_tooltip:
     'Set how bouncy an object is. 0 means no bounce, 1 means very bouncy. The object needs physics first.',
+  set_mass_tooltip:
+    'Set how heavy an object is. Default is 1. Heavier objects need a larger force for the same motion. The object needs physics first.',
   show_physics_tooltip:
     'Show or hide physics colliders for debugging. Check to show, uncheck to hide.',
 

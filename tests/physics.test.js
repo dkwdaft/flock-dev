@@ -769,6 +769,129 @@ export function runPhysicsTests(flock) {
     });
   });
 
+  describe('setMass method @physics', function () {
+    const boxIds = [];
+
+    beforeEach(async function () {
+      flock.scene ??= {};
+    });
+
+    afterEach(function () {
+      boxIds.forEach((boxId) => {
+        flock.dispose(boxId);
+      });
+      boxIds.length = 0;
+    });
+
+    it("sets mass on the body's mass properties", async function () {
+      const id = 'boxMass';
+      await flock.createBox(id, { width: 1, height: 1, depth: 1, position: [0, 0, 0] });
+      await flock.setPhysics(id, 'DYNAMIC');
+      boxIds.push(id);
+
+      flock.setMass(id, 5);
+
+      const mesh = flock.scene.getMeshByName(id);
+      expect(mesh.metadata.mass).to.equal(5);
+      expect(mesh.physics.getMassProperties().mass).to.be.closeTo(5, 1e-6);
+    });
+
+    it('defaults a fresh body to mass 1', async function () {
+      const id = 'boxMassDefault';
+      await flock.createBox(id, { width: 1, height: 1, depth: 1, position: [0, 0, 0] });
+      await flock.setPhysics(id, 'DYNAMIC');
+      boxIds.push(id);
+
+      const mesh = flock.scene.getMeshByName(id);
+      expect(mesh.physics.getMassProperties().mass).to.be.closeTo(1, 1e-6);
+    });
+
+    it('clamps to a small positive minimum', async function () {
+      const id = 'boxMassClamp';
+      await flock.createBox(id, { width: 1, height: 1, depth: 1, position: [0, 0, 0] });
+      await flock.setPhysics(id, 'DYNAMIC');
+      boxIds.push(id);
+
+      const mesh = flock.scene.getMeshByName(id);
+
+      flock.setMass(id, 0);
+      expect(mesh.physics.getMassProperties().mass).to.be.greaterThan(0);
+
+      flock.setMass(id, -3);
+      expect(mesh.physics.getMassProperties().mass).to.be.greaterThan(0);
+    });
+
+    it('same impulse moves a heavy object less than a light one', async function () {
+      const lightId = 'boxMassLight';
+      const heavyId = 'boxMassHeavy';
+      await flock.createBox(lightId, { width: 1, height: 1, depth: 1, position: [0, 5, 0] });
+      await flock.createBox(heavyId, { width: 1, height: 1, depth: 1, position: [0, 5, 0] });
+      await flock.setPhysics(lightId, 'DYNAMIC');
+      await flock.setPhysics(heavyId, 'DYNAMIC');
+      boxIds.push(lightId, heavyId);
+
+      flock.setMass(lightId, 1);
+      flock.setMass(heavyId, 10);
+
+      await flock.applyForce(lightId, { forceX: 10, forceY: 0, forceZ: 0 });
+      await flock.applyForce(heavyId, { forceX: 10, forceY: 0, forceZ: 0 });
+
+      const lightV = flock.scene.getMeshByName(lightId).physics.getLinearVelocity();
+      const heavyV = flock.scene.getMeshByName(heavyId).physics.getLinearVelocity();
+      expect(lightV.x).to.be.greaterThan(heavyV.x);
+      expect(heavyV.x).to.be.greaterThan(0);
+    });
+
+    it('keeps mass through a physics shape (capsule) swap', async function () {
+      const id = 'boxMassCapsule';
+      await flock.createBox(id, { width: 1, height: 2, depth: 1, position: [0, 1, 0] });
+      await flock.setPhysics(id, 'DYNAMIC');
+      boxIds.push(id);
+
+      flock.setMass(id, 4);
+      await flock.setPhysicsShape(id, 'CAPSULE');
+
+      const mesh = flock.scene.getMeshByName(id);
+      expect(mesh.physics.getMassProperties().mass).to.be.closeTo(4, 1e-6);
+    });
+
+    it('re-applies the stored mass after a physics rebuild', async function () {
+      const id = 'boxMassRebuild';
+      await flock.createBox(id, { width: 1, height: 1, depth: 1, position: [0, 0, 0] });
+      await flock.setPhysics(id, 'DYNAMIC');
+      boxIds.push(id);
+
+      flock.setMass(id, 7);
+
+      await flock.setPhysics(id, 'NONE');
+      await flock.setPhysics(id, 'DYNAMIC');
+
+      const mesh = flock.scene.getMeshByName(id);
+      expect(mesh.physics.getMassProperties().mass).to.be.closeTo(7, 1e-6);
+    });
+
+    it('should handle missing physics gracefully', async function () {
+      const id = 'boxMassNoPhysics';
+      await flock.createBox(id, { width: 1, height: 1, depth: 1, position: [0, 0, 0] });
+      boxIds.push(id);
+
+      const mesh = flock.scene.getMeshByName(id);
+      mesh.physics.dispose();
+      mesh.physics = null;
+
+      let errorLogged = false;
+      const originalConsoleError = console.error;
+      console.error = () => {
+        errorLogged = true;
+      };
+
+      flock.setMass(id, 5);
+
+      console.error = originalConsoleError;
+      expect(errorLogged).to.be.true;
+    });
+  });
+
   describe('meshExists @physics', function () {
     const boxIds = [];
 

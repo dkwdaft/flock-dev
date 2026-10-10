@@ -780,7 +780,7 @@ export const flockCamera = {
         scene
       );
       body.shape = shape;
-      body.setMassProperties({ mass: 1 });
+      flock.applyMass(body, constraintBox);
       flock.applyBounciness(body, constraintBox);
       constraintBox.physics = body;
 
@@ -802,7 +802,7 @@ export const flockCamera = {
           scene
         );
         body.shape = shape;
-        body.setMassProperties({ mass: 1 });
+        flock.applyMass(body, constraintBox);
         flock.applyBounciness(body, constraintBox);
         constraintBox.physics = body;
       } else if (!constraintBox.physics.shape) {

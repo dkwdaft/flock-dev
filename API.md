@@ -406,7 +406,17 @@ await setPhysics('player', 'DYNAMIC');
 
 #### `applyForce(meshName, force)`
 
-Applies a force to a physics-enabled mesh.
+Applies a force to a physics-enabled mesh as a one-shot impulse. Heavier objects (see `setMass`) need a larger force for the same motion.
+
+#### `setMass(meshName, mass)`
+
+Sets how heavy an object is. Default is 1. Stored on the object so it survives physics rebuilds. Clamped to a small positive minimum. Heavier objects need a larger force for the same motion and push lighter ones around.
+
+**Example:**
+
+```javascript
+setMass('bowlingBall', 5);
+```
 
 ### Scene Environment
 

@@ -1483,7 +1483,7 @@ export const flockMesh = {
     }
 
     boxBody.shape = boxShape;
-    boxBody.setMassProperties({ mass: 1 });
+    flock.applyMass(boxBody, bb);
     flock.applyBounciness(boxBody, bb);
     boxBody.disablePreStep = true;
     bb.physics = boxBody;

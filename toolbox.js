@@ -1686,6 +1686,21 @@ const toolboxTransformPhysics = {
     },
     {
       kind: 'block',
+      type: 'set_mass',
+      keyword: 'heavy',
+      inputs: {
+        MASS: {
+          shadow: {
+            type: 'math_number',
+            fields: {
+              NUM: 1,
+            },
+          },
+        },
+      },
+    },
+    {
+      kind: 'block',
       type: 'show_physics',
       keyword: 'colliders',
     },
