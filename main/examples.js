@@ -52,6 +52,12 @@ export const EXAMPLES = [
   { i18nKey: 'shape_push', file: 'examples/shape_push.flock', category: 'physics' },
   { i18nKey: 'ball_pit', file: 'examples/ball_pit.flock', category: 'physics' },
   { i18nKey: 'skittles', file: 'examples/skittles.flock', category: 'physics' },
+  {
+    i18nKey: 'block_tower',
+    file: 'examples/block_tower.flock',
+    category: 'physics',
+    thumbnailSettleMs: 7000,
+  },
   { i18nKey: 'toy_finder', file: 'examples/toy_finder.flock', category: 'physics' },
   { i18nKey: 'alien_planet', file: 'examples/alien_planet.flock', category: 'worlds' },
   { i18nKey: 'my_place', file: 'examples/my_place.flock', category: 'worlds' },
@@ -74,8 +80,8 @@ export const EXAMPLES = [
   { i18nKey: 'snowman_glide', file: 'examples/snowman_glide.flock', category: 'create' },
   { i18nKey: 'pancake_flip', file: 'examples/pancake_flip.flock', category: 'create' },
   {
-    i18nKey: 'backpack_customizer',
-    file: 'examples/backpack_customizer.flock',
+    i18nKey: 'backpack_maker',
+    file: 'examples/backpack_maker.flock',
     category: 'create',
   },
   {

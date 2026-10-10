@@ -296,6 +296,7 @@ export default {
   jump: 'jump %1 height %2',
   set_speed: 'set speed of %1 %2 to %3',
   set_bounciness: 'set bounciness of %1 to %2',
+  set_mass: 'set mass of %1 to %2',
   show_physics: 'show physics shapes %1',
 
   // Custom block translations - Sensing blocks
@@ -362,7 +363,11 @@ export default {
   create_capsule: 'add capsule %1 %2 diameter: %3 height: %4 \n%8 x: %5 y: %6 z: %7',
   create_wedge:
     'add wedge %1 %2 width: %3 height: %4 depth: %5\npeak: %6 along: %7\n%11 x: %8 y: %9 z: %10',
-  create_freeform: 'add freeform %1 %2 edit: %7\n%6 x: %3 y: %4 z: %5',
+  create_freeform:
+    'add freeform %1 %2 rounding: %8 %9 radius: %10 edit: %7\n%6 x: %3 y: %4 z: %5',
+  freeform_rounding_none: 'none',
+  freeform_rounding_edges: 'edges',
+  freeform_rounding_smooth: 'smooth',
   freeform_points: 'points',
   freeform_invalid: 'That change would make the shape cross itself or break apart, so it was undone.',
   create_donut:
@@ -620,13 +625,16 @@ export default {
   // Tooltip translations - Physics blocks
   add_physics_tooltip: 'Add physics to the object. Options are dynamic, static, animated and none.',
   add_physics_shape_tooltip: 'Add a physics shape to the object. Options are object or capsule.',
-  apply_force_tooltip: 'Apply a force to an object in XYZ directions.',
+  apply_force_tooltip:
+    'Apply a force to an object in XYZ directions. Heavier objects need a larger force for the same motion.',
   jump_tooltip:
     'Make a character jump to a height (in blocks). Keeps your current running speed. Needs physics.',
   set_speed_tooltip:
     'Keep an object moving at a steady speed, like "move" but continuous — handles slopes and collisions, relative to the object or world. Choose a direction (forward, sideways, up) or a world axis (x, y, z); use "all" and 0 to stop.',
   set_bounciness_tooltip:
     'Set how bouncy an object is. 0 means no bounce, 1 means very bouncy. The object needs physics first.',
+  set_mass_tooltip:
+    'Set how heavy an object is. Default is 1. Heavier objects need a larger force for the same motion. The object needs physics first.',
   show_physics_tooltip:
     'Show or hide physics colliders for debugging. Check to show, uncheck to hide.',
 
@@ -678,7 +686,7 @@ export default {
   create_wedge_tooltip:
     'Add a wedge \u2014 a triangular prism for building ramps, slopes and roofs. Move the peak to change the shape: 0 makes a ramp, 0.5 makes a roof.',
   create_freeform_tooltip:
-    'Add a shape you can reshape. Tick edit to drag its points and pull faces out with the arrows. Click + to see the list of points.',
+    'Add a shape you can reshape. Tick edit to drag its points and pull faces out with the arrows. Rounding softens its edges by the radius, or smooths the whole shape. Click + to see the list of points.',
   create_donut_tooltip:
     'Add a donut shape. Outer and inner are the diameters of the outside and the hole; changing inner or thickness updates the other. Sides sets how smooth it looks.',
   create_ring_tooltip:
@@ -1213,6 +1221,7 @@ export default {
   collect_the_gems_ui: 'Collect the gems',
   water_map_ui: 'Water map',
   skittles_ui: 'Skittles',
+  block_tower_ui: 'Block tower',
   beetle_ui: 'Beetle',
   gem_tilt_game_ui: 'Gem tilt',
   roominator_ui: 'Roominator',
@@ -1237,7 +1246,7 @@ export default {
   space_scene_ui: 'Space scene',
   snowman_glide_ui: 'Snowman glide',
   pancake_flip_ui: 'Pancake flip',
-  backpack_customizer_ui: 'Backpack customizer',
+  backpack_maker_ui: 'Backpack maker',
   grid_race_ui: 'Grid race',
   escape_room_ui: 'Escape room',
   toy_finder_ui: 'Toy finder',

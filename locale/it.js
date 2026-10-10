@@ -1037,6 +1037,7 @@ export default {
   collect_the_gems_ui: 'Raccogli le gemme',
   water_map_ui: 'Mappa d’acqua',
   skittles_ui: 'Birilli',
+  block_tower_ui: 'Torre di blocchi',
   beetle_ui: 'Coleottero',
   roominator_ui: 'Roominator',
   sit_down_ui: 'Siediti',
@@ -1060,7 +1061,7 @@ export default {
   space_scene_ui: 'Scena spaziale',
   snowman_glide_ui: 'Pupazzo di neve scivolante',
   pancake_flip_ui: 'Lancio del pancake',
-  backpack_customizer_ui: 'Personalizza lo zaino',
+  backpack_maker_ui: 'Creatore di zaini', // AI-generated; needs validation
   grid_race_ui: 'Corsa sulla griglia',
   escape_room_ui: 'Escape room',
   toy_finder_ui: 'Cerca giocattoli',

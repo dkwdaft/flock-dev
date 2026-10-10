@@ -200,6 +200,34 @@ export function definePhysicsBlocks() {
     },
   };
 
+  Blockly.Blocks['set_mass'] = {
+    init: function () {
+      this.jsonInit({
+        type: 'set_mass',
+        message0: translate('set_mass'),
+        args0: [
+          {
+            type: 'field_variable',
+            name: 'MESH_VAR',
+            variable: window.currentMesh,
+          },
+          {
+            type: 'input_value',
+            name: 'MASS',
+            check: 'Number',
+          },
+        ],
+        inputsInline: true,
+        previousStatement: null,
+        nextStatement: null,
+        colour: categoryColours['Transform'],
+        tooltip: getTooltip('set_mass'),
+      });
+      this.setHelpUrl(getHelpUrlFor(this.type));
+      this.setStyle('transform_blocks');
+    },
+  };
+
   Blockly.Blocks['show_physics'] = {
     init: function () {
       this.jsonInit({

@@ -156,6 +156,22 @@ export const applyBounciness = (physicsBody, mesh) => {
   };
 };
 
+// Mass is opt-in (default 1) and stored in metadata so it survives shape/body
+// rebuilds like bounciness. Clamped positive: 0 means static in Havok.
+export const DEFAULT_MASS = 1;
+export const MIN_MASS = 0.01;
+
+export const normalizeMass = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return DEFAULT_MASS;
+  return Math.max(MIN_MASS, n);
+};
+
+export const applyMass = (physicsBody, mesh) => {
+  if (!physicsBody) return;
+  physicsBody.setMassProperties({ mass: mesh?.metadata?.mass ?? DEFAULT_MASS });
+};
+
 // Returns the mesh's normalised local basis vectors in world space, so velocity
 // magnitudes stay correct regardless of mesh scale.
 const localBasis = (mesh) => {
@@ -450,7 +466,9 @@ const createPhysicsShape = (mesh, shapeType) => {
     return new flock.BABYLON.PhysicsShapeConvexHull(mesh, flock.scene);
   }
   if (shapeType === 'BOX') {
-    return flock.createBoxFromBoundingBox(mesh, flock.scene);
+    return mesh.metadata?.shapeType === 'Freeform'
+      ? flock.createFreeformBox(mesh, flock.scene)
+      : flock.createBoxFromBoundingBox(mesh, flock.scene);
   }
   if (shapeType === 'SPHERE') {
     return flock.createSphereFromBoundingBox(mesh, flock.scene);
@@ -490,7 +508,7 @@ const applyPhysicsShape = (
     flock.scene
   );
   physicsBody.shape = physicsShape;
-  physicsBody.setMassProperties({ mass: 1 });
+  applyMass(physicsBody, targetMesh);
   applyBounciness(physicsBody, targetMesh);
   physicsBody.disablePreStep = disablePreStep;
   targetMesh.physics = physicsBody;
@@ -612,7 +630,7 @@ export const flockPhysics = {
   createPhysicsBody(mesh, shape, motionType = flock.BABYLON.PhysicsMotionType.STATIC) {
     const physicsBody = new flock.BABYLON.PhysicsBody(mesh, motionType, false, flock.scene);
     physicsBody.shape = shape;
-    physicsBody.setMassProperties({ mass: 1 });
+    applyMass(physicsBody, mesh);
     applyBounciness(physicsBody, mesh);
     mesh.physics = physicsBody;
   },
@@ -624,7 +642,7 @@ export const flockPhysics = {
       flock.scene
     );
     physicsBody.shape = physicsShape;
-    physicsBody.setMassProperties({ mass: 1 });
+    applyMass(physicsBody, geometry);
     applyBounciness(physicsBody, geometry);
     physicsBody.disablePreStep = true;
 
@@ -659,7 +677,13 @@ export const flockPhysics = {
 
     let newShape;
     let detectedShapeType;
-    if (physicsShape instanceof flock.BABYLON.PhysicsShapeBox) {
+    if (
+      physicsShape instanceof flock.BABYLON.PhysicsShapeBox &&
+      mesh.metadata?.shapeType === 'Freeform'
+    ) {
+      detectedShapeType = 'BOX';
+      newShape = flock.createFreeformBox(mesh, flock.scene);
+    } else if (physicsShape instanceof flock.BABYLON.PhysicsShapeBox) {
       detectedShapeType = 'BOX';
       newShape = new flock.BABYLON.PhysicsShapeBox(
         center,
@@ -748,7 +772,7 @@ export const flockPhysics = {
       flock.scene
     );
     physicsBody.shape = newShape;
-    physicsBody.setMassProperties({ mass: 1 });
+    applyMass(physicsBody, parent);
     applyBounciness(physicsBody, parent);
     physicsBody.disablePreStep = disablePreStep ?? false;
     physicsBody.setLinearVelocity(linearVelocity);
@@ -786,6 +810,7 @@ export const flockPhysics = {
   // Set how bouncy an object is (0 = no bounce, 1 = very bouncy). Stored in
   // metadata so it survives physics rebuilds; see applyBounciness.
   applyBounciness,
+  applyMass,
   ensurePostPhysicsUpkeep,
   setBounciness(meshName, bounciness = 0.5) {
     const mesh = flock.scene.getMeshByName(meshName);
@@ -795,6 +820,19 @@ export const flockPhysics = {
       applyBounciness(mesh.physics, mesh);
     } else {
       console.error(`Model '${meshName}' not loaded or missing physics (setBounciness)`);
+    }
+  },
+  // Set how heavy an object is (default 1). Stored in metadata so it survives
+  // physics rebuilds; see applyMass. Heavier objects need a larger force for
+  // the same motion (impulse Δv = J/m) and push lighter ones around.
+  setMass(meshName, mass = 1) {
+    const mesh = flock.scene.getMeshByName(meshName);
+    if (mesh && isBodyAlive(mesh.physics)) {
+      mesh.metadata = mesh.metadata || {};
+      mesh.metadata.mass = normalizeMass(mass);
+      applyMass(mesh.physics, mesh);
+    } else {
+      console.error(`Model '${meshName}' not loaded or missing physics (setMass)`);
     }
   },
   applyForce(meshName, { forceX = 0, forceY = 0, forceZ = 0 } = {}) {
@@ -999,7 +1037,7 @@ export const flockPhysics = {
             flock.scene
           );
           physicsBody.shape = physicsShape;
-          physicsBody.setMassProperties({ mass: 1 });
+          applyMass(physicsBody, targetMesh);
           applyBounciness(physicsBody, targetMesh);
           physicsBody.disablePreStep = disablePreStep ?? false;
 
@@ -1049,7 +1087,7 @@ export const flockPhysics = {
             flock.scene
           );
           physicsBody.shape = physicsShape;
-          physicsBody.setMassProperties({ mass: 1 });
+          applyMass(physicsBody, targetMesh);
           applyBounciness(physicsBody, targetMesh);
           physicsBody.disablePreStep = disablePreStep ?? false;
 

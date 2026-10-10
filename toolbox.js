@@ -816,7 +816,7 @@ const toolboxSceneMeshes = {
           shadow: {
             type: 'colour',
             fields: {
-              COLOR: '#66cc99',
+              COLOR: '#ef7a7a',
             },
           },
         },
@@ -860,6 +860,14 @@ const toolboxSceneMeshes = {
             type: 'math_number',
             fields: {
               NUM: 0,
+            },
+          },
+        },
+        RADIUS: {
+          shadow: {
+            type: 'math_number',
+            fields: {
+              NUM: 0.1,
             },
           },
         },
@@ -1671,6 +1679,21 @@ const toolboxTransformPhysics = {
             type: 'math_number',
             fields: {
               NUM: 0.7,
+            },
+          },
+        },
+      },
+    },
+    {
+      kind: 'block',
+      type: 'set_mass',
+      keyword: 'heavy',
+      inputs: {
+        MASS: {
+          shadow: {
+            type: 'math_number',
+            fields: {
+              NUM: 1,
             },
           },
         },

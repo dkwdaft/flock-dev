@@ -349,3 +349,323 @@ export function extrudeFace(points, faces, faceIndex, distance) {
   });
   return { points: newPoints, faces: newFaces };
 }
+
+export const ROUNDINGS = ['none', 'edges', 'smooth'];
+export const DEFAULT_ROUNDING_RADIUS = 0.1;
+// Level 1 looks lumpy and level 3 adds little beyond 2 but four times the triangles.
+const SMOOTH_LEVEL = 2;
+// Kept low for low-end Chromebooks; a rounded shape that would need more
+// falls back to a plainer version.
+export const MAX_ROUNDED_TRIANGLES = 3000;
+const SUPPORT_FRACTION = 0.25;
+const MAX_INSET_FRACTION = 0.4;
+
+const edgeKey = (a, b) => (a < b ? `${a},${b}` : `${b},${a}`);
+
+// One Catmull-Clark step: every face becomes one quad per corner, and the
+// shape shrinks towards a smooth surface. Winding is kept.
+export function subdivide(points, faces) {
+  const facePoints = faces.map((face) => faceCentre(points, face));
+  const edgeIds = new Map();
+  const edges = [];
+  faces.forEach((face, f) =>
+    face.forEach((a, i) => {
+      const b = face[(i + 1) % face.length];
+      const key = edgeKey(a, b);
+      if (!edgeIds.has(key)) {
+        edgeIds.set(key, edges.length);
+        edges.push({ a, b, faces: [] });
+      }
+      edges[edgeIds.get(key)].faces.push(f);
+    })
+  );
+
+  const edgePoints = edges.map(({ a, b, faces: [f, g] }) =>
+    g === undefined
+      ? scale(add(points[a], points[b]), 0.5)
+      : scale(add(add(points[a], points[b]), add(facePoints[f], facePoints[g])), 0.25)
+  );
+
+  const faceSums = points.map(() => ({ sum: [0, 0, 0], count: 0 }));
+  faces.forEach((face, f) =>
+    face.forEach((v) => {
+      faceSums[v].sum = add(faceSums[v].sum, facePoints[f]);
+      faceSums[v].count++;
+    })
+  );
+  const edgeSums = points.map(() => ({ sum: [0, 0, 0], count: 0 }));
+  edges.forEach(({ a, b }) => {
+    const middle = scale(add(points[a], points[b]), 0.5);
+    for (const v of [a, b]) {
+      edgeSums[v].sum = add(edgeSums[v].sum, middle);
+      edgeSums[v].count++;
+    }
+  });
+  const vertexPoints = points.map((p, v) => {
+    const n = edgeSums[v].count;
+    if (n < 3 || faceSums[v].count !== n) return [...p];
+    const faceAverage = scale(faceSums[v].sum, 1 / n);
+    const edgeAverage = scale(edgeSums[v].sum, 1 / n);
+    return scale(add(add(faceAverage, scale(edgeAverage, 2)), scale(p, n - 3)), 1 / n);
+  });
+
+  const edgeOffset = points.length;
+  const faceOffset = edgeOffset + edges.length;
+  const newFaces = [];
+  faces.forEach((face, f) =>
+    face.forEach((v, i) => {
+      const next = face[(i + 1) % face.length];
+      const prev = face[(i - 1 + face.length) % face.length];
+      newFaces.push([
+        v,
+        edgeOffset + edgeIds.get(edgeKey(v, next)),
+        faceOffset + f,
+        edgeOffset + edgeIds.get(edgeKey(prev, v)),
+      ]);
+    })
+  );
+  return { points: [...vertexPoints, ...edgePoints, ...facePoints], faces: newFaces };
+}
+
+// Cuts every edge and corner: each face shrinks inwards, a strip fills each
+// edge and a small face fills each corner. The cut is `size` from each edge,
+// or that fraction of the shorter edge at each corner when `relative`, and
+// never more than 40% of it.
+export function bevel(points, faces, size = DEFAULT_ROUNDING_RADIUS, relative = false) {
+  const corners = [];
+  const cornerIds = faces.map((face) => {
+    const normal = faceNormal(points, face);
+    return face.map((v, i) => {
+      const p = points[v];
+      const toNext = sub(points[face[(i + 1) % face.length]], p);
+      const toPrev = sub(points[face[(i - 1 + face.length) % face.length]], p);
+      const shorter = Math.min(length(toNext), length(toPrev));
+      const u1 = scale(toNext, 1 / length(toNext));
+      const u2 = scale(toPrev, 1 / length(toPrev));
+      const inward = cross(normal, u1);
+      let direction = add(u1, u2);
+      if (length(direction) < EPS) direction = inward;
+      if (dot(direction, inward) < 0) direction = scale(direction, -1);
+      const spread = length(sub(u1, u2));
+      const distance = Math.min(
+        (2 * (relative ? size * shorter : size)) / Math.max(spread, EPS),
+        MAX_INSET_FRACTION * shorter
+      );
+      corners.push(add(p, scale(direction, distance / length(direction))));
+      return corners.length - 1;
+    });
+  });
+
+  const cornerOf = new Map();
+  faces.forEach((face, f) => face.forEach((v, i) => cornerOf.set(`${f}:${v}`, cornerIds[f][i])));
+  const faceWithEdge = new Map();
+  faces.forEach((face, f) =>
+    face.forEach((a, i) => faceWithEdge.set(`${a},${face[(i + 1) % face.length]}`, f))
+  );
+
+  const newFaces = cornerIds.map((ids) => [...ids]);
+  faces.forEach((face, f) =>
+    face.forEach((a, i) => {
+      const b = face[(i + 1) % face.length];
+      const g = faceWithEdge.get(`${b},${a}`);
+      if (g === undefined || a > b) return;
+      newFaces.push([
+        cornerOf.get(`${f}:${b}`),
+        cornerOf.get(`${f}:${a}`),
+        cornerOf.get(`${g}:${a}`),
+        cornerOf.get(`${g}:${b}`),
+      ]);
+    })
+  );
+
+  // Around each point, step from a face to the one across its incoming edge.
+  const done = new Set();
+  faces.forEach((face, start) =>
+    face.forEach((v) => {
+      if (done.has(v)) return;
+      done.add(v);
+      const ring = [];
+      let f = start;
+      do {
+        ring.push(cornerOf.get(`${f}:${v}`));
+        const current = faces[f];
+        const prev = current[(current.indexOf(v) - 1 + current.length) % current.length];
+        f = faceWithEdge.get(`${v},${prev}`);
+      } while (f !== undefined && f !== start && ring.length <= faces.length);
+      if (f === start && ring.length >= 3) newFaces.push(ring);
+    })
+  );
+
+  return { points: corners, faces: newFaces };
+}
+
+export function roundingSettings({ rounding, radius } = {}) {
+  const given = Number(radius ?? DEFAULT_ROUNDING_RADIUS);
+  const r = Number.isFinite(given) ? given : DEFAULT_ROUNDING_RADIUS;
+  const type = ROUNDINGS.includes(rounding) ? rounding : 'none';
+  return {
+    rounding: type === 'edges' && r <= 0 ? 'none' : type,
+    radius: r,
+  };
+}
+
+const cornerCount = (faces) => faces.reduce((total, face) => total + face.length, 0);
+const triangleCount = (faces) => cornerCount(faces) - 2 * faces.length;
+// Each subdivision turns every corner into a quad, then each quad into four.
+const subdividedTriangles = (faces, levels) => 2 * cornerCount(faces) * 4 ** (levels - 1);
+
+// The surface drawn for a shape: its own faces, or a rounded version that
+// stays within MAX_ROUNDED_TRIANGLES.
+export function roundedShape(points, faces, settings) {
+  const { rounding, radius } = roundingSettings(settings);
+  if (rounding === 'smooth') {
+    for (let levels = SMOOTH_LEVEL; levels > 0; levels--) {
+      if (subdividedTriangles(faces, levels) > MAX_ROUNDED_TRIANGLES) continue;
+      let shape = { points, faces };
+      for (let i = 0; i < levels; i++) shape = subdivide(shape.points, shape.faces);
+      return shape;
+    }
+  }
+  if (rounding === 'edges') {
+    // Best first: a second, tighter cut keeps the faces flat up to the curve;
+    // without it the curve is softer, and without smoothing it is a flat cut.
+    const cut = bevel(points, faces, radius);
+    const supported = bevel(cut.points, cut.faces, SUPPORT_FRACTION, true);
+    if (subdividedTriangles(supported.faces, 1) <= MAX_ROUNDED_TRIANGLES) {
+      return subdivide(supported.points, supported.faces);
+    }
+    if (subdividedTriangles(cut.faces, 1) <= MAX_ROUNDED_TRIANGLES) {
+      return subdivide(cut.points, cut.faces);
+    }
+    if (triangleCount(cut.faces) <= MAX_ROUNDED_TRIANGLES) return cut;
+  }
+  return { points, faces };
+}
+
+const normalize = (a) => {
+  const len = length(a);
+  return len > EPS ? scale(a, 1 / len) : null;
+};
+
+// The direction of most spread among points, for a 3 × 3 symmetric matrix by
+// Jacobi rotations; returns the eigenvectors as rows.
+function principalAxes(points) {
+  const n = points.length;
+  const mean = scale(points.reduce(add, [0, 0, 0]), 1 / n);
+  const a = [
+    [0, 0, 0],
+    [0, 0, 0],
+    [0, 0, 0],
+  ];
+  for (const p of points) {
+    const d = sub(p, mean);
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) a[i][j] += d[i] * d[j];
+  }
+  const v = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+  ];
+  for (let sweep = 0; sweep < 20; sweep++) {
+    for (const [p, q] of [
+      [0, 1],
+      [0, 2],
+      [1, 2],
+    ]) {
+      if (Math.abs(a[p][q]) < 1e-12) continue;
+      const theta = (a[q][q] - a[p][p]) / (2 * a[p][q]);
+      const t = Math.sign(theta || 1) / (Math.abs(theta) + Math.sqrt(theta * theta + 1));
+      const c = 1 / Math.sqrt(t * t + 1);
+      const s = t * c;
+      for (let k = 0; k < 3; k++) {
+        const akp = a[k][p];
+        const akq = a[k][q];
+        a[k][p] = c * akp - s * akq;
+        a[k][q] = s * akp + c * akq;
+      }
+      for (let k = 0; k < 3; k++) {
+        const apk = a[p][k];
+        const aqk = a[q][k];
+        a[p][k] = c * apk - s * aqk;
+        a[q][k] = s * apk + c * aqk;
+      }
+      for (let k = 0; k < 3; k++) {
+        const vkp = v[k][p];
+        const vkq = v[k][q];
+        v[k][p] = c * vkp - s * vkq;
+        v[k][q] = s * vkp + c * vkq;
+      }
+    }
+  }
+  return [0, 1, 2].map((col) => [v[0][col], v[1][col], v[2][col]]);
+}
+
+// Within the plane across `normal`, the direction the points spread most.
+function spreadAcross(points, normal) {
+  const seed = Math.abs(normal[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+  const u = normalize(cross(normal, seed));
+  const v = cross(normal, u);
+  let cuu = 0;
+  let cvv = 0;
+  let cuv = 0;
+  const mean = scale(points.reduce(add, [0, 0, 0]), 1 / points.length);
+  for (const p of points) {
+    const d = sub(p, mean);
+    const x = dot(d, u);
+    const y = dot(d, v);
+    cuu += x * x;
+    cvv += y * y;
+    cuv += x * y;
+  }
+  const angle = 0.5 * Math.atan2(2 * cuv, cuu - cvv);
+  return add(scale(u, Math.cos(angle)), scale(v, Math.sin(angle)));
+}
+
+const MIN_BOX_SIZE = 0.01;
+// A tilted box replaces a square one only when it is clearly smaller.
+const TILT_MIN_SAVING = 0.9;
+
+// The smallest of a few boxes around the points: square to the shape's own
+// axes, along its main spread, or lying flat on one of `normals`. Returns the
+// box's centre, its axes and its size along each.
+export function fitBox(points, normals = []) {
+  const frames = [
+    [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ],
+  ];
+  const [main, second] = principalAxes(points);
+  frames.push([main, second, cross(main, second)]);
+  const seen = [];
+  for (const normal of normals) {
+    const n = normalize(normal);
+    if (!n || seen.some((s) => Math.abs(dot(s, n)) > 0.999)) continue;
+    seen.push(n);
+    const along = spreadAcross(points, n);
+    frames.push([n, along, cross(n, along)]);
+  }
+
+  let best = null;
+  for (const axes of frames) {
+    const min = [Infinity, Infinity, Infinity];
+    const max = [-Infinity, -Infinity, -Infinity];
+    for (const p of points) {
+      axes.forEach((axis, i) => {
+        const t = dot(p, axis);
+        if (t < min[i]) min[i] = t;
+        if (t > max[i]) max[i] = t;
+      });
+    }
+    const size = max.map((m, i) => Math.max(m - min[i], MIN_BOX_SIZE));
+    const volume = size[0] * size[1] * size[2];
+    if (best && volume >= best.volume * TILT_MIN_SAVING) continue;
+    const centre = axes.reduce(
+      (total, axis, i) => add(total, scale(axis, (min[i] + max[i]) / 2)),
+      [0, 0, 0]
+    );
+    best = { centre, axes, size, volume };
+  }
+  return { centre: best.centre, axes: best.axes, size: best.size };
+}

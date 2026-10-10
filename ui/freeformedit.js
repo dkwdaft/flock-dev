@@ -1,7 +1,7 @@
 import * as Blockly from 'blockly';
 import { flock } from '../flock.js';
-import { setNumberInputs } from './blocklyutil.js';
 import { getMeshFromBlock } from './blockmesh.js';
+import { readBlockPosition, writeMovedPosition } from './initialTransform.js';
 import { roundToOneDecimal } from './meshhelpers.js';
 import {
   extrudeFace,
@@ -19,6 +19,9 @@ const SELECTED_GROWTH = 1.4;
 const POINT_COLOR = '#ffcc33';
 const ARROW_COLOR = '#33ccff';
 const SELECTED_COLOR = '#ffffff';
+const EDGE_DARKEN = 0.5;
+const EDGE_WIDTH = 4;
+const EDGE_EPSILON = 0.95;
 export const FREEFORM_STEP = 0.1;
 
 const ENGINE_RETRY_MS = 250;
@@ -342,6 +345,33 @@ function attachEditor(mesh, block) {
     if (selection && selection.index >= count) api.select(null);
   };
 
+  // The edges are drawn from an unseen copy of the unrounded shape, so a
+  // rounded shape shows the faces its points make. It follows the mesh
+  // without being its child, so it stays out of the mesh's bounds.
+  const cage = new BABYLON.Mesh('freeformCage', scene);
+  cage.isPickable = false;
+  cage.material = new BABYLON.StandardMaterial('freeformCageMaterial', scene);
+  cage.material.disableColorWrite = true;
+  cage.material.disableDepthWrite = true;
+  const cageMatrix = new BABYLON.Matrix();
+  let edgesFor = null;
+  let edgesColor = '';
+  const syncEdges = (points, faces, world) => {
+    cageMatrix.copyFrom(world);
+    cage.freezeWorldMatrix(cageMatrix);
+    const material = mesh.material;
+    const base = material?.diffuseColor ?? material?.albedoColor ?? BABYLON.Color3.Gray();
+    const color = base.scale(EDGE_DARKEN);
+    if (edgesFor === points && edgesColor === color.toHexString()) return;
+    flock.freeformVertexData(points, faces).applyToMesh(cage, true);
+    cage.disableEdgesRendering();
+    cage.enableEdgesRendering(EDGE_EPSILON, true);
+    cage.edgesWidth = EDGE_WIDTH;
+    cage.edgesColor = color.toColor4(1);
+    edgesFor = points;
+    edgesColor = color.toHexString();
+  };
+
   const up = BABYLON.Vector3.Up();
   const syncObserver = scene.onBeforeRenderObservable.add(() => {
     if (mesh.isDisposed()) return;
@@ -349,9 +379,20 @@ function attachEditor(mesh, block) {
     if (!drag && builtFor !== `${points.length}/${faces.length}`) build();
 
     const world = mesh.computeWorldMatrix(true);
+    syncEdges(points, faces, world);
     const cameraPosition = scene.activeCamera?.globalPosition;
     if (!cameraPosition) return;
     const { selection } = api;
+
+    // Whether the shape itself lies between the camera and a handle. The
+    // margin keeps handles on the surface or silhouette from hiding themselves.
+    const covered = (target, margin) => {
+      const offset = target.subtract(cameraPosition);
+      const length = offset.length() - margin;
+      if (length <= 0) return false;
+      const ray = new BABYLON.Ray(cameraPosition, offset.normalize(), length);
+      return scene.pickWithRay(ray, (m) => m === mesh).hit;
+    };
 
     // A point drag keeps the markers in their original order, even while a
     // merge preview has renumbered the shape's points.
@@ -368,9 +409,11 @@ function attachEditor(mesh, block) {
       marker.material = selected ? selectedMaterial : pointMaterial;
       let grow = selected ? SELECTED_GROWTH : 1;
       if (merging && index === drag.mergeInto) grow = MERGE_TARGET_GROWTH;
-      marker.scaling.setAll(
-        BABYLON.Vector3.Distance(cameraPosition, marker.position) * POINT_SIZE_PER_DISTANCE * grow
-      );
+      const size =
+        BABYLON.Vector3.Distance(cameraPosition, marker.position) * POINT_SIZE_PER_DISTANCE * grow;
+      marker.scaling.setAll(size);
+      const held = selected || drag?.index === index || (merging && index === drag.mergeInto);
+      marker.setEnabled(held || !covered(marker.position, size / 2));
       // The gizmo moves the node itself while it drags.
       if (selected && !drag) api.pointNode.position.copyFrom(marker.position);
     });
@@ -387,10 +430,11 @@ function attachEditor(mesh, block) {
         world
       ).normalize();
       const selected = selection?.kind === 'face' && selection.index === faceIndex;
-      const facing = BABYLON.Vector3.Dot(normal, cameraPosition.subtract(centre)) > 0;
-      arrow.setEnabled(!merging && (facing || selected || drag?.faceIndex === faceIndex));
-      arrow.material = selected ? selectedMaterial : arrowMaterial;
       const size = BABYLON.Vector3.Distance(cameraPosition, centre) * ARROW_SIZE_PER_DISTANCE;
+      const facing = BABYLON.Vector3.Dot(normal, cameraPosition.subtract(centre)) > 0;
+      const visible = facing && !covered(centre, size * 0.2);
+      arrow.setEnabled(!merging && (visible || selected || drag?.faceIndex === faceIndex));
+      arrow.material = selected ? selectedMaterial : arrowMaterial;
       arrow.scaling.setAll(size);
       arrow.position = centre.add(normal.scale(size * 0.2));
       BABYLON.Quaternion.FromUnitVectorsToRef(up, normal, arrow.rotationQuaternion);
@@ -404,6 +448,8 @@ function attachEditor(mesh, block) {
     finishDrag();
     api.select(null);
     meshEditors.delete(mesh);
+    cage.material?.dispose();
+    cage.dispose();
     [...markers, ...arrows].forEach((handle) => handle.dispose());
     api.pointNode.dispose();
     pointMaterial.dispose();
@@ -412,13 +458,14 @@ function attachEditor(mesh, block) {
   };
 }
 
-// Points, faces and Y go in together: the base moves when a bottom point
-// does, and Y keeps the shape where it was edited.
+// Points, faces and position go in together, so the shape stays where it was
+// edited: the base moves when a bottom point does, and with the rotate row
+// open the position is the shape's centre, which moves with any point.
 function commitShape(mesh, block) {
   Blockly.Events.setGroup(true);
   try {
     block.writeShape(mesh.metadata.freeformPoints, mesh.metadata.freeformFaces);
-    setNumberInputs(block, { Y: flock.getBlockPositionFromMesh(mesh).y });
+    writeMovedPosition(block, readBlockPosition(mesh, block));
   } finally {
     Blockly.Events.setGroup(false);
   }

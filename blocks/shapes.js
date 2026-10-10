@@ -12,7 +12,12 @@ import {
 } from './blocks.js';
 import { addInitialTransformRows } from './initialTransformRows.js';
 import { translate, getTooltip, getDropdownOption } from '../main/translation.js';
-import { CUBE_FACES, shapeError } from '../api/freeformgeometry.js';
+import {
+  CUBE_FACES,
+  ROUNDINGS,
+  roundingSettings,
+  shapeError,
+} from '../api/freeformgeometry.js';
 import { setFreeformEditing } from '../ui/freeformedit.js';
 
 const WALL_INPUTS = ['DIAMETER', 'INNER_DIAMETER', 'THICKNESS'];
@@ -1066,6 +1071,23 @@ export function defineShapeBlocks() {
             name: 'EDIT',
             checked: false,
           },
+          {
+            type: 'field_dropdown',
+            name: 'ROUNDING',
+            options: ROUNDINGS.map((rounding) => [
+              translate(`freeform_rounding_${rounding}`),
+              rounding,
+            ]),
+          },
+          {
+            type: 'input_dummy',
+            name: 'ROUNDING_ROW',
+          },
+          {
+            type: 'input_value',
+            name: 'RADIUS',
+            check: 'Number',
+          },
         ],
         previousStatement: null,
         nextStatement: null,
@@ -1075,6 +1097,11 @@ export function defineShapeBlocks() {
       });
       this.setHelpUrl(getHelpUrlFor(this.type));
       this.setStyle('scene_blocks');
+      this.getField('ROUNDING').setValidator((rounding) => {
+        this.showRoundingInputs_(rounding);
+        return rounding;
+      });
+      this.showRoundingInputs_('none');
 
       registerBlockHandler(this, (changeEvent) => {
         this.rejectBrokenShape_(changeEvent);
@@ -1112,12 +1139,39 @@ export function defineShapeBlocks() {
         this.setPointsShown_(xmlElement.getAttribute('points') === 'true');
         this.faces_ = parseFaces(xmlElement.getAttribute('faces'));
       };
+      // A freeform's size lives in its points, so like the other shapes it
+      // gets a rotate row but no resize row.
+      addInitialTransformRows(this);
+      // The points row already ends its line, so the rotate row's own line
+      // break is only needed below the point list.
+      const syncRows = this.syncInitialTransformRows_;
+      this.syncInitialTransformRows_ = this.syncOptionsRow_ = function () {
+        syncRows.call(this);
+        this.getInput('TRANSFORM_ROW').setVisible(this.optionsOpen_ && this.pointsShown_);
+      };
+      this.syncInitialTransformRows_();
+    },
+
+    // Radius only matters for edges.
+    showRoundingInputs_: function (rounding) {
+      this.getInput('RADIUS').setVisible(rounding === 'edges');
+      if (this.rendered) this.queueRender();
+    },
+
+    // The rounding as createFreeform takes it. A radius worked out by code
+    // can't be read here, so `codeRadius` stands in for it.
+    getRounding: function (codeRadius) {
+      const radiusBlock = this.getInputTargetBlock('RADIUS');
+      const radius =
+        radiusBlock?.type === 'math_number' ? Number(radiusBlock.getFieldValue('NUM')) : codeRadius;
+      return roundingSettings({ rounding: this.getFieldValue('ROUNDING'), radius });
     },
 
     setPointsShown_: function (show) {
       this.pointsShown_ = show;
       this.getInput('VERTICES').setVisible(show);
       this.getField('POINTS_BUTTON')?.setValue(show ? DO_MUTATOR_MINUS : DO_MUTATOR_PLUS);
+      this.syncInitialTransformRows_?.();
     },
 
     togglePoints_: function () {

@@ -1284,6 +1284,7 @@ export const flock = {
       applyForce: this.applyForce?.bind(this),
       setSpeed: this.setSpeed?.bind(this),
       setBounciness: this.setBounciness?.bind(this),
+      setMass: this.setMass?.bind(this),
       moveByVector: this.moveByVector?.bind(this),
       glideTo: this.glideTo?.bind(this),
       glideToObject: this.glideToObject?.bind(this),

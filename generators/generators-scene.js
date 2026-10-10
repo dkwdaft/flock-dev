@@ -361,7 +361,7 @@ export function registerSceneGenerators(javascriptGenerator) {
 
   // Add freeform -------------------------------------------------------
   javascriptGenerator.forBlock['create_freeform'] = function (block) {
-    const color = getFieldValue(block, 'COLOR', '"#9932CC"');
+    const color = getFieldValue(block, 'COLOR', '"#ef7a7a"');
     const vertices =
       javascriptGenerator.valueToCode(block, 'VERTICES', javascriptGenerator.ORDER_NONE) ||
       'null';
@@ -371,6 +371,14 @@ export function registerSceneGenerators(javascriptGenerator) {
     const params = [`color: ${color}`, `vertices: ${vertices}`];
     const faces = JSON.stringify(block.getFaces?.() ?? CUBE_FACES);
     if (faces !== JSON.stringify(CUBE_FACES)) params.push(`faces: ${faces}`);
+    const rounding = block.getFieldValue('ROUNDING') ?? 'none';
+    if (rounding === 'edges') {
+      const radius =
+        javascriptGenerator.valueToCode(block, 'RADIUS', javascriptGenerator.ORDER_NONE) || '0.1';
+      params.push('rounding: "edges"', `radius: ${radius}`);
+    } else if (rounding === 'smooth') {
+      params.push('rounding: "smooth"');
+    }
     params.push(`position: ${positionSource}`);
 
     return createMesh(block, 'Freeform', params, 'freeform');

@@ -282,6 +282,18 @@ export function registerTransformGenerators(javascriptGenerator) {
     return `setBounciness(${mesh}, ${bounciness});\n`;
   };
 
+  // Set how heavy an object is (default 1, heavier needs a larger force)
+  javascriptGenerator.forBlock['set_mass'] = function (block) {
+    const mesh = javascriptGenerator.nameDB_.getName(
+      block.getFieldValue('MESH_VAR'),
+      Blockly.Names.NameType.VARIABLE
+    );
+    const mass =
+      javascriptGenerator.valueToCode(block, 'MASS', javascriptGenerator.ORDER_ATOMIC) || '1';
+
+    return `setMass(${mesh}, ${mass});\n`;
+  };
+
   // Show physics shapes
   javascriptGenerator.forBlock['show_physics'] = function (block) {
     const show = block.getFieldValue('SHOW') === 'TRUE';

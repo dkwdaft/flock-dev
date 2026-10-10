@@ -269,6 +269,10 @@ Creates a closed shape from a list of points and the faces that join them.
 
 - `vertices` (array): Points, each a `Vector3` or `[x, y, z]`, relative to the shape's position
 - `faces` (array): Each face is a list of indices into `vertices`, clockwise seen from outside. Every edge must be shared by exactly two faces. Defaults to a box joining 8 points in this order: the bottom corners (-x -z, +x -z, +x +z, -x +z), then the top corners in the same order. Points and faces that don't make a closed shape give a 1 × 1 × 1 cube
+- `rounding` (string): `"none"` (default) keeps the flat faces, `"edges"` rounds the edges and corners and keeps the faces flat, and `"smooth"` makes a smooth surface that sits inside the points
+- `radius` (number): How far in from each edge `"edges"` rounds, at most 40% of the shorter edge at each corner. Defaults to 0.1; 0 turns the rounding off
+- A rounded shape is kept to 3,000 triangles: a bigger one is smoothed less, or rounds its edges more simply, until it fits
+- Its physics shape is a box fitted to the surface it draws, turned to lie along the shape when that is clearly tighter. `setPhysicsShape` replaces it
 - `color` (string), `position` (array), `alpha` (number)
 
 #### `createDonut(name, options)`
@@ -402,7 +406,17 @@ await setPhysics('player', 'DYNAMIC');
 
 #### `applyForce(meshName, force)`
 
-Applies a force to a physics-enabled mesh.
+Applies a force to a physics-enabled mesh as a one-shot impulse. Heavier objects (see `setMass`) need a larger force for the same motion.
+
+#### `setMass(meshName, mass)`
+
+Sets how heavy an object is. Default is 1. Stored on the object so it survives physics rebuilds. Clamped to a small positive minimum. Heavier objects need a larger force for the same motion and push lighter ones around.
+
+**Example:**
+
+```javascript
+setMass('bowlingBall', 5);
+```
 
 ### Scene Environment
 

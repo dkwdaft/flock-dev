@@ -5,6 +5,7 @@ import { defineGenerators } from '../generators/generators.js';
 import { defineBlocks } from '../blocks/blocks.js';
 import { defineShapeBlocks } from '../blocks/shapes.js';
 import { CUBE_FACES, extrudeFace, mergePoints } from '../api/freeformgeometry.js';
+import { setNumberInputs } from '../ui/blocklyutil.js';
 
 const vectorState = (x, y, z) => ({
   block: {
@@ -150,6 +151,53 @@ export function runFreeformBlockTests() {
       expect(block.getInputTargetBlock('VERTICES').itemCount_).to.equal(7);
       expect(workspace.getTopBlocks(false)).to.have.length(1);
       expect(workspace.getBlocksByType('vector', false)).to.have.length(7);
+    });
+
+    it('passes rounding to createFreeform only when it is set', function () {
+      const block = Blockly.serialization.blocks.append(freeformState(), workspace);
+      javascriptGenerator.init(workspace);
+      expect(block.getFieldValue('ROUNDING')).to.equal('none');
+      expect(javascriptGenerator.blockToCode(block)).to.not.include('rounding:');
+      block.setFieldValue('smooth', 'ROUNDING');
+      expect(javascriptGenerator.blockToCode(block)).to.include('rounding: "smooth"');
+      block.setFieldValue('edges', 'ROUNDING');
+      expect(javascriptGenerator.blockToCode(block)).to.include('rounding: "edges", radius: 0.1');
+    });
+
+    it('passes rotation from its own row, and keeps the row and points when saved', function () {
+      const block = Blockly.serialization.blocks.append(freeformState(), workspace);
+      block.setRotateShown(true);
+      block.togglePoints_();
+      setNumberInputs(block, { ROTATE_Y: 45 });
+      javascriptGenerator.init(workspace);
+      expect(javascriptGenerator.blockToCode(block)).to.include('rotation: { x: 0, y: 45, z: 0 }');
+
+      const copy = Blockly.serialization.blocks.append(
+        Blockly.serialization.blocks.save(block),
+        workspace
+      );
+      expect(copy.rotateShown_).to.equal(true);
+      expect(copy.pointsShown_).to.equal(true);
+      expect(copy.getInput('ROTATE_Y').isVisible()).to.equal(copy.optionsOpen_);
+    });
+
+    it('shows radius only for edges', function () {
+      const block = Blockly.serialization.blocks.append(freeformState(), workspace);
+      const shown = () => block.getInput('RADIUS').isVisible();
+      expect(shown()).to.equal(false);
+      block.setFieldValue('smooth', 'ROUNDING');
+      expect(shown()).to.equal(false);
+      block.setFieldValue('edges', 'ROUNDING');
+      expect(shown()).to.equal(true);
+    });
+
+    it('reads the rounding from the block', function () {
+      const state = freeformState();
+      state.fields = { ROUNDING: 'edges' };
+      state.inputs.RADIUS = { shadow: { type: 'math_number', fields: { NUM: 0.25 } } };
+      const block = Blockly.serialization.blocks.append(state, workspace);
+      expect(block.getRounding()).to.deep.equal({ rounding: 'edges', radius: 0.25 });
+      expect(block.getInput('RADIUS').isVisible()).to.equal(true);
     });
 
     it('leaves faces out of the code for the plain cube', function () {

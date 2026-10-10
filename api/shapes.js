@@ -1,6 +1,7 @@
 import earcut from 'earcut';
 import Module from 'manifold-3d';
 import opentype from 'opentype.js';
+import { roundingSettings } from './freeformgeometry.js';
 
 let flock;
 let manifoldModule = null;
@@ -903,7 +904,9 @@ export const flockShapes = {
     {
       vertices,
       faces,
-      color = '#9932CC',
+      rounding = 'none',
+      radius,
+      color = '#ef7a7a',
       position = new flock.BABYLON.Vector3(0, 0, 0),
       alpha = 1,
       rotation = null,
@@ -926,6 +929,7 @@ export const flockShapes = {
     flock._recycleOldestByKey(blockKey);
 
     const newFreeform = new flock.BABYLON.Mesh(freeformId, flock.scene);
+    newFreeform.metadata = { freeformRounding: roundingSettings({ rounding, radius }) };
     const shape = flock.freeformShape(vertices, faces);
     flock.setFreeformShape(newFreeform, shape.points, shape.faces);
 
@@ -935,9 +939,9 @@ export const flockShapes = {
     newFreeform.metadata.sectionOwner = flock._currentSection;
     newFreeform.metadata.sharedGeometry = false;
 
-    const hullShape = new flock.BABYLON.PhysicsShapeConvexHull(newFreeform, flock.scene);
-    flock.applyPhysics(newFreeform, hullShape);
-    newFreeform.metadata.physicsShapeType = 'CONVEX_HULL';
+    // A box is cheap on low-end machines; the physics shape block can swap it.
+    flock.applyPhysics(newFreeform, flock.createFreeformBox(newFreeform, flock.scene));
+    newFreeform.metadata.physicsShapeType = 'BOX';
 
     flock.announceMeshReady(newFreeform.name, groupName);
     flock._registerInstance(blockKey, newFreeform.name);
@@ -949,7 +953,7 @@ export const flockShapes = {
     return newFreeform.name;
   },
   setFreeformShape(mesh, points, faces) {
-    flock.freeformVertexData(points, faces).applyToMesh(mesh, true);
+    flock.freeformVertexData(points, faces, mesh.metadata?.freeformRounding).applyToMesh(mesh, true);
     mesh.refreshBoundingInfo();
     const { minimum, maximum } = mesh.getBoundingInfo().boundingBox;
     flock.setSizeBasedBoxUVs(
